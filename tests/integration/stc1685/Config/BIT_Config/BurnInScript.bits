@@ -1,0 +1,7 @@
+
+        LOAD "c:\automation\tests\integration\stc1685\Config\BIT_Config\BurnInScript.bitcfg" 
+        SETLOG LOG yes Name "c:\automation\tests\integration\stc1685\testlog\Burnin.log" TIME no REPORT text
+        SETDURATION 1
+        SETDISK DISK D:
+        RUN DISK
+        
