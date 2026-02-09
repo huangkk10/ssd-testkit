@@ -133,10 +133,19 @@ log/
 logs/
 testlog/
 *.log
-*.txt
-*.json
 pytest_reboot_state.json
 runner_info.json
+
+# Ignore specific JSON files but keep Config.json
+*.json
+!**/Config/Config.json
+!**/Config/*.json
+!requirements.txt
+
+# Ignore text files except specific ones
+*.txt
+!requirements.txt
+!**/Config/*.txt
 
 # Screenshots and reports
 *.png
@@ -173,3 +182,5 @@ desktop.ini
 
 # Ignore all bin directories
 **/bin/
+
+!requirements.txt
