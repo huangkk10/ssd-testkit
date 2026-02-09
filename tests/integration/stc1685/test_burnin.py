@@ -29,6 +29,7 @@ class TestSTC1685BurnIN(BaseTestCase):
     STC-1685: BurnIN Installation Test
     """
     
+    
     def _remove_existing_burnin(self):
         """
         Remove existing BurnIN installation if present.
