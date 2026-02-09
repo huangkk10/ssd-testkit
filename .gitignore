@@ -170,3 +170,6 @@ desktop.ini
 # Compiled files
 *.pyc
 *.pyo
+
+# Ignore all bin directories
+**/bin/
