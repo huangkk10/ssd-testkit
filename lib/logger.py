@@ -6,28 +6,30 @@ import sys
 def logConfig():
     logger = logging.getLogger('main')
     
-    # 避免重複添加 handler
+    # Avoid adding handlers multiple times
     if logger.handlers:
         return
-    
-    if( not os.path.exists('./log')):
+
+    # Ensure log directory exists
+    if not os.path.exists('./log'):
         os.mkdir('./log')
 
-    #Normal Logger
+    # Formatter for log messages
     formatter = logging.Formatter('[%(levelname)s %(asctime)s] %(message)s')
 
+    # Normal log file (overwrite each run)
     log_filename = datetime.datetime.now().strftime("./log/log.txt")
-    filelogHandler = logging.FileHandler(log_filename,mode='w', encoding='utf-8')  # 'w' = 覆寫模式
+    filelogHandler = logging.FileHandler(log_filename, mode='w', encoding='utf-8')
     filelogHandler.setLevel(logging.INFO)
     filelogHandler.setFormatter(formatter)
 
-    #Error Logger
+    # Error log file (overwrite each run)
     log_filename = datetime.datetime.now().strftime("./log/log.err")
-    errlogHandler = logging.FileHandler(log_filename,mode='w', encoding='utf-8')  # 'w' = 覆寫模式
+    errlogHandler = logging.FileHandler(log_filename, mode='w', encoding='utf-8')
     errlogHandler.setLevel(logging.ERROR)
-    errlogHandler.setFormatter(formatter)   
+    errlogHandler.setFormatter(formatter)
 
-    #Console
+    # Console output
     consoleHandler = logging.StreamHandler(sys.stdout)
     consoleHandler.setLevel(logging.INFO)
     consoleHandler.setFormatter(formatter)
@@ -36,32 +38,44 @@ def logConfig():
     logger.addHandler(errlogHandler)
     logger.addHandler(consoleHandler)
     logger.setLevel(logging.DEBUG)
-    
 
     return
 
 def LogEvt(msg):
-    """記錄一般事件訊息"""
-    logging.getLogger('main').info(msg)
+    """Log a standard informational event message."""
+    try:
+        logging.getLogger('main').info(msg)
+    except (ValueError, OSError):
+        # Ignore errors if file handle is closed
+        pass
 
 
 def LogErr(msg):
-    """記錄錯誤訊息"""
-    logging.getLogger('main').error(msg)
+    """Log an error message."""
+    try:
+        logging.getLogger('main').error(msg)
+    except (ValueError, OSError):
+        pass
 
 
 def LogWarn(msg):
-    """記錄警告訊息"""
-    logging.getLogger('main').warning(msg)
+    """Log a warning message."""
+    try:
+        logging.getLogger('main').warning(msg)
+    except (ValueError, OSError):
+        pass
 
 
 def LogDebug(msg):
-    """記錄除錯訊息"""
-    logging.getLogger('main').debug(msg)
+    """Log a debug message."""
+    try:
+        logging.getLogger('main').debug(msg)
+    except (ValueError, OSError):
+        pass
 
 
 def LogSection(title):
-    """記錄區段標題（帶分隔線）"""
+    """Log a section header (surrounded by separator lines)."""
     logging.getLogger('main').info("")
     logging.getLogger('main').info("=" * 60)
     logging.getLogger('main').info(f"  {title}")
@@ -70,14 +84,14 @@ def LogSection(title):
 
 
 def LogStep(step_number, description):
-    """記錄測試步驟"""
+    """Log a test step with its number and description."""
     logging.getLogger('main').info("=" * 60)
     logging.getLogger('main').info(f"[STEP {step_number}] {description}")
     logging.getLogger('main').info("=" * 60)
 
 
 def LogResult(passed, message):
-    """記錄測試結果"""
+    """Log the test result as pass or fail with a message."""
     logger = logging.getLogger('main')
     if passed:
         logger.info(f"✓ [PASS] {message}")
