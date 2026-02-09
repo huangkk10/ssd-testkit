@@ -58,6 +58,11 @@
     "config_path": "./Config/SmiCli.json"
   },
   
+  "DUT_info": {
+    "DiskType": 0,
+    "_comment": "DiskType: 0 = PRIMARY (C: drive), 1 = SECONDARY (non-C: drive)"
+  },
+  
   "disk_utility": {
     "dut_model_name": "",
     "dut_disk_mode": 2,

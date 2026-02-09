@@ -180,9 +180,10 @@ class TestSTC1685BurnIN(BaseTestCase):
         logger.LogEvt("Test log cleanup completed")
     
     @pytest.fixture(scope="class", autouse=True)
-    def setup_test_class(self, request):
+    def setup_test_class(self, request, testcase_config, runcard_params):
         """Load configuration and initialize (runs before all tests)"""
         cls = request.cls
+        cls.testcase_config = testcase_config  # Store config object for access in tests
         
         # Store original working directory
         import os
@@ -204,44 +205,31 @@ class TestSTC1685BurnIN(BaseTestCase):
         print(f"[DEBUG] Current working directory: {os.getcwd()}")
         print(f"[DEBUG] Log file will be created at: {log_abs_path}")
         
-        # Note: testlog cleanup is now handled automatically by BaseTestCase framework
+        # Load tool configuration from Config.json (via conftest.py)
+        cls.config = testcase_config.tool_config
         
-        # Load test configuration (重啟後仍需要載入)
-        config_path = Path(__file__).parent / "Config" / "Config.json"
-        if not config_path.exists():
-            pytest.fail(f"Config file not found: {config_path}")
-        
-        with open(config_path) as f:
-            cls.config = json.load(f)
-        
-        # Set tool paths to local bin directory (重啟後仍需要設定)
-        cls.bin_path = Path(__file__).parent / "bin"
+        # Set tool paths to local bin directory (重啟後仍需要載入)
+        cls.bin_path = testcase_config.bin_directory
         
         # Log test information (框架會自動處理首次/恢復的訊息)
         logger.LogEvt(f"Working directory: {test_dir}")
         logger.LogEvt(f"Tool bin path: {cls.bin_path}")
+        logger.LogEvt(f"Test case: {testcase_config.case_id}")
+        logger.LogEvt(f"Script version: {testcase_config.case_version}")
         
         # ==================== RunCard Integration Start ====================
-        # Initialize RunCard for the entire test class
-        smicli_path = test_dir / "bin/SmiCli/SmiCli2.exe"
+        # Initialize RunCard for the entire test class (using config from conftest.py)
         cls.runcard = None
         
         try:
-            cls.runcard = RC.Runcard(
-                test_path="./testlog",
-                test_case="STC-1685",
-                script_version="1.0.0"
-            )
+            # Use configuration from conftest.py
+            cls.runcard = RC.Runcard(**runcard_params['initialization'])
             logger.LogEvt("[RunCard] Object created")
             
             # Start RunCard test with auto_setup
-            cls.runcard.start_test(
-                autoit_version="STC-1685_v1.0.0",
-                auto_setup=True,
-                smicli_path=str(smicli_path) if smicli_path.exists() else None
-            )
+            cls.runcard.start_test(**runcard_params['start_params'])
             logger.LogEvt("[RunCard] Test started successfully")
-            logger.LogEvt(f"[RunCard] Using SmiCli: {smicli_path if smicli_path.exists() else 'Not found'}")
+            logger.LogEvt(f"[RunCard] Using SmiCli: {testcase_config.smicli_executable if testcase_config.smicli_executable.exists() else 'Not found'}")
         except Exception as e:
             logger.LogErr(f"[RunCard] Initialization failed - {e} (continuing test)")
             cls.runcard = None
