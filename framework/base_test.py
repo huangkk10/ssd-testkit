@@ -1,6 +1,6 @@
 """
-基礎測試類，所有測試案例繼承此類
-提供標準的 setup/teardown 和狀態管理
+Base test class — all test cases should inherit from this class.
+Provides standard setup/teardown hooks and test state management.
 """
 import pytest
 import shutil
@@ -11,39 +11,43 @@ import lib.logger as logger
 
 class BaseTestCase:
     """
-    測試基礎類
-    
-    使用方式：
+    Base test class
+
+    Usage:
         class TestYourCase(BaseTestCase):
             def test_step_01(self):
-                # 測試邏輯
+                # test logic
                 pass
     """
     
     # ========== Class-level Setup/Teardown ==========
     @pytest.fixture(scope="class", autouse=True)
     def setup_teardown_class(self, request):
-        """類別層級的 setup 和 teardown"""
+        """Class-level setup and teardown"""
         # Setup：初始化測試環境
         cls = request.cls
         cls.test_name = request.node.name
         cls.log_path = "./testlog"
         cls.reboot_mgr = RebootManager()
         
-        # 只在首次執行時初始化（重啟後跳過）
+        # Only initialize on first run (skip during recovery)
         if not cls.reboot_mgr.is_recovering():
             logger.LogEvt("=" * 60)
             logger.LogEvt(f"Setting up test: {cls.test_name}")
             logger.LogEvt("=" * 60)
+            
+            # Clean up testlog directory (framework standard behavior)
+            cls._cleanup_testlog_directory()
+            
             setup_test_environment(cls.log_path)
         else:
             logger.LogEvt("=" * 60)
             logger.LogEvt(f"Recovering test: {cls.test_name}")
             logger.LogEvt("=" * 60)
         
-        yield  # 測試執行
+        yield  # test execution
         
-        # Teardown：清理測試環境
+        # Teardown: clean up test environment
         if cls.reboot_mgr.all_tests_completed():
             logger.LogEvt("=" * 60)
             logger.LogEvt("All tests completed, cleaning up...")
@@ -54,24 +58,41 @@ class BaseTestCase:
     # ========== Function-level Setup/Teardown ==========
     @pytest.fixture(autouse=True)
     def setup_teardown_function(self, request):
-        """函數層級的 setup 和 teardown"""
+        """Function-level setup and teardown"""
         test_name = request.node.name
-        
-        # Setup：檢查是否應該跳過
+        # Setup: check whether this test should be skipped
         if self.reboot_mgr.is_completed(test_name):
             pytest.skip(f"{test_name} already completed")
         
         logger.LogEvt(f"--- Starting: {test_name} ---")
         
-        yield  # 測試執行
+        yield  # test execution
         
-        # Teardown：標記完成
+        # Teardown: mark as completed
         logger.LogEvt(f"--- Completed: {test_name} ---")
         self.reboot_mgr.mark_completed(test_name)
     
-    # ========== 輔助方法 ==========
+    # ========== Helper methods ==========
+    @staticmethod
+    def _cleanup_testlog_directory():
+        """
+        Clean up entire testlog directory and recreate it empty.
+        
+        This is a framework-level utility that automatically runs before test execution.
+        Removes all files and subdirectories in testlog/ and creates a fresh empty directory.
+        """
+        testlog_path = Path('./testlog')
+        if testlog_path.exists():
+            logger.LogEvt(f"[Framework] Cleaning testlog directory: {testlog_path.absolute()}")
+            shutil.rmtree(testlog_path)
+            logger.LogEvt("[Framework] testlog directory cleaned")
+        
+        # Recreate empty testlog directory
+        testlog_path.mkdir(parents=True, exist_ok=True)
+        logger.LogEvt(f"[Framework] Created clean testlog directory: {testlog_path.absolute()}")
+    
     def get_config(self, key, default=None):
-        """讀取配置"""
+        """Read configuration"""
         import json
         try:
             with open("./Config/Config.json", 'r') as f:
@@ -81,32 +102,32 @@ class BaseTestCase:
             return default
     
     def log(self, message):
-        """統一的日誌輸出"""
+        """Unified logging output"""
         logger.LogEvt(f"[LOG] {message}")
     
     def log_info(self, message):
-        """記錄資訊訊息"""
+        """Log informational message"""
         logger.LogEvt(f"[INFO] {message}")
     
     def log_error(self, message):
-        """記錄錯誤訊息"""
+        """Log error message"""
         logger.LogErr(f"[ERROR] {message}")
     
     def log_step(self, step_number, description):
-        """記錄測試步驟"""
+        """Log a test step"""
         logger.LogEvt("=" * 60)
         logger.LogEvt(f"[STEP {step_number}] {description}")
         logger.LogEvt("=" * 60)
     
     def log_result(self, passed, message):
-        """記錄測試結果"""
+        """Log test result"""
         if passed:
             logger.LogEvt(f"✓ [PASS] {message}")
         else:
             logger.LogErr(f"✗ [FAIL] {message}")
     
     def log_section(self, title):
-        """記錄測試區段"""
+        """Log a test section"""
         logger.LogEvt("")
         logger.LogEvt("=" * 60)
         logger.LogEvt(f"  {title}")

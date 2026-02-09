@@ -26,6 +26,7 @@ import threading
 from framework.base_test import BaseTestCase
 from framework.decorators import step
 from lib.testtool import BurnIN
+from lib.testtool import RunCard as RC
 import lib.testtool.DiskPrd as DiskPrd
 import lib.testtool.SmiSmartCheck as SmiSmartCheck
 import lib.testtool.CDI as CDI
@@ -143,6 +144,7 @@ class TestSTC1685BurnIN(BaseTestCase):
             else:
                 logger.LogEvt("No old SmartCheck logs found")
     
+    
     def _cleanup_test_logs(self):
         """
         Clean up all test logs from previous test runs.
@@ -190,6 +192,9 @@ class TestSTC1685BurnIN(BaseTestCase):
         test_dir = Path(__file__).parent
         os.chdir(test_dir)
         
+        # Clean up testlog directory immediately after chdir (before logger init)
+        cls._cleanup_testlog_directory()
+        
         # Initialize logger after changing directory (so logs are created in test directory)
         logger.logConfig()
         
@@ -198,6 +203,8 @@ class TestSTC1685BurnIN(BaseTestCase):
         log_abs_path = os.path.abspath('./log/log.txt')
         print(f"[DEBUG] Current working directory: {os.getcwd()}")
         print(f"[DEBUG] Log file will be created at: {log_abs_path}")
+        
+        # Note: testlog cleanup is now handled automatically by BaseTestCase framework
         
         # Load test configuration (重啟後仍需要載入)
         config_path = Path(__file__).parent / "Config" / "Config.json"
@@ -214,7 +221,51 @@ class TestSTC1685BurnIN(BaseTestCase):
         logger.LogEvt(f"Working directory: {test_dir}")
         logger.LogEvt(f"Tool bin path: {cls.bin_path}")
         
+        # ==================== RunCard Integration Start ====================
+        # Initialize RunCard for the entire test class
+        smicli_path = test_dir / "bin/SmiCli/SmiCli2.exe"
+        cls.runcard = None
+        
+        try:
+            cls.runcard = RC.Runcard(
+                test_path="./testlog",
+                test_case="STC-1685",
+                script_version="1.0.0"
+            )
+            logger.LogEvt("[RunCard] Object created")
+            
+            # Start RunCard test with auto_setup
+            cls.runcard.start_test(
+                autoit_version="STC-1685_v1.0.0",
+                auto_setup=True,
+                smicli_path=str(smicli_path) if smicli_path.exists() else None
+            )
+            logger.LogEvt("[RunCard] Test started successfully")
+            logger.LogEvt(f"[RunCard] Using SmiCli: {smicli_path if smicli_path.exists() else 'Not found'}")
+        except Exception as e:
+            logger.LogErr(f"[RunCard] Initialization failed - {e} (continuing test)")
+            cls.runcard = None
+        # ==================== RunCard Integration End ====================
+        
         yield  # Tests run here
+        
+        # ==================== RunCard End Test ====================
+        # Record final test result after all tests complete
+        if cls.runcard:
+            try:
+                # Check if any test failed using pytest's session
+                # request.node.session.testsfailed counts all failed tests
+                failed = request.session.testsfailed > 0
+                
+                if not failed:
+                    cls.runcard.end_test(RC.TestResult.PASS.value)
+                    logger.LogEvt("[RunCard] All tests PASSED")
+                else:
+                    cls.runcard.end_test(RC.TestResult.FAIL.value, f"{request.session.testsfailed} test(s) failed")
+                    logger.LogEvt(f"[RunCard] Test suite FAILED - {request.session.testsfailed} test(s) failed")
+            except Exception as e:
+                logger.LogErr(f"[RunCard] Failed to record final result - {e}")
+        # ==================== RunCard End ====================
         
         logger.LogEvt("STC-1685 Test Completed")
         
@@ -354,6 +405,8 @@ class TestSTC1685BurnIN(BaseTestCase):
            - If SmartCheck completes: stop BurnIN (indicates SMART error or timeout)
            - If BurnIN completes: stop SmartCheck (normal test end)
         4. Report results
+        
+        Note: RunCard is managed at class level (setup_test_class)
         """
         import queue
 
@@ -461,6 +514,7 @@ class TestSTC1685BurnIN(BaseTestCase):
                     burnin.__Stop__()
                     burnin.ScreenShot()
                     burnin.__Close__()
+                    
                     pytest.fail(f"SmartCheck detected SMART error: {msg}")
 
             # Handle BurnIN completion
@@ -490,6 +544,7 @@ class TestSTC1685BurnIN(BaseTestCase):
                 smiSmartCheck.__Pause__()
             except:
                 pass
+            
             pytest.fail("Test timeout: BurnIN and SmartCheck did not complete within expected time")
 
         finally:
