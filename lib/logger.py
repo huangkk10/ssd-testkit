@@ -17,15 +17,15 @@ def logConfig():
     # Formatter for log messages
     formatter = logging.Formatter('[%(levelname)s %(asctime)s] %(message)s')
 
-    # Normal log file (overwrite each run)
+    # Normal log file (append mode to preserve all test logs)
     log_filename = datetime.datetime.now().strftime("./log/log.txt")
-    filelogHandler = logging.FileHandler(log_filename, mode='w', encoding='utf-8')
+    filelogHandler = logging.FileHandler(log_filename, mode='a', encoding='utf-8')
     filelogHandler.setLevel(logging.INFO)
     filelogHandler.setFormatter(formatter)
 
-    # Error log file (overwrite each run)
+    # Error log file (append mode to preserve all test logs)
     log_filename = datetime.datetime.now().strftime("./log/log.err")
-    errlogHandler = logging.FileHandler(log_filename, mode='w', encoding='utf-8')
+    errlogHandler = logging.FileHandler(log_filename, mode='a', encoding='utf-8')
     errlogHandler.setLevel(logging.ERROR)
     errlogHandler.setFormatter(formatter)
 
@@ -98,4 +98,5 @@ def LogResult(passed, message):
     else:
         logger.error(f"✗ [FAIL] {message}")
 
-logConfig()
+# Note: logConfig() should be called explicitly after changing to the correct working directory
+# Do not call it here at module import time

@@ -8,13 +8,21 @@ Test Flow:
 2. Install BurnIN - Install BurnIN test tool
 """
 
+import sys
+from pathlib import Path
+
+# Add project root to Python path to enable imports
+# Path structure: project_root/tests/integration/client_pcie_lenovo_storagedv/stc1685_burnin/test_burnin.py
+project_root = Path(__file__).resolve().parents[4]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import pytest
 import shutil
 import json
 import os
 import time
 import threading
-from pathlib import Path
 from framework.base_test import BaseTestCase
 from framework.decorators import step
 from lib.testtool import BurnIN
@@ -24,12 +32,17 @@ import lib.testtool.CDI as CDI
 import lib.logger as logger
 
 
+@pytest.mark.client_lenovo
+@pytest.mark.interface_pcie
+@pytest.mark.project_storagedv
+@pytest.mark.feature_burnin
+@pytest.mark.slow
 class TestSTC1685BurnIN(BaseTestCase):
     """
-    STC-1685: BurnIN Installation Test
+    STC-1685: BurnIN Installation Test for Lenovo StorageDV
     """
     
-    
+
     def _remove_existing_burnin(self):
         """
         Remove existing BurnIN installation if present.
@@ -176,6 +189,15 @@ class TestSTC1685BurnIN(BaseTestCase):
         # Change to test directory
         test_dir = Path(__file__).parent
         os.chdir(test_dir)
+        
+        # Initialize logger after changing directory (so logs are created in test directory)
+        logger.logConfig()
+        
+        # Debug: Show where logs will be created
+        import os
+        log_abs_path = os.path.abspath('./log/log.txt')
+        print(f"[DEBUG] Current working directory: {os.getcwd()}")
+        print(f"[DEBUG] Log file will be created at: {log_abs_path}")
         
         # Load test configuration (重啟後仍需要載入)
         config_path = Path(__file__).parent / "Config" / "Config.json"
@@ -667,5 +689,13 @@ class TestSTC1685BurnIN(BaseTestCase):
 
 
 if __name__ == "__main__":
-    # Run tests
-    pytest.main([__file__, "-v", "-s"])
+    # Run tests with comprehensive logging
+    pytest.main([
+        __file__, 
+        "-v", 
+        "-s",
+        "--log-file=./log/pytest.log",
+        "--log-file-level=INFO",
+        "--log-file-format=%(asctime)s [%(levelname)s] %(message)s",
+        "--log-file-date-format=%Y-%m-%d %H:%M:%S"
+    ])

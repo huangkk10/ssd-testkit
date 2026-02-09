@@ -3,7 +3,7 @@ import sys
 import os
 
 sys.path.append(os.path.dirname(__file__))
-import SmiCli
+# import SmiCli  # Moved to lazy import in functions that need it
 import os
 import subprocess
 import json
@@ -218,6 +218,7 @@ def PartitionDiskByConfig(ConfigPath):
 
 
 def PartitionDisk(DiskConfig):
+    import SmiCli  # Lazy import
     PrimaryTask = []
     SecondaryTask = []
     DiskPartCmds = []
@@ -310,6 +311,7 @@ def GetDiskIDByLabel(Label, DriskInfo):
 
 
 def GetDiskIDByTypeID(TypeID):
+    import SmiCli  # Lazy import
     # 320 = NVMe
     smicli = SmiCli.SmiCli()
     # dut_infoPath = smicli.LogPath + '/Dut_Info.json'
