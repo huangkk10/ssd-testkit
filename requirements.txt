@@ -1,0 +1,19 @@
+# Core dependencies
+pytest>=7.0.0
+pytest-order>=1.0.0
+
+# Windows automation
+pywin32>=300
+pywinauto>=0.6.8
+pyautogui>=0.9.50
+
+# Image processing (for screenshots)
+Pillow>=9.0.0
+
+# JSON handling
+jsonschema>=4.0.0
+
+# Utilities
+psutil>=5.8.0
+WMI>=1.5.1
+async-timeout>=4.0.0
