@@ -183,4 +183,7 @@ desktop.ini
 # Ignore all bin directories
 **/bin/
 
+# tests 
+tests/unit/lib/testtool/test_smartcheck/smartcheck_custom_output
+
 !requirements.txt

@@ -1,6 +1,7 @@
 # Core dependencies
 pytest>=7.0.0
 pytest-order>=1.0.0
+pytest-asyncio>=0.21.0
 
 # Windows automation
 pywin32>=300
