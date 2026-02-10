@@ -323,6 +323,10 @@ class SmartCheckController(threading.Thread):
         while preserving the directory itself. Useful for ensuring
         clean test runs.
         
+        IMPORTANT:
+            - Also clears SmartCheck.bat's default log directory if it exists
+            - Validates paths to prevent accidental deletion of system directories
+        
         Note:
             - Directory itself is preserved
             - Handles file permission errors gracefully
@@ -331,14 +335,55 @@ class SmartCheckController(threading.Thread):
         Raises:
             OSError: If files cannot be deleted (may be logged instead)
         """
-        if not os.path.exists(self.output_dir):
-            LogDebug(f"Output directory does not exist, nothing to clear: {self.output_dir}")
+        # Validate output_dir is safe to clear
+        if not self.output_dir or self.output_dir.strip() == '':
+            LogWarn("Output directory is empty, skipping clear")
             return
         
+        # Convert to absolute path and validate
+        abs_output_dir = os.path.abspath(self.output_dir)
+        
+        # Safety check: don't clear root directories or system directories
+        dangerous_paths = ['/', 'C:\\', 'C:\\Windows', 'C:\\Program Files', 
+                          'C:\\Program Files (x86)', os.path.expanduser('~')]
+        if abs_output_dir in dangerous_paths or len(abs_output_dir) <= 3:
+            LogErr(f"Refusing to clear dangerous path: {abs_output_dir}")
+            raise SmartCheckConfigError(f"Cannot clear dangerous path: {abs_output_dir}")
+        
+        # Clear the configured output directory
+        if os.path.exists(abs_output_dir):
+            try:
+                LogDebug(f"Clearing configured output directory: {abs_output_dir}")
+                self._clear_directory_contents(abs_output_dir)
+                LogEvt(f"Cleared configured output directory: {abs_output_dir}")
+            except Exception as e:
+                LogErr(f"Error clearing configured output directory: {e}")
+        else:
+            LogDebug(f"Configured output directory does not exist: {abs_output_dir}")
+        
+        # Also clear SmartCheck.bat's default log directory if it exists
+        # Default is: <SmartCheck.bat directory>/log_SmartCheck/
+        bat_dir = os.path.dirname(os.path.abspath(self.bat_path))
+        default_log_dir = os.path.join(bat_dir, 'log_SmartCheck')
+        
+        if os.path.exists(default_log_dir) and default_log_dir != abs_output_dir:
+            try:
+                LogDebug(f"Clearing default SmartCheck log directory: {default_log_dir}")
+                self._clear_directory_contents(default_log_dir)
+                LogEvt(f"Cleared default log directory: {default_log_dir}")
+            except Exception as e:
+                LogWarn(f"Failed to clear default log directory: {e}")
+    
+    def _clear_directory_contents(self, directory: str) -> None:
+        """
+        Internal method to clear contents of a directory.
+        
+        Args:
+            directory: Absolute path to directory to clear
+        """
         try:
-            # Remove all contents but keep the directory
-            for item in os.listdir(self.output_dir):
-                item_path = os.path.join(self.output_dir, item)
+            for item in os.listdir(directory):
+                item_path = os.path.join(directory, item)
                 try:
                     if os.path.isfile(item_path) or os.path.islink(item_path):
                         os.unlink(item_path)
@@ -348,13 +393,9 @@ class SmartCheckController(threading.Thread):
                         LogDebug(f"Deleted directory: {item_path}")
                 except Exception as e:
                     LogWarn(f"Failed to delete {item_path}: {e}")
-            
-            LogEvt(f"Cleared output directory: {self.output_dir}")
-            
         except Exception as e:
-            LogErr(f"Error clearing output directory: {e}")
-            # Don't raise exception, just log it
-            # This allows test to continue even if cleanup fails
+            LogErr(f"Error listing directory {directory}: {e}")
+            raise
     
     def ensure_output_dir_exists(self) -> None:
         """
@@ -400,12 +441,12 @@ class SmartCheckController(threading.Thread):
             
             # Start process in new console window
             # CREATE_NEW_CONSOLE allows SmartCheck to run in separate window
+            # Note: Do NOT use stdout=PIPE/stderr=PIPE with CREATE_NEW_CONSOLE
+            #       as it will capture output and leave the window blank
             self._process = subprocess.Popen(
                 [bat_abs_path],
                 cwd=bat_dir,
-                creationflags=subprocess.CREATE_NEW_CONSOLE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                creationflags=subprocess.CREATE_NEW_CONSOLE
             )
             
             # Give process a moment to start
@@ -673,11 +714,17 @@ class SmartCheckController(threading.Thread):
             # ===== Phase 1: Preparation =====
             LogEvt("Phase 1: Preparation")
             
-            # Write configuration to SmartCheck.ini
+            # Write configuration to SmartCheck.ini FIRST
+            # This ensures output_dir is set before clearing
             self.write_all_config_to_ini()
             
             # Ensure output directory exists
             self.ensure_output_dir_exists()
+            
+            # Clear output directory for clean test run
+            # This must happen AFTER write_all_config_to_ini()
+            # to ensure we're clearing the correct directory
+            self.clear_output_dir()
             
             # Start SmartCheck.bat
             self.start_smartcheck_bat()
@@ -686,6 +733,10 @@ class SmartCheckController(threading.Thread):
             
             # ===== Phase 2: Monitoring Loop =====
             LogEvt("Phase 2: Monitoring")
+            
+            # Track when we started SmartCheck.bat for RunCard.ini timeout
+            smartcheck_start_time = time.time()
+            runcard_timeout = 300  # 5 minutes (300 seconds) to find RunCard.ini
             
             while not self._stop_event.is_set():
                 # Check timeout
@@ -699,7 +750,15 @@ class SmartCheckController(threading.Thread):
                 runcard_path = self.find_runcard_ini()
                 if not runcard_path:
                     # RunCard.ini not yet created, wait and retry
-                    LogDebug(f"RunCard.ini not found yet, waiting... ({elapsed:.1f}s elapsed)")
+                    elapsed_since_start = time.time() - smartcheck_start_time
+                    LogDebug(f"RunCard.ini not found yet, waiting... ({elapsed_since_start:.1f}s since start)")
+                    
+                    # Check if we've exceeded the 5-minute timeout for finding RunCard.ini
+                    if elapsed_since_start > runcard_timeout:
+                        LogErr(f"RunCard.ini not found within {runcard_timeout}s (5 minutes), stopping SmartCheck")
+                        self.status = False
+                        break
+                    
                     time.sleep(self.check_interval)
                     continue
                 

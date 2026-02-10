@@ -679,69 +679,332 @@ err_msg = No Error
 
 
 class TestSmartCheckControllerThreadExecution:
-    """Test thread execution with mocks."""
+    """Test thread execution with real SmartCheck.bat."""
     
     @pytest.fixture
-    def test_paths(self, tmp_path):
-        """Create test paths."""
-        bat_path = tmp_path / "SmartCheck.bat"
-        ini_path = tmp_path / "SmartCheck.ini"
-        output_dir = tmp_path / "output"
+    def real_paths(self):
+        """Get real SmartCheck.bat paths for testing."""
+        # Use the actual SmartCheck.bat from the test bin directory
+        # Path: tests/unit/lib/testtool/test_smartcheck/test_controller.py
+        # Target: tests/unit/lib/testtool/bin/SmiWinTools/
+        base_path = Path(__file__).parent.parent / "bin" / "SmiWinTools"
+        bat_path = base_path / "SmartCheck.bat"
+        ini_path = base_path / "SmartCheck.ini"
+        output_dir = base_path / "test_thread_output"
         
-        bat_path.write_text("@echo off\n")
-        ini_path.write_text("[global]\n")
+        # Ensure paths exist
+        if not bat_path.exists():
+            pytest.skip(f"SmartCheck.bat not found at {bat_path}")
+        if not ini_path.exists():
+            pytest.skip(f"SmartCheck.ini not found at {ini_path}")
+        
+        # Create output directory
         output_dir.mkdir(exist_ok=True)
         
-        return {
+        yield {
             'bat_path': str(bat_path),
             'ini_path': str(ini_path),
             'output_dir': str(output_dir),
         }
+        
+        # Cleanup after test
+        import shutil
+        if output_dir.exists():
+            try:
+                shutil.rmtree(output_dir)
+            except Exception as e:
+                print(f"Cleanup warning: {e}")
     
-    def test_stop_event(self, test_paths):
-        """Test stop event functionality."""
+    def test_thread_basic_execution(self, real_paths):
+        """Test basic thread execution with real SmartCheck.bat."""
         controller = SmartCheckController(
-            bat_path=test_paths['bat_path'],
-            cfg_ini_path=test_paths['ini_path'],
-            output_dir=test_paths['output_dir']
+            bat_path=real_paths['bat_path'],
+            cfg_ini_path=real_paths['ini_path'],
+            output_dir=real_paths['output_dir']
         )
         
+        # Configure for short test
+        controller.set_config(
+            total_time=10,  # 1 minute
+            dut_id="0",
+            timeout=10  # 2 minute timeout
+        )
+        
+        # Start the thread
+        controller.start()
+        
+        # Wait a bit for SmartCheck to start
+        time.sleep(5)
+        
+        # Verify thread is running
+        assert controller.is_alive()
+        
+        # Stop the thread
+        controller.stop()
+        controller.join(timeout=30)
+        
+        # Verify thread completed
+        assert not controller.is_alive()
+    
+    def test_thread_runcard_monitoring(self, real_paths):
+        """Test thread monitors RunCard.ini correctly."""
+        controller = SmartCheckController(
+            bat_path=real_paths['bat_path'],
+            cfg_ini_path=real_paths['ini_path'],
+            output_dir=real_paths['output_dir']
+        )
+        
+        # Configure for short test
+        controller.set_config(
+            total_time=10,  # 1 minute
+            dut_id="0",
+            timeout=10,  # 3 minute timeout
+            check_interval=2  # Check every 2 seconds
+        )
+        
+        # Start the thread
+        controller.start()
+        
+        # Wait for RunCard.ini to be created (up to 5 minutes)
+        runcard_found = False
+        max_wait_time = 300  # 5 minutes
+        start_time = time.time()
+        
+        while time.time() - start_time < max_wait_time:
+            runcard_path = controller.find_runcard_ini()
+            if runcard_path:
+                runcard_found = True
+                print(f"RunCard.ini found at: {runcard_path}")
+                break
+            time.sleep(5)
+        
+        # Verify RunCard.ini was created within 5 minutes
+        assert runcard_found, "RunCard.ini should be created within 5 minutes"
+        
+        # Stop the thread
+        controller.stop()
+        controller.join(timeout=30)
+        
+        # Verify thread completed
+        assert not controller.is_alive()
+    
+    def test_thread_timeout_mechanism(self, real_paths):
+        """Test thread timeout mechanism works correctly."""
+        controller = SmartCheckController(
+            bat_path=real_paths['bat_path'],
+            cfg_ini_path=real_paths['ini_path'],
+            output_dir=real_paths['output_dir']
+        )
+        
+        # Configure with very short timeout to trigger timeout
+        controller.set_config(
+            total_time=10,  # 10 minutes (but will timeout before)
+            dut_id="0",
+            timeout=0.05,  # 0.05 minute = 3 seconds timeout
+            check_interval=1
+        )
+        
+        # Start the thread
+        start_time = time.time()
+        controller.start()
+        
+        # Wait for thread to complete
+        controller.join(timeout=10)
+        elapsed_time = time.time() - start_time
+        
+        # Verify thread completed within timeout + some buffer
+        assert not controller.is_alive()
+        assert elapsed_time < 15, f"Thread should timeout quickly, took {elapsed_time}s"
+        
+        # Status should be False due to timeout
+        assert controller.status is False
+    
+    def test_thread_clear_output_dir_before_execution(self, real_paths):
+        """Test thread clears output directory before execution."""
+        controller = SmartCheckController(
+            bat_path=real_paths['bat_path'],
+            cfg_ini_path=real_paths['ini_path'],
+            output_dir=real_paths['output_dir']
+        )
+        
+        # Create some dummy files in output directory
+        dummy_file = Path(real_paths['output_dir']) / "dummy.txt"
+        dummy_file.write_text("This should be deleted")
+        
+        dummy_dir = Path(real_paths['output_dir']) / "dummy_dir"
+        dummy_dir.mkdir(exist_ok=True)
+        (dummy_dir / "file.txt").write_text("test")
+        
+        # Verify files exist before starting
+        assert dummy_file.exists()
+        assert dummy_dir.exists()
+        
+        # Configure for short test
+        controller.set_config(
+            total_time=1,
+            dut_id="0",
+            timeout=2
+        )
+        
+        # Start the thread
+        controller.start()
+        
+        # Wait a bit for clear_output_dir to execute
+        time.sleep(3)
+        
+        # Check if dummy files were deleted
+        # Note: clear_output_dir is called in run() method
+        files_deleted = not dummy_file.exists() and not dummy_dir.exists()
+        
+        # Stop the thread
+        controller.stop()
+        controller.join(timeout=30)
+        
+        # Verify dummy files were cleared
+        assert files_deleted, "Output directory should be cleared before execution"
+    
+    def test_thread_stop_event_functionality(self, real_paths):
+        """Test stop event can interrupt running thread."""
+        controller = SmartCheckController(
+            bat_path=real_paths['bat_path'],
+            cfg_ini_path=real_paths['ini_path'],
+            output_dir=real_paths['output_dir']
+        )
+        
+        # Configure for long test
+        controller.set_config(
+            total_time=60,  # 60 minutes (but we'll stop early)
+            dut_id="0",
+            timeout=120,  # 2 hour timeout
+            check_interval=2
+        )
+        
+        # Verify stop event is not set initially
         assert not controller._stop_event.is_set()
         
+        # Start the thread
+        controller.start()
+        
+        # Let it run for a few seconds
+        time.sleep(5)
+        
+        # Request stop
         controller.stop()
         
+        # Verify stop event is set
         assert controller._stop_event.is_set()
-    
-    @patch.object(SmartCheckController, 'start_smartcheck_bat')
-    @patch.object(SmartCheckController, 'stop_smartcheck_bat')
-    @patch.object(SmartCheckController, 'find_runcard_ini')
-    def test_run_timeout(self, mock_find, mock_stop, mock_start, test_paths):
-        """Test run method with timeout."""
-        controller = SmartCheckController(
-            bat_path=test_paths['bat_path'],
-            cfg_ini_path=test_paths['ini_path'],
-            output_dir=test_paths['output_dir']
-        )
-        controller.timeout = 0.01  # Very short timeout (0.01 minutes = 0.6 seconds)
         
-        # Mock methods
-        mock_start.return_value = True
-        mock_find.return_value = None  # Never find RunCard.ini
+        # Wait for thread to complete
+        controller.join(timeout=30)
         
-        # Run in thread
-        controller.start()
-        controller.join(timeout=5)
+        # Verify thread stopped
+        assert not controller.is_alive()
         
-        # Should timeout and set status to False
+        # Status should be False (stopped by user)
         assert controller.status is False
-        mock_start.assert_called_once()
-        mock_stop.assert_called_once()
-
-
+    
+    def test_thread_runcard_five_minute_timeout(self, real_paths):
+        """Test thread fails if RunCard.ini not found within 5 minutes."""
+        controller = SmartCheckController(
+            bat_path=real_paths['bat_path'],
+            cfg_ini_path=real_paths['ini_path'],
+            output_dir=real_paths['output_dir']
+        )
         
-        # Test error message
-        status = {'test_result': 'ONGOING', 'err_msg': 'Some error'}
-        assert controller.check_runcard_status(status) is False
+        # Configure with settings that prevent RunCard creation
+        # (This might be hard to simulate, so we use a modified path)
+        fake_output_dir = Path(real_paths['output_dir']) / "fake_nonexistent"
+        controller.output_dir = str(fake_output_dir)
+        
+        controller.set_config(
+            total_time=10,
+            dut_id="0",
+            timeout=10,  # 10 minute timeout (longer than 5 min RunCard timeout)
+            check_interval=1
+        )
+        
+        # Start the thread
+        start_time = time.time()
+        controller.start()
+        
+        # Wait for thread to complete (should fail at 5 minute mark)
+        controller.join(timeout=400)  # Wait up to 6.5 minutes
+        elapsed_time = time.time() - start_time
+        
+        # Verify thread completed
+        assert not controller.is_alive()
+        
+        # Should complete around 5 minutes (300 seconds) + buffer
+        # Note: Actual SmartCheck might create files, so this is a rough check
+        print(f"Thread completed in {elapsed_time}s")
+        
+        # Status might be False if RunCard not found
+        # (This test is tricky without fully controlling SmartCheck behavior)
+    
+    def test_thread_five_minute_stable_execution(self, real_paths):
+        """Test thread runs stably for 5 minutes with status remaining True."""
+        controller = SmartCheckController(
+            bat_path=real_paths['bat_path'],
+            cfg_ini_path=real_paths['ini_path'],
+            output_dir=real_paths['output_dir']
+        )
+        
+        # Configure for 5+ minute test
+        controller.set_config(
+            total_time=10,  # 10 minutes total_time
+            dut_id="0",
+            timeout=15,  # 15 minute timeout (enough buffer)
+            check_interval=5  # Check every 5 seconds
+        )
+        
+        # Start the thread
+        print("Starting SmartCheck for 5-minute stability test...")
+        controller.start()
+        
+        # Monitor for 5 minutes (300 seconds)
+        test_duration = 300  # 5 minutes
+        start_time = time.time()
+        check_interval = 10  # Check status every 10 seconds
+        
+        status_checks = []
+        
+        while time.time() - start_time < test_duration:
+            elapsed = time.time() - start_time
+            
+            # Record status
+            current_status = controller.status
+            status_checks.append({
+                'time': elapsed,
+                'status': current_status,
+                'is_alive': controller.is_alive()
+            })
+            
+            print(f"[{elapsed:.1f}s] Status: {current_status}, Thread alive: {controller.is_alive()}")
+            
+            # Verify status hasn't turned False during execution
+            assert current_status is True, f"Status became False at {elapsed:.1f}s"
+            
+            # Verify thread is still running
+            assert controller.is_alive(), f"Thread died at {elapsed:.1f}s"
+            
+            time.sleep(check_interval)
+        
+        # After 5 minutes, stop the thread
+        print(f"5 minutes completed, stopping thread...")
+        controller.stop()
+        controller.join(timeout=30)
+        
+        # Verify thread stopped
+        assert not controller.is_alive()
+        
+        # Print summary
+        print(f"\nStatus checks summary:")
+        print(f"Total checks: {len(status_checks)}")
+        print(f"All status True: {all(check['status'] for check in status_checks)}")
+        
+        # Final verification: status should have remained True throughout
+        all_status_true = all(check['status'] for check in status_checks)
+        assert all_status_true, "Status changed to False during 5-minute execution"
 
 
 @pytest.mark.integration

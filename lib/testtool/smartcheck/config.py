@@ -66,6 +66,22 @@ class SmartCheckConfig:
                 if not isinstance(value, int) or value <= 0:
                     raise ValueError(f"total_time must be positive integer, got: {value}")
             
+            elif key == 'dut_id':
+                # dut_id should be a string representing a number 0-10
+                if isinstance(value, int):
+                    # If int is provided, convert to string for validation
+                    value_int = value
+                elif isinstance(value, str):
+                    try:
+                        value_int = int(value)
+                    except ValueError:
+                        raise ValueError(f"dut_id must be a number (0-10), got: {value}")
+                else:
+                    raise ValueError(f"dut_id must be string or int (0-10), got type: {type(value)}")
+                
+                if not 0 <= value_int <= 10:
+                    raise ValueError(f"dut_id must be between 0 and 10, got: {value_int}")
+            
             elif key == 'timeout':
                 if not isinstance(value, (int, float)) or value <= 0:
                     raise ValueError(f"timeout must be positive number (in minutes), got: {value}")
