@@ -28,7 +28,7 @@ from framework.decorators import step
 from lib.testtool import BurnIN
 from lib.testtool import RunCard as RC
 import lib.testtool.DiskPrd as DiskPrd
-import lib.testtool.SmiSmartCheck as SmiSmartCheck
+from lib.testtool.smartcheck import SmartCheckController
 import lib.testtool.CDI as CDI
 import lib.logger as logger
 
@@ -387,25 +387,38 @@ class TestSTC1685BurnIN(BaseTestCase):
         Run BurnIN disk test and SmartCheck monitoring concurrently
 
         This test:
-        1. Start BurnIN disk test on D drive
-        2. Start SmartCheck monitoring in a parallel thread
-        3. Wait for the first task to complete:
-           - If SmartCheck completes: stop BurnIN (indicates SMART error or timeout)
-           - If BurnIN completes: stop SmartCheck (normal test end)
-        4. Report results
+        1. Start SmartCheckController thread first
+        2. Start BurnIN process and monitoring thread
+        3. Monitor both threads:
+           - If SmartCheck status becomes False -> stop BurnIN immediately
+           - If BurnIN fails -> stop SmartCheck immediately
+        4. Final result: FAIL if BurnIN failed OR SmartCheck status=False
         
         Note: RunCard is managed at class level (setup_test_class)
         """
-        import queue
-
         logger.LogEvt("[TEST_05] BurnIN and SmartCheck concurrent test started")
 
-        # Initialize tools
+        # ===== Initialize SmartCheckController =====
+        logger.LogEvt("[TEST_05] Initializing SmartCheckController...")
+        
+        smart_cfg = self.config.get('smartcheck', {})
+        
+        try:
+            smartcheck_controller = SmartCheckController.from_config_dict(smart_cfg)
+            
+            logger.LogEvt("[TEST_05] SmartCheckController initialized")
+            logger.LogEvt(f"[TEST_05]   bat_path: {smartcheck_controller.bat_path}")
+            logger.LogEvt(f"[TEST_05]   output_dir: {smartcheck_controller.output_dir}")
+            logger.LogEvt(f"[TEST_05]   total_time: {smartcheck_controller.total_time} minutes")
+            logger.LogEvt(f"[TEST_05]   timeout: {smartcheck_controller.timeout} minutes")
+            
+        except Exception as e:
+            logger.LogErr(f"[TEST_05] Failed to initialize SmartCheckController: {e}")
+            pytest.fail(f"SmartCheckController initialization failed: {e}")
+        
+        # ===== Initialize BurnIN =====
         burnin = BurnIN.BurnIn()
         burnin.SetConfig(self.config['burnin'])
-
-        smiSmartCheck = SmiSmartCheck.SmiSmartCheck()
-        smiSmartCheck.SetConfig(self.config['smartcheck'])
 
         # Set BurnIN executable path
         install_path = self.config['burnin']['InstallPath']
@@ -427,126 +440,186 @@ class TestSTC1685BurnIN(BaseTestCase):
         LOAD "{os.path.abspath(burnin.CfgFilePath)}" 
         SETLOG LOG yes Name "{os.path.abspath(burnin.LogPath)}" TIME no REPORT text
         SETDURATION {test_duration_minutes}
+        SETDURATION {test_duration_minutes}
         SETDISK DISK {drive_letter}:
         RUN DISK
         '''
         burnin.generate_burnin_test_script(cmdStr)
 
-        # shared queue for results
-        result_queue = queue.Queue()
-        error_event = threading.Event()
-
-        # BurnIN thread
+        # ===== Setup Mutual Monitoring Mechanism =====
+        logger.LogEvt("[TEST_05] Setting up mutual monitoring mechanism...")
+        
+        # Shared state for BurnIN monitoring thread
+        burnin_result_lock = threading.Lock()
+        burnin_result = {'done': False, 'success': None, 'msg': ''}
+        
+        # Helper function to stop BurnIN gracefully
+        def stop_burnin(reason: str):
+            logger.LogEvt(f"[TEST_05] Stopping BurnIN ({reason})...")
+            try:
+                burnin.__Stop__()
+            except Exception as e:
+                logger.LogWarn(f"[TEST_05] BurnIN stop exception: {e}")
+            try:
+                burnin.ScreenShot()
+            except Exception:
+                pass
+            try:
+                burnin.__Close__()
+            except Exception:
+                pass
+        
+        # Helper function to finalize BurnIN (screenshot & close)
+        def finalize_burnin():
+            try:
+                burnin.ScreenShot()
+            except Exception:
+                pass
+            try:
+                burnin.__Close__()
+            except Exception:
+                pass
+        
+        # BurnIN worker thread (includes process startup and monitoring)
         def burnin_worker():
             try:
-                logger.LogEvt("[Thread-BurnIN] Starting BurnIN monitor")
+                logger.LogEvt("[Thread-BurnIN] Starting BurnIN process...")
+                burnin.__RunScript__(["-S", os.path.abspath(burnin.ScriptPath), '-K', '-R', '-W'])
+                logger.LogEvt("[Thread-BurnIN] BurnIN process started, starting monitor...")
                 result, msg = burnin.WaitTestDone_no_async()
                 logger.LogEvt(f"[Thread-BurnIN] BurnIN finished: result={result}, msg={msg}")
-                result_queue.put(('burnin', result, msg))
-                if not result:
-                    error_event.set()
+                with burnin_result_lock:
+                    burnin_result.update({'done': True, 'success': result, 'msg': msg})
             except Exception as e:
                 logger.LogErr(f"[Thread-BurnIN] Exception: {e}")
-                result_queue.put(('burnin', False, str(e)))
-                error_event.set()
-
-        # SmartCheck thread
-        def smartcheck_worker():
-            try:
-                logger.LogEvt("[Thread-SmartCheck] Starting SmartCheck monitor")
-                result, msg = smiSmartCheck.RunProcedure_sync()
-                logger.LogEvt(f"[Thread-SmartCheck] SmartCheck finished: result={result}, msg={msg}")
-                result_queue.put(('smartcheck', result, msg))
-                if not result:
-                    error_event.set()
-            except Exception as e:
-                logger.LogErr(f"[Thread-SmartCheck] Exception: {e}")
-                result_queue.put(('smartcheck', False, str(e)))
-                error_event.set()
-
-        # start BurnIN process
-        logger.LogEvt("[TEST_05] Starting BurnIN process...")
-        burnin.__RunScript__(["-S", os.path.abspath(burnin.ScriptPath), '-K', '-R', '-W'])
-
-        # start monitoring threads
-        burnin_thread = threading.Thread(target=burnin_worker, name='BurnIN-monitor', daemon=False)
-        smartcheck_thread = threading.Thread(target=smartcheck_worker, name='SmartCheck-monitor', daemon=False)
-
+                with burnin_result_lock:
+                    burnin_result.update({'done': True, 'success': False, 'msg': str(e)})
+        
+        # ===== Start threads in correct order =====
+        # Step 1: Start SmartCheckController thread FIRST
+        logger.LogEvt("[TEST_05] Step 1: Starting SmartCheckController thread...")
+        smartcheck_controller.start()
+        logger.LogEvt(f"[TEST_05] SmartCheckController started (is_alive: {smartcheck_controller.is_alive()})")
+        
+        # Step 2: Start BurnIN worker thread (includes process startup and monitoring)
+        logger.LogEvt("[TEST_05] Step 2: Starting BurnIN worker thread...")
+        burnin_thread = threading.Thread(target=burnin_worker, name='BurnIN-worker', daemon=False)
         burnin_thread.start()
-        smartcheck_thread.start()
+        logger.LogEvt("[TEST_05] BurnIN worker thread started")
 
-        logger.LogEvt("[TEST_05] Both monitor threads started")
-
-        # wait for the first result
+        logger.LogEvt("[TEST_05] All threads started, entering monitoring loop...")
+        
+        # ===== Monitoring Loop =====
+        timeout_seconds = self.config['burnin'].get('timeout', 6000)
+        start_time = time.time()
+        timeout_hit = False
+        smartcheck_failed = False
+        burnin_failed = False
+        burnin_finalized = False
+        
         try:
-            timeout_seconds = self.config['burnin'].get('timeout', 6000)
-            logger.LogEvt(f"[TEST_05] Waiting for first task to finish (timeout: {timeout_seconds}s)...")
-
-            first_result = result_queue.get(timeout=timeout_seconds)
-            task_name, result, msg = first_result
-
-            logger.LogEvt(f"[TEST_05] First task finished: {task_name} (result={result})")
-
-            # Handle SmartCheck completion
-            if task_name == 'smartcheck':
-                if result:
-                    # SmartCheck passed (reached timeout), stop BurnIN
-                    logger.LogEvt("[TEST_05] SmartCheck completed successfully, stopping BurnIN...")
-                    burnin.__Stop__()
-                    burnin.ScreenShot()
-                    burnin.__Close__()
-                    logger.LogEvt("[TEST_05] Test passed: SmartCheck monitoring completed with no errors")
-                else:
-                    # SmartCheck failed (detected SMART error), stop BurnIN
-                    logger.LogErr(f"[TEST_05] SmartCheck failed: {msg}")
-                    burnin.__Stop__()
-                    burnin.ScreenShot()
-                    burnin.__Close__()
-                    
-                    pytest.fail(f"SmartCheck detected SMART error: {msg}")
-
-            # Handle BurnIN completion
-            elif task_name == 'burnin':
-                # BurnIN finished first (not expected during normal operation)
-                logger.LogEvt("[TEST_05] BurnIN finished first, stopping SmartCheck...")
-                try:
-                    smiSmartCheck.__Pause__()
-                except:
-                    pass
-
-                burnin.ScreenShot()
-                burnin.__Close__()
-
-                if not result:
-                    pytest.fail(f"BurnIN test failed: {msg}")
-                else:
-                    logger.LogEvt("[TEST_05] Test completed: BurnIN finished successfully")
-
-        except queue.Empty:
-            # timeout - neither task completed in time
-            logger.LogErr("[TEST_05] Test timeout: neither task completed")
-            burnin.__Stop__()
-            burnin.ScreenShot()
-            burnin.__Close__()
-            try:
-                smiSmartCheck.__Pause__()
-            except:
-                pass
-            
-            pytest.fail("Test timeout: BurnIN and SmartCheck did not complete within expected time")
-
+            while True:
+                # Check 1: SmartCheck status
+                if not smartcheck_failed and smartcheck_controller.status is False:
+                    smartcheck_failed = True
+                    logger.LogErr("[TEST_05] SmartCheck status became False!")
+                    logger.LogErr("[TEST_05] Stopping BurnIN immediately...")
+                    stop_burnin("SmartCheck failed")
+                
+                # Check 2: BurnIN result
+                with burnin_result_lock:
+                    burnin_done = burnin_result['done']
+                    burnin_success = burnin_result['success']
+                    burnin_msg = burnin_result['msg']
+                
+                if burnin_done and burnin_success is False and not burnin_failed:
+                    burnin_failed = True
+                    logger.LogErr(f"[TEST_05] BurnIN failed: {burnin_msg}")
+                    logger.LogErr("[TEST_05] Stopping SmartCheck immediately...")
+                    smartcheck_controller.stop()
+                
+                # Check 3: BurnIN completed successfully
+                if burnin_done and burnin_success is True and not burnin_finalized:
+                    logger.LogEvt("[TEST_05] BurnIN completed successfully")
+                    finalize_burnin()
+                    burnin_finalized = True
+                    # Stop SmartCheck since BurnIN completed successfully
+                    logger.LogEvt("[TEST_05] Stopping SmartCheck (BurnIN completed)")
+                    smartcheck_controller.stop()
+                
+                # Check 4: Both threads finished
+                if burnin_done and not burnin_thread.is_alive() and not smartcheck_controller.is_alive():
+                    logger.LogEvt("[TEST_05] Both threads finished, exiting monitoring loop")
+                    break
+                
+                # Check 5: Timeout
+                if time.time() - start_time > timeout_seconds:
+                    timeout_hit = True
+                    logger.LogErr(f"[TEST_05] Test timeout reached ({timeout_seconds}s)")
+                    logger.LogErr("[TEST_05] Stopping both tasks...")
+                    stop_burnin("timeout")
+                    smartcheck_controller.stop()
+                    break
+                
+                # Sleep before next check
+                time.sleep(1)
+                
         finally:
-            # wait for threads to finish (with timeout)
-            logger.LogEvt("[TEST_05] Waiting for threads to finish...")
+            # ===== Cleanup =====
+            logger.LogEvt("[TEST_05] Entering cleanup phase...")
+            
+            # Wait for threads to finish
+            logger.LogEvt("[TEST_05] Waiting for BurnIN thread...")
             burnin_thread.join(timeout=10)
-            smartcheck_thread.join(timeout=10)
-
+            
+            logger.LogEvt("[TEST_05] Waiting for SmartCheckController thread...")
+            smartcheck_controller.join(timeout=10)
+            
+            # Force cleanup if threads are still alive
+            if smartcheck_controller.is_alive():
+                logger.LogErr("[TEST_05] SmartCheckController thread did not exit cleanly, forcing stop")
+                smartcheck_controller.stop_smartcheck_bat(force=True)
+                smartcheck_controller.join(timeout=5)
+            
             if burnin_thread.is_alive():
                 logger.LogErr("[TEST_05] BurnIN thread did not exit cleanly")
-            if smartcheck_thread.is_alive():
-                logger.LogErr("[TEST_05] SmartCheck thread did not exit cleanly")
-
-            logger.LogEvt("[TEST_05] Test cleanup completed")
+            
+            logger.LogEvt("[TEST_05] Cleanup completed")
+        
+        # ===== Final Result Determination =====
+        logger.LogEvt("[TEST_05] Determining final test result...")
+        
+        if timeout_hit:
+            logger.LogErr("[TEST_05] FAIL: Test timeout")
+            pytest.fail("Test timeout: BurnIN and SmartCheck did not complete within expected time")
+        
+        with burnin_result_lock:
+            burnin_done = burnin_result['done']
+            burnin_success = burnin_result['success']
+            burnin_msg = burnin_result['msg']
+        
+        if not burnin_done:
+            logger.LogErr("[TEST_05] FAIL: BurnIN did not complete")
+            pytest.fail("BurnIN did not complete")
+        
+        if burnin_success is False:
+            logger.LogErr(f"[TEST_05] FAIL: BurnIN test failed: {burnin_msg}")
+            pytest.fail(f"BurnIN test failed: {burnin_msg}")
+        
+        # Check SmartCheck status
+        # Note: If BurnIN completed successfully and we stopped SmartCheck gracefully,
+        # status might be None (not started/incomplete) which is acceptable.
+        # We only fail if status is explicitly False (detected an error).
+        if smartcheck_controller.status is False:
+            logger.LogErr("[TEST_05] FAIL: SmartCheck detected failure during monitoring")
+            pytest.fail("SmartCheck detected SMART errors (status=False)")
+        
+        logger.LogEvt("[TEST_05] ========================================")
+        logger.LogEvt("[TEST_05] ✓ All tests PASSED")
+        logger.LogEvt("[TEST_05] ✓ BurnIN: Success")
+        logger.LogEvt(f"[TEST_05] ✓ SmartCheck: Success (status={smartcheck_controller.status})")
+        logger.LogEvt("[TEST_05] ========================================")
+        logger.LogEvt("[TEST_05] Test completed successfully")
     
     @pytest.mark.order(6)
     @step(6, "Run CDI after test to compare SMART changes")

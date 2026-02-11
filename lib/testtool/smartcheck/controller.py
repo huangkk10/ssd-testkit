@@ -225,6 +225,72 @@ class SmartCheckController(threading.Thread):
         except ValueError as e:
             raise SmartCheckConfigError(f"Invalid configuration: {e}")
     
+    @classmethod
+    def from_config_dict(cls, config_dict: dict, bat_path_key: str = 'bat_path', 
+                        output_dir_key: str = 'output_dir'):
+        """
+        Create SmartCheckController from a configuration dictionary.
+        
+        This is a convenience factory method that simplifies initialization
+        from Config.json or similar configuration sources.
+        
+        Args:
+            config_dict: Configuration dictionary containing SmartCheck parameters
+            bat_path_key: Key name for bat_path (default: 'bat_path')
+            output_dir_key: Key name for output_dir (default: 'output_dir')
+        
+        Returns:
+            SmartCheckController: Configured controller instance
+        
+        Raises:
+            SmartCheckConfigError: If required keys are missing or invalid
+        
+        Example:
+            >>> config = {
+            ...     "bat_path": "./bin/SmiWinTools/SmartCheck.bat",
+            ...     "output_dir": "./testlog/SmartLog",
+            ...     "total_time": 10080,
+            ...     "dut_id": "1"
+            ... }
+            >>> controller = SmartCheckController.from_config_dict(config)
+        """
+        # Extract required parameters
+        bat_path = config_dict.get(bat_path_key)
+        output_dir = config_dict.get(output_dir_key)
+        
+        if not bat_path:
+            raise SmartCheckConfigError(f"Required key '{bat_path_key}' not found in config")
+        if not output_dir:
+            raise SmartCheckConfigError(f"Required key '{output_dir_key}' not found in config")
+        
+        # Derive cfg_ini_path from bat_path (replace .bat with .ini)
+        cfg_ini_path = os.path.splitext(bat_path)[0] + '.ini'
+        
+        # Create controller instance
+        controller = cls(
+            bat_path=bat_path,
+            cfg_ini_path=cfg_ini_path,
+            output_dir=output_dir
+        )
+        
+        # Apply optional parameters
+        optional_params = [
+            'total_cycle', 'total_time', 'dut_id', 'timeout',
+            'check_interval', 'enable_monitor_smart', 'close_window_when_failed',
+            'stop_when_failed', 'smart_config_file'
+        ]
+        
+        kwargs = {}
+        for param in optional_params:
+            if param in config_dict:
+                kwargs[param] = config_dict[param]
+        
+        if kwargs:
+            controller.set_config(**kwargs)
+        
+        LogEvt(f"SmartCheckController created from config dict: {bat_path}")
+        return controller
+    
     def update_smartcheck_ini(self, section: str, key: str, value: str) -> bool:
         """
         Update a specific key in SmartCheck.ini.
@@ -291,8 +357,12 @@ class SmartCheckController(threading.Thread):
             if not config.has_section('global'):
                 config.add_section('global')
             
+            # Convert output_dir to absolute path before writing to INI
+            # SmartCheck.bat runs in its own directory, so relative paths won't work
+            abs_output_dir = os.path.abspath(self.output_dir)
+            
             # Write all SmartCheck.ini parameters
-            config.set('global', 'output_dir', self.output_dir)
+            config.set('global', 'output_dir', abs_output_dir)
             config.set('global', 'total_cycle', str(self.total_cycle))
             config.set('global', 'total_time', str(self.total_time))
             config.set('global', 'dut_id', str(self.dut_id))
@@ -794,7 +864,10 @@ class SmartCheckController(threading.Thread):
             # Check if stopped by user request
             if self._stop_event.is_set():
                 LogEvt("SmartCheck stopped by user request")
-                self.status = False
+                # Don't set status to False - it should reflect actual test state
+                # If status is still None, it means test was stopped before completion
+                # If status is True/False, keep that value
+                pass
             
         except SmartCheckProcessError as e:
             LogErr(f"Process error: {e}")

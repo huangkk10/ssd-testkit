@@ -36,15 +36,14 @@
   },
   
   "smartcheck": {
-    "enable": true,
-    "BatPath": "./bin/SmiWinTools/SmartCheck.bat",
-    "LogPath": "./testlog/SmartLog",
-    "Total_cycle": "0",
-    "total_time": "10080",
-    "interval": 60,
-    "dut_id": "1",
-    "Auto_Close": true,
-    "Timeout": 0
+    "bat_path": "./bin/SmiWinTools/SmartCheck.bat",
+    "output_dir": "./testlog/SmartLog",
+    "total_cycle": 0,
+    "total_time": 10080,
+    "check_interval": 3,
+    "dut_id": "0",
+    "timeout": 120,
+    "enable_monitor_smart": true
   },
   
   "cdi": {
