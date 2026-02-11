@@ -1,0 +1,80 @@
+{
+  "test_name": "STC-1685",
+  "description": "H2test Write Half + BurnIN Test (Pytest Framework)",
+  "log_path": "./log/STC-1685",
+  
+  "DiskPartition": {
+    "PartList": [
+      {
+        "DiskID": 0,
+        "ShrinkLabel": "C",
+        "Label": "D",
+        "Unit": "4k",
+        "Format": "NTFS",
+        "Capacity": "10240"
+      }
+    ]
+  },
+  
+  "burnin": {
+    "Path": "",
+    "Installer": "./bin/BurnIn/bitwindows.exe",
+    "LicensePath": "./bin/BurnIn/key.dat",
+    "InstallPath": "C:\\Program Files\\BurnInTest",
+    "ScriptPath": "./Config/BIT_Config/BurnInScript.bits",
+    "CfgFilePath": "./Config/BIT_Config/BurnInScript.bitcfg",
+    "LogPath": "./testlog/Burnin.log",
+    "timeout": 6000,
+    "LogPrefix": "",
+    "test_duration_minutes": 1
+  },
+  
+  "h2test": {
+    "fill_disk_percentage": 50,
+    "all_available_space": false,
+    "log_path": "./testlog/H2test"
+  },
+  
+  "smartcheck": {
+    "bat_path": "./bin/SmiWinTools/SmartCheck.bat",
+    "output_dir": "./testlog/SmartLog",
+    "total_cycle": 0,
+    "total_time": 10080,
+    "check_interval": 3,
+    "dut_id": "0",
+    "timeout": 120,
+    "enable_monitor_smart": true
+  },
+  
+  "cdi": {
+    "ExePath": "./bin/CrystalDiskInfo/DiskInfo64.exe",
+    "LogPath": "./testlog/CDILog",
+    "LogPrefix": "",
+    "ScreenShotDriveLetter": "C:"
+  },
+  
+  "smicli": {
+    "config_path": "./Config/SmiCli.json"
+  },
+  
+  "DUT_info": {
+    "DiskType": 0,
+    "_comment": "DiskType: 0 = PRIMARY (C: drive), 1 = SECONDARY (non-C: drive)"
+  },
+  
+  "disk_utility": {
+    "dut_model_name": "",
+    "dut_disk_mode": 2,
+    "_comment_disk_mode": "0 = primary, 1 = secondary with usb storage, 2 = secondary without usb storage",
+    "format_type": "NTFS",
+    "test_drive_letter": "K"
+  },
+  
+  "system_settings": {
+    "disable_uac": true,
+    "disable_power_plan_timeouts": true,
+    "disable_unattended_sleep": true,
+    "disable_disk_defrag": true,
+    "auto_reboot_on_crash": false
+  }
+}
