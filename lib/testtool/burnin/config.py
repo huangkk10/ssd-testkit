@@ -72,7 +72,7 @@ class BurnInConfig:
         'test_drive_letter': str,
         'log_path': str,
         'log_prefix': str,
-        'timeout_minutes': int,
+        'timeout_minutes': (int, float),
         'check_interval_seconds': (int, float),
         'ui_retry_max': int,
         'ui_retry_interval_seconds': (int, float),
