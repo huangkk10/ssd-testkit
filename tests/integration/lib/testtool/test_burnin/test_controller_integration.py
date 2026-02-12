@@ -117,18 +117,28 @@ class TestControllerIntegration:
         test_drive = burnin_config.get('test_drive_letter', 'D')
         timeout = burnin_config.get('timeout_minutes', 5)
         check_interval = burnin_config.get('check_interval_seconds', 2)
+        log_path = burnin_config.get('log_path', './testlog/Burnin.log')
+        enable_screenshot = burnin_config.get('enable_screenshot', True)
+        screenshot_path = burnin_config.get('screenshot_path', './testlog/screenshots')
+        screenshot_on_error = burnin_config.get('screenshot_on_error', True)
         
         print(f"Configuration loaded:")
         print(f"  - Test duration: {test_duration} minutes")
         print(f"  - Test drive: {test_drive}")
         print(f"  - Timeout: {timeout} minutes")
         print(f"  - Check interval: {check_interval} seconds")
+        print(f"  - Log path: {log_path}")
+        print(f"  - Screenshot: {enable_screenshot} (path: {screenshot_path})")
         
         controller.set_config(
             test_duration_minutes=test_duration,
             test_drive_letter=test_drive,
             timeout_minutes=timeout,
             check_interval_seconds=check_interval,
+            log_path=log_path,
+            enable_screenshot=enable_screenshot,
+            screenshot_path=screenshot_path,
+            screenshot_on_error=screenshot_on_error,
         )
         
         # Start test in thread
