@@ -510,13 +510,20 @@ class SmartCheckController(threading.Thread):
             LogEvt(f"Starting SmartCheck.bat: {bat_abs_path}")
             
             # Start process in new console window
-            # CREATE_NEW_CONSOLE allows SmartCheck to run in separate window
-            # Note: Do NOT use stdout=PIPE/stderr=PIPE with CREATE_NEW_CONSOLE
-            #       as it will capture output and leave the window blank
+            # On Windows, we use CREATE_NEW_CONSOLE to run in separate window
+            # Combined with CREATE_NEW_PROCESS_GROUP for better process management
+            # This allows us to terminate the entire process tree more effectively
+            creationflags = subprocess.CREATE_NEW_CONSOLE
+            
+            # Add CREATE_NEW_PROCESS_GROUP for better process tree management
+            # This is defined as 0x00000200 in Windows
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+            creationflags |= CREATE_NEW_PROCESS_GROUP
+            
             self._process = subprocess.Popen(
                 [bat_abs_path],
                 cwd=bat_dir,
-                creationflags=subprocess.CREATE_NEW_CONSOLE
+                creationflags=creationflags
             )
             
             # Give process a moment to start
@@ -534,20 +541,46 @@ class SmartCheckController(threading.Thread):
             LogErr(f"Failed to start SmartCheck.bat: {e}")
             raise SmartCheckProcessError(f"Cannot start SmartCheck.bat: {e}")
     
-    def stop_smartcheck_bat(self, force: bool = False) -> None:
+    def _check_process_exists(self, pid: int) -> bool:
         """
-        Stop SmartCheck.bat process.
-        
-        This method attempts graceful termination first, then
-        forces termination if necessary.
+        Check if a process with given PID still exists.
         
         Args:
-            force: If True, use kill() instead of terminate()
+            pid: Process ID to check
+        
+        Returns:
+            True if process exists, False otherwise
+        """
+        try:
+            # Use tasklist to check if process exists on Windows
+            result = subprocess.run(
+                ['tasklist', '/FI', f'PID eq {pid}'],
+                capture_output=True,
+                timeout=2,
+                text=True
+            )
+            
+            # If PID is found in output, process exists
+            return str(pid) in result.stdout
+            
+        except Exception:
+            # If we can't check, assume it doesn't exist
+            return False
+    
+    def stop_smartcheck_bat(self, force: bool = False) -> None:
+        """
+        Stop SmartCheck.bat process and all child processes.
+        
+        This method terminates the entire process tree to ensure
+        all child processes spawned by the .bat file are stopped.
+        
+        Args:
+            force: If True, skip graceful termination attempt
         
         Note:
-            - Tries terminate() first
-            - Falls back to kill() if terminate fails
-            - Uses taskkill on Windows for stubborn processes
+            - On Windows, uses taskkill /T to terminate process tree first
+            - Falls back to Python's terminate()/kill() if taskkill fails
+            - Ensures all child processes are terminated
             - Cleans up process handle after termination
         """
         if self._process is None:
@@ -562,43 +595,98 @@ class SmartCheckController(threading.Thread):
                 return
             
             pid = self._process.pid
-            LogEvt(f"Stopping SmartCheck.bat (PID: {pid})")
+            LogEvt(f"Stopping SmartCheck.bat and child processes (PID: {pid})")
             
-            if force:
-                # Force kill
-                self._process.kill()
-                LogEvt("Process killed forcefully")
-            else:
-                # Try graceful termination first
-                self._process.terminate()
-                LogEvt("Terminate signal sent")
-                
-                # Wait for process to terminate (up to 5 seconds)
-                try:
-                    self._process.wait(timeout=5)
-                    LogEvt("Process terminated gracefully")
-                except subprocess.TimeoutExpired:
-                    LogWarn("Graceful termination timeout, forcing kill")
-                    self._process.kill()
-                    self._process.wait(timeout=2)
-            
-            # Additional cleanup using taskkill on Windows
-            # This helps kill any child processes
+            # Strategy 1: Use taskkill /T first to terminate entire process tree
+            # This is the most effective way on Windows to kill .bat and all children
+            taskkill_success = False
             try:
-                subprocess.run(
+                LogDebug(f"Attempting taskkill /T /PID {pid}...")
+                result = subprocess.run(
                     ['taskkill', '/F', '/T', '/PID', str(pid)],
                     capture_output=True,
-                    timeout=3
+                    timeout=5,
+                    text=True
                 )
-                LogDebug("Additional cleanup with taskkill completed")
+                
+                if result.returncode == 0:
+                    LogEvt("Process tree terminated successfully with taskkill")
+                    taskkill_success = True
+                else:
+                    LogWarn(f"taskkill returned non-zero code: {result.returncode}, stderr: {result.stderr}")
+                    
+            except subprocess.TimeoutExpired:
+                LogWarn("taskkill command timed out")
+            except FileNotFoundError:
+                LogWarn("taskkill command not found (not on Windows?)")
             except Exception as e:
-                LogDebug(f"taskkill cleanup failed (may be normal): {e}")
+                LogWarn(f"taskkill failed: {e}")
+            
+            # Strategy 2: If taskkill failed or we're forcing, use Python's process control
+            if not taskkill_success:
+                if force:
+                    # Force kill immediately
+                    LogDebug("Force killing process...")
+                    self._process.kill()
+                    LogEvt("Process killed forcefully")
+                else:
+                    # Try graceful termination first
+                    LogDebug("Attempting graceful termination...")
+                    self._process.terminate()
+                    LogEvt("Terminate signal sent")
+                    
+                    # Wait for process to terminate (up to 5 seconds)
+                    try:
+                        self._process.wait(timeout=5)
+                        LogEvt("Process terminated gracefully")
+                    except subprocess.TimeoutExpired:
+                        LogWarn("Graceful termination timeout, forcing kill")
+                        self._process.kill()
+                        try:
+                            self._process.wait(timeout=2)
+                            LogEvt("Process killed after timeout")
+                        except subprocess.TimeoutExpired:
+                            LogErr("Failed to kill process even after timeout")
+                
+                # Final cleanup: Try taskkill again in case child processes remain
+                try:
+                    LogDebug("Final cleanup with taskkill...")
+                    subprocess.run(
+                        ['taskkill', '/F', '/T', '/PID', str(pid)],
+                        capture_output=True,
+                        timeout=3
+                    )
+                except Exception as e:
+                    LogDebug(f"Final taskkill cleanup: {e}")
+            
+            # Wait a moment for cleanup
+            time.sleep(0.5)
+            
+            # Verify process is really terminated
+            if self._check_process_exists(pid):
+                LogWarn(f"Process {pid} still exists after termination attempts!")
+                # Last resort: try one more taskkill
+                try:
+                    subprocess.run(
+                        ['taskkill', '/F', '/T', '/PID', str(pid)],
+                        capture_output=True,
+                        timeout=3
+                    )
+                    time.sleep(0.5)
+                    if self._check_process_exists(pid):
+                        LogErr(f"Failed to terminate process {pid} - manual intervention may be required")
+                    else:
+                        LogEvt(f"Process {pid} terminated on final attempt")
+                except Exception as e:
+                    LogErr(f"Final termination attempt failed: {e}")
+            else:
+                LogEvt(f"Verified: Process {pid} successfully terminated")
             
         except Exception as e:
             LogErr(f"Error stopping process: {e}")
         finally:
             self._process = None
-            LogEvt("SmartCheck.bat process stopped")
+            LogEvt("SmartCheck.bat process cleanup completed")
     
     def find_runcard_ini(self) -> Optional[Path]:
         """
