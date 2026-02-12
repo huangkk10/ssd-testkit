@@ -262,50 +262,6 @@ class TestControllerIntegration:
         status = controller.get_status()
         assert status['running'] == False, "Should not be running after stop"
     
-    # def test_multiple_runs(self, clean_install, burnin_env, pywinauto_available):
-    #     """Test running multiple tests sequentially"""
-    #     controller = clean_install
-        
-    #     # Configure for very short tests
-    #     controller.set_config(
-    #         test_duration_minutes=1,
-    #         test_drive_letter=burnin_env['test_drive_letter'],
-    #         timeout_minutes=3,
-    #         check_interval_seconds=2,
-    #     )
-        
-    #     # Run first test
-    #     controller.start()
-    #     controller.join(timeout=180)
-    #     first_status = controller.status
-        
-    #     # Wait a bit
-    #     time.sleep(5)
-        
-    #     # Create new controller for second run
-    #     controller2 = BurnInController(
-    #         installer_path=burnin_env['installer_path'],
-    #         install_path=burnin_env['install_path'],
-    #         executable_name=burnin_env['executable_name'],
-    #         test_duration_minutes=1,
-    #         test_drive_letter=burnin_env['test_drive_letter'],
-    #         timeout_minutes=3,
-    #     )
-        
-    #     # Should still be installed
-    #     assert controller2.is_installed(), "Should still be installed"
-        
-    #     # Run second test
-    #     controller2.start()
-    #     controller2.join(timeout=180)
-    #     second_status = controller2.status
-        
-    #     # Both should have completed (passed or failed)
-    #     print(f"First run status: {first_status}")
-    #     print(f"Second run status: {second_status}")
-        
-    #     # Cleanup
-    #     controller2.stop(timeout=30)
 
 
 @pytest.mark.integration
@@ -441,7 +397,7 @@ class TestControllerConfiguration:
 
 @pytest.mark.integration
 @pytest.mark.slow
-def test_full_workflow_example(burnin_env, check_environment, cleanup_burnin, pywinauto_available):
+def test_full_workflow_example(burnin_env, check_environment, cleanup_burnin, pywinauto_available, test_root):
     """
     Complete workflow example test.
     
@@ -457,13 +413,28 @@ def test_full_workflow_example(burnin_env, check_environment, cleanup_burnin, py
     
     print("\n=== Full BurnIN Workflow Test ===\n")
     
+    # Load Config.json from tests/integration/Config/
+    config_path = test_root / "integration" / "Config" / "Config.json"
+    
+    if not config_path.exists():
+        pytest.skip(f"Config.json not found at {config_path}")
+    
+    print(f"Loading configuration from: {config_path}")
+    
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config_data = json.load(f)
+    
+    # Extract BurnIN configuration
+    burnin_config = config_data.get('burnin', {})
+    
     # Step 1: Create controller
-    print("Step 1: Creating controller...")
+    print("\nStep 1: Creating controller...")
     controller = BurnInController(
         installer_path=burnin_env['installer_path'],
         install_path=burnin_env['install_path'],
         executable_name=burnin_env['executable_name'],
         license_path=burnin_env['license_path'],
+        config_file_path=burnin_env['config_file_path'],  # Use the correct config file path
     )
     
     # Step 2: Ensure installed
@@ -473,40 +444,47 @@ def test_full_workflow_example(burnin_env, check_environment, cleanup_burnin, py
         controller.install()
     print(f"  Installed: {controller.is_installed()}")
     
-    # Step 3: Configure
+    # Step 3: Configure (use settings from Config.json)
     print("Step 3: Configuring test...")
+    test_duration = burnin_config.get('test_duration_minutes', 1)
+    test_drive = burnin_config.get('test_drive_letter', 'D')
+    timeout = burnin_config.get('timeout_minutes', 5)
+    check_interval = burnin_config.get('check_interval_seconds', 2)
+    
     controller.set_config(
-        test_duration_minutes=1,  # 1 minute test
-        test_drive_letter=burnin_env['test_drive_letter'],
-        timeout_minutes=5,
-        check_interval_seconds=2,
+        test_duration_minutes=test_duration,
+        test_drive_letter=test_drive,
+        timeout_minutes=timeout,
+        check_interval_seconds=check_interval,
         enable_screenshot=True,
     )
     print(f"  Duration: {controller.test_duration_minutes} minutes")
     print(f"  Drive: {controller.test_drive_letter}")
     
     # Step 4: Start test
-    print("Step 4: Starting test...")
+    print("\nStep 4: Starting test...")
     controller.start()
     print("  Test started in background thread")
     
     # Step 5: Monitor (optional - thread handles this)
-    print("Step 5: Waiting for completion...")
+    print("\nStep 5: Waiting for completion...")
     start_time = time.time()
     
     # Poll status occasionally
-    while controller._running and (time.time() - start_time) < 300:
+    timeout_seconds = timeout * 60
+    while controller._running and (time.time() - start_time) < timeout_seconds:
         time.sleep(10)
         status = controller.get_status()
-        print(f"  Status: running={status['running']}, "
+        elapsed = int(time.time() - start_time)
+        print(f"  [{elapsed}s] Status: running={status['running']}, "
               f"process={status['process_running']}, "
               f"result={status['test_result']}")
     
     # Wait for thread to finish
-    controller.join(timeout=300)
+    controller.join(timeout=timeout_seconds)
     
     # Step 6: Get results
-    print("Step 6: Getting results...")
+    print("\nStep 6: Getting results...")
     final_status = controller.get_status()
     print(f"  Test Result: {final_status['test_result']}")
     print(f"  Error Count: {final_status['error_count']}")

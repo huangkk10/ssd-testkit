@@ -14,6 +14,7 @@ This module provides the main BurnInController class that:
 import threading
 import time
 import sys
+import os
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
 
@@ -154,17 +155,17 @@ class BurnInController(threading.Thread):
         # Load default configuration
         default_config = BurnInConfig.get_default_config()
         
-        # Installation and execution paths
+        # Installation and execution paths (convert to absolute paths)
         self.license_path: Optional[str] = default_config.get('license_path')
-        self.script_path: str = default_config['script_path']
-        self.config_file_path: str = default_config['config_file_path']
+        self.script_path: str = os.path.abspath(default_config['script_path'])
+        self.config_file_path: str = os.path.abspath(default_config['config_file_path'])
         
         # Test parameters
         self.test_duration_minutes: int = default_config['test_duration_minutes']
         self.test_drive_letter: str = default_config['test_drive_letter']
         
-        # Logging
-        self.log_path: str = default_config['log_path']
+        # Logging (convert to absolute path)
+        self.log_path: str = os.path.abspath(default_config['log_path'])
         self.log_prefix: str = default_config['log_prefix']
         
         # Execution control
@@ -334,9 +335,14 @@ class BurnInController(threading.Thread):
         except ValueError as e:
             raise BurnInConfigError(f"Invalid configuration: {e}")
         
-        # Update attributes
+        # Update attributes (convert path parameters to absolute paths)
+        path_params = {'script_path', 'config_file_path', 'log_path', 'license_path'}
+        
         for key, value in kwargs.items():
             if hasattr(self, key):
+                # Convert relative paths to absolute paths
+                if key in path_params and value and isinstance(value, str):
+                    value = os.path.abspath(value)
                 setattr(self, key, value)
                 LogDebug(f"Updated {key} = {value}")
             else:
