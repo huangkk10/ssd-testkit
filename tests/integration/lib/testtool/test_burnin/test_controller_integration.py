@@ -104,42 +104,18 @@ class TestControllerIntegration:
         if not config_path.exists():
             pytest.skip(f"Config.json not found at {config_path}")
         
+        # Load configuration from Config.json using the convenience method
         print(f"\nLoading configuration from: {config_path}")
+        controller.load_config_from_json(str(config_path), config_key='burnin')
         
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config_data = json.load(f)
-        
-        # Extract BurnIN configuration
-        burnin_config = config_data.get('burnin', {})
-        
-        # Set configuration from Config.json
-        test_duration = burnin_config.get('test_duration_minutes', 1)
-        test_drive = burnin_config.get('test_drive_letter', 'D')
-        timeout = burnin_config.get('timeout_minutes', 5)
-        check_interval = burnin_config.get('check_interval_seconds', 2)
-        log_path = burnin_config.get('log_path', './testlog/Burnin.log')
-        enable_screenshot = burnin_config.get('enable_screenshot', True)
-        screenshot_path = burnin_config.get('screenshot_path', './testlog/screenshots')
-        screenshot_on_error = burnin_config.get('screenshot_on_error', True)
-        
+        # Print loaded configuration for verification
         print(f"Configuration loaded:")
-        print(f"  - Test duration: {test_duration} minutes")
-        print(f"  - Test drive: {test_drive}")
-        print(f"  - Timeout: {timeout} minutes")
-        print(f"  - Check interval: {check_interval} seconds")
-        print(f"  - Log path: {log_path}")
-        print(f"  - Screenshot: {enable_screenshot} (path: {screenshot_path})")
-        
-        controller.set_config(
-            test_duration_minutes=test_duration,
-            test_drive_letter=test_drive,
-            timeout_minutes=timeout,
-            check_interval_seconds=check_interval,
-            log_path=log_path,
-            enable_screenshot=enable_screenshot,
-            screenshot_path=screenshot_path,
-            screenshot_on_error=screenshot_on_error,
-        )
+        print(f"  - Test duration: {controller.test_duration_minutes} minutes")
+        print(f"  - Test drive: {controller.test_drive_letter}")
+        print(f"  - Timeout: {controller.timeout_minutes} minutes")
+        print(f"  - Check interval: {controller.check_interval_seconds} seconds")
+        print(f"  - Log path: {controller.log_path}")
+        print(f"  - Screenshot: {controller.enable_screenshot} (path: {controller.screenshot_path})")
         
         # Start test in thread
         print("\nStarting BurnIN test...")
@@ -147,7 +123,7 @@ class TestControllerIntegration:
         
         # Monitor progress
         start_time = time.time()
-        timeout_seconds = timeout * 60
+        timeout_seconds = controller.timeout_minutes * 60
         while controller._running and (time.time() - start_time) < timeout_seconds:
             time.sleep(10)
             status = controller.get_status()

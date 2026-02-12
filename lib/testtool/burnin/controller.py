@@ -349,6 +349,82 @@ class BurnInController(threading.Thread):
             else:
                 LogWarn(f"Unknown configuration parameter: {key}")
     
+    def load_config_from_json(self, json_path: str, config_key: str = 'burnin') -> None:
+        """
+        Load configuration from JSON file and apply to controller.
+        
+        This is a convenience method that reads a JSON configuration file,
+        extracts the BurnIN configuration section, and applies all parameters
+        to the controller using set_config().
+        
+        Expected JSON format:
+        {
+            "burnin": {
+                "test_duration_minutes": 60,
+                "test_drive_letter": "D",
+                "timeout_minutes": 100,
+                "check_interval_seconds": 2,
+                "log_path": "./testlog/Burnin.log",
+                "enable_screenshot": true,
+                "screenshot_path": "./testlog/Burnin.png",
+                "screenshot_on_error": true
+            }
+        }
+        
+        Args:
+            json_path: Path to JSON configuration file
+            config_key: Key name for BurnIN config section (default: 'burnin')
+        
+        Raises:
+            BurnInConfigError: If JSON file is invalid or missing config section
+        
+        Example:
+            >>> controller = BurnInController(
+            ...     installer_path="./bin/BurnIn/setup.exe",
+            ...     install_path="C:\\\\Program Files\\\\BurnInTest"
+            ... )
+            >>> controller.load_config_from_json("./Config/Config.json")
+            >>> controller.start()
+        """
+        import json
+        
+        try:
+            # Read JSON file
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Extract BurnIN configuration section
+            if config_key not in data:
+                raise BurnInConfigError(
+                    f"Configuration key '{config_key}' not found in {json_path}"
+                )
+            
+            burnin_config = data[config_key]
+            
+            # Filter out only valid BurnIN controller attributes
+            # This prevents errors from legacy or unknown fields in Config.json
+            valid_params = {}
+            for key, value in burnin_config.items():
+                if hasattr(self, key):
+                    valid_params[key] = value
+                else:
+                    LogDebug(f"Skipping unknown configuration parameter: {key}")
+            
+            # Validate and apply configuration
+            self.set_config(**valid_params)
+            
+            LogEvt(f"Configuration loaded from {json_path} (key: {config_key})")
+            LogDebug(f"Applied config: {valid_params}")
+            
+        except FileNotFoundError:
+            raise BurnInConfigError(f"JSON configuration file not found: {json_path}")
+        except json.JSONDecodeError as e:
+            raise BurnInConfigError(f"Invalid JSON format in {json_path}: {e}")
+        except BurnInConfigError:
+            raise
+        except Exception as e:
+            raise BurnInConfigError(f"Failed to load configuration from JSON: {e}")
+    
     def _generate_script(self) -> None:
         """
         Generate BurnIN script file (.bits).
