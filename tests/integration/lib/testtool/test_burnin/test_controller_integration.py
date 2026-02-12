@@ -70,7 +70,7 @@ class TestControllerIntegration:
         controller.set_config(
             test_duration_minutes=1,
             test_drive_letter=burnin_env['test_drive_letter'],
-            timeout_seconds=300,
+            timeout_minutes=5,
             check_interval_seconds=2,
         )
         
@@ -115,19 +115,19 @@ class TestControllerIntegration:
         # Set configuration from Config.json
         test_duration = burnin_config.get('test_duration_minutes', 1)
         test_drive = burnin_config.get('test_drive_letter', 'D')
-        timeout = burnin_config.get('timeout', 300)
+        timeout = burnin_config.get('timeout_minutes', 5)
         check_interval = burnin_config.get('check_interval_seconds', 2)
         
         print(f"Configuration loaded:")
         print(f"  - Test duration: {test_duration} minutes")
         print(f"  - Test drive: {test_drive}")
-        print(f"  - Timeout: {timeout} seconds")
+        print(f"  - Timeout: {timeout} minutes")
         print(f"  - Check interval: {check_interval} seconds")
         
         controller.set_config(
             test_duration_minutes=test_duration,
             test_drive_letter=test_drive,
-            timeout_seconds=timeout,
+            timeout_minutes=timeout,
             check_interval_seconds=check_interval,
         )
         
@@ -137,7 +137,8 @@ class TestControllerIntegration:
         
         # Monitor progress
         start_time = time.time()
-        while controller._running and (time.time() - start_time) < timeout:
+        timeout_seconds = timeout * 60
+        while controller._running and (time.time() - start_time) < timeout_seconds:
             time.sleep(10)
             status = controller.get_status()
             elapsed = int(time.time() - start_time)
@@ -145,7 +146,7 @@ class TestControllerIntegration:
                   f"result={status['test_result']}, errors={status['error_count']}")
         
         # Wait for completion
-        controller.join(timeout=timeout)
+        controller.join(timeout=timeout_seconds)
         
         # Check results
         assert not controller._running, "Thread should have finished"
@@ -170,7 +171,7 @@ class TestControllerIntegration:
         controller.set_config(
             test_duration_minutes=10,  # 10 minutes
             test_drive_letter=burnin_env['test_drive_letter'],
-            timeout_seconds=1200,
+            timeout_minutes=20,
             check_interval_seconds=2,
         )
         
@@ -211,7 +212,7 @@ class TestControllerIntegration:
         controller.set_config(
             test_duration_minutes=10,  # Long test
             test_drive_letter=burnin_env['test_drive_letter'],
-            timeout_seconds=30,  # But short timeout
+            timeout_minutes=0.5,  # But short timeout (30 seconds)
             check_interval_seconds=2,
         )
         
@@ -238,7 +239,7 @@ class TestControllerIntegration:
         controller.set_config(
             test_duration_minutes=2,
             test_drive_letter=burnin_env['test_drive_letter'],
-            timeout_seconds=300,
+            timeout_minutes=5,
             check_interval_seconds=2,
         )
         
@@ -269,7 +270,7 @@ class TestControllerIntegration:
         controller.set_config(
             test_duration_minutes=1,
             test_drive_letter=burnin_env['test_drive_letter'],
-            timeout_seconds=180,
+            timeout_minutes=3,
             check_interval_seconds=2,
         )
         
@@ -288,7 +289,7 @@ class TestControllerIntegration:
             executable_name=burnin_env['executable_name'],
             test_duration_minutes=1,
             test_drive_letter=burnin_env['test_drive_letter'],
-            timeout_seconds=180,
+            timeout_minutes=3,
         )
         
         # Should still be installed
@@ -382,13 +383,13 @@ class TestControllerConfiguration:
         controller.set_config(
             test_duration_minutes=5,
             test_drive_letter='E',
-            timeout_seconds=600,
+            timeout_minutes=10,
         )
         
         # Verify config applied
         assert controller.test_duration_minutes == 5
         assert controller.test_drive_letter == 'E'
-        assert controller.timeout_seconds == 600
+        assert controller.timeout_minutes == 10
     
     def test_invalid_config(self, clean_install):
         """Test setting invalid configuration"""
@@ -470,7 +471,7 @@ def test_full_workflow_example(burnin_env, check_environment, cleanup_burnin, py
     controller.set_config(
         test_duration_minutes=1,  # 1 minute test
         test_drive_letter=burnin_env['test_drive_letter'],
-        timeout_seconds=300,
+        timeout_minutes=5,
         check_interval_seconds=2,
         enable_screenshot=True,
     )

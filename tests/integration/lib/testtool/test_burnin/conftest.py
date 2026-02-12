@@ -76,7 +76,7 @@ def burnin_env(test_root) -> Dict[str, Any]:
         # Test parameters
         'test_drive_letter': test_drive,
         'test_duration_minutes': 1,  # Short duration for testing
-        'timeout_seconds': 300,  # 5 minutes timeout
+        'timeout_minutes': 5,  # 5 minutes timeout
         'check_interval_seconds': 2,
         
         # Paths for generated files
@@ -181,7 +181,7 @@ def burnin_controller(burnin_env, check_environment):
         license_path=burnin_env['license_path'],
         test_duration_minutes=burnin_env['test_duration_minutes'],
         test_drive_letter=burnin_env['test_drive_letter'],
-        timeout_seconds=burnin_env['timeout_seconds'],
+        timeout_minutes=burnin_env['timeout_minutes'],
         check_interval_seconds=burnin_env['check_interval_seconds'],
         script_path=burnin_env['script_path'],
         log_path=burnin_env['log_path'],

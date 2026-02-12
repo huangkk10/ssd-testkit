@@ -65,6 +65,7 @@ class BurnInController(threading.Thread):
         test_duration_minutes (int): Test duration in minutes
         test_drive_letter (str): Drive letter to test
         timeout_seconds (int): Maximum execution time in seconds
+        timeout_minutes (int): Maximum execution time in minutes
         check_interval_seconds (int): Status check interval in seconds
         enable_screenshot (bool): Enable screenshot capture
         status (bool): Execution status (True=success, False=failure)
@@ -118,6 +119,7 @@ class BurnInController(threading.Thread):
                 - test_duration_minutes: Test duration in minutes
                 - test_drive_letter: Drive letter to test
                 - timeout_seconds: Execution timeout in seconds
+                - timeout_minutes: Execution timeout in minutes
                 - check_interval_seconds: Status check interval
                 - ui_retry_max: Maximum UI connection retries
                 - ui_retry_interval_seconds: UI retry interval
@@ -166,7 +168,7 @@ class BurnInController(threading.Thread):
         self.log_prefix: str = default_config['log_prefix']
         
         # Execution control
-        self.timeout_seconds: int = default_config['timeout_seconds']
+        self.timeout_minutes: int = default_config['timeout_minutes']
         self.check_interval_seconds: int = default_config['check_interval_seconds']
         self.ui_retry_max: int = default_config['ui_retry_max']
         self.ui_retry_interval_seconds: float = default_config['ui_retry_interval_seconds']
@@ -321,7 +323,7 @@ class BurnInController(threading.Thread):
             >>> controller.set_config(
             ...     test_duration_minutes=120,
             ...     test_drive_letter="E",
-            ...     timeout_seconds=7200
+            ...     timeout_minutes=150
             ... )
         """
         LogDebug(f"Updating configuration: {kwargs}")
@@ -442,11 +444,12 @@ class BurnInController(threading.Thread):
             while not self._stop_event.is_set():
                 # Check timeout
                 elapsed = time.time() - start_time
-                if elapsed > self.timeout_seconds:
-                    LogErr(f"Test timeout after {elapsed:.1f} seconds")
+                timeout_seconds = self.timeout_minutes * 60
+                if elapsed > timeout_seconds:
+                    LogErr(f"Test timeout after {elapsed:.1f} seconds (timeout: {self.timeout_minutes} minutes)")
                     self._take_screenshot("timeout")
                     raise BurnInTimeoutError(
-                        f"Test exceeded timeout of {self.timeout_seconds} seconds"
+                        f"Test exceeded timeout of {self.timeout_minutes} minutes ({timeout_seconds} seconds)"
                     )
                 
                 # Read current status
@@ -577,9 +580,19 @@ class BurnInController(threading.Thread):
         self._running = True
         
         try:
+            # Check if stop requested before starting
+            if self._stop_event.is_set():
+                LogEvt("Stop requested before execution, exiting...")
+                return
+            
             # Step 1: Generate script
             LogEvt("Step 1: Generating script...")
             self._generate_script()
+            
+            # Check if stop requested
+            if self._stop_event.is_set():
+                LogEvt("Stop requested after script generation, exiting...")
+                return
             
             # Step 2: Start BurnIN process
             LogEvt("Step 2: Starting BurnIN process...")
@@ -588,9 +601,19 @@ class BurnInController(threading.Thread):
             # Give process time to start
             time.sleep(3)
             
+            # Check if stop requested
+            if self._stop_event.is_set():
+                LogEvt("Stop requested after process start, exiting...")
+                return
+            
             # Step 3: Connect to UI
             LogEvt("Step 3: Connecting to UI...")
             self._connect_ui()
+            
+            # Check if stop requested
+            if self._stop_event.is_set():
+                LogEvt("Stop requested after UI connection, exiting...")
+                return
             
             # Step 4: Monitor test execution
             LogEvt("Step 4: Starting monitoring...")

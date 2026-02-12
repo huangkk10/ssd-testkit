@@ -47,7 +47,7 @@ class BurnInConfig:
         'log_prefix': '',
         
         # Execution control
-        'timeout_seconds': 6000,  # 100 minutes
+        'timeout_minutes': 100,  # 100 minutes
         'check_interval_seconds': 2,
         'ui_retry_max': 60,
         'ui_retry_interval_seconds': 3,
@@ -72,7 +72,7 @@ class BurnInConfig:
         'test_drive_letter': str,
         'log_path': str,
         'log_prefix': str,
-        'timeout_seconds': int,
+        'timeout_minutes': int,
         'check_interval_seconds': (int, float),
         'ui_retry_max': int,
         'ui_retry_interval_seconds': (int, float),
@@ -83,7 +83,7 @@ class BurnInConfig:
     # Value constraints
     PARAM_CONSTRAINTS: Dict[str, Dict[str, Any]] = {
         'test_duration_minutes': {'min': 0, 'max': 10080},  # 0-7 days
-        'timeout_seconds': {'min': 0, 'max': 86400},  # 0-24 hours
+        'timeout_minutes': {'min': 1, 'max': 1440},  # 1-1440 minutes (1 day)
         'check_interval_seconds': {'min': 0.1, 'max': 60},
         'ui_retry_max': {'min': 1, 'max': 300},
         'ui_retry_interval_seconds': {'min': 0.1, 'max': 60},
