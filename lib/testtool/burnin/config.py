@@ -55,6 +55,7 @@ class BurnInConfig:
         # Process monitoring
         'enable_screenshot': True,
         'screenshot_on_error': True,
+        'screenshot_path': './testlog/screenshots',
     }
     
     # Valid parameter names
@@ -78,6 +79,7 @@ class BurnInConfig:
         'ui_retry_interval_seconds': (int, float),
         'enable_screenshot': bool,
         'screenshot_on_error': bool,
+        'screenshot_path': str,
     }
     
     # Value constraints

@@ -177,6 +177,7 @@ class BurnInController(threading.Thread):
         # Screenshot settings
         self.enable_screenshot: bool = default_config['enable_screenshot']
         self.screenshot_on_error: bool = default_config['screenshot_on_error']
+        self.screenshot_path: str = os.path.abspath(default_config['screenshot_path'])
         
         # Test status tracking
         self.status: bool = True  # True = success, False = failure
@@ -336,7 +337,7 @@ class BurnInController(threading.Thread):
             raise BurnInConfigError(f"Invalid configuration: {e}")
         
         # Update attributes (convert path parameters to absolute paths)
-        path_params = {'script_path', 'config_file_path', 'log_path', 'license_path'}
+        path_params = {'script_path', 'config_file_path', 'log_path', 'license_path', 'screenshot_path'}
         
         for key, value in kwargs.items():
             if hasattr(self, key):
@@ -544,14 +545,21 @@ class BurnInController(threading.Thread):
         Take a screenshot of BurnIN window.
         
         Args:
-            prefix: Filename prefix for screenshot
+            prefix: Filename prefix for screenshot (only used if screenshot_path is a directory)
         """
         if not self.enable_screenshot:
             return
         
         try:
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            screenshot_path = f"./testlog/{prefix}_{timestamp}.png"
+            # Check if screenshot_path is a file path (ends with .png) or directory
+            if self.screenshot_path.endswith('.png'):
+                # Use the path as-is (fixed filename)
+                screenshot_path = self.screenshot_path
+            else:
+                # Treat as directory, append filename with timestamp
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                filename = f"{prefix}_{timestamp}.png"
+                screenshot_path = os.path.join(self.screenshot_path, filename)
             
             # Create directory if needed
             Path(screenshot_path).parent.mkdir(parents=True, exist_ok=True)
