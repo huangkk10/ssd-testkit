@@ -890,16 +890,22 @@ class SmartCheckController(threading.Thread):
     
     def stop(self) -> None:
         """
-        Request thread to stop execution.
+        Request thread to stop execution and terminate the process.
         
-        This method sets the stop event, signaling the run() method
-        to terminate gracefully. Does not force immediate termination.
+        This method:
+        1. Sets the stop event to signal run() method
+        2. Immediately stops the SmartCheck.bat process
+        
+        This ensures immediate termination even if the monitoring
+        loop is sleeping.
         
         Usage:
             >>> controller.start()
             >>> time.sleep(10)
-            >>> controller.stop()  # Request stop
-            >>> controller.join()  # Wait for completion
+            >>> controller.stop()  # Request stop and kill process
+            >>> controller.join()  # Wait for thread cleanup
         """
         LogEvt("Stop requested for SmartCheckController")
         self._stop_event.set()
+        # Immediately stop the process to avoid waiting for sleep interval
+        self.stop_smartcheck_bat()

@@ -16,6 +16,7 @@ from .exceptions import (
     BurnInInstallError,
     BurnInTimeoutError,
 )
+from lib.logger import LogEvt, LogWarn, LogErr
 
 
 class BurnInProcessManager:
@@ -71,6 +72,9 @@ class BurnInProcessManager:
         self.executable_name = executable_name
         self.executable_path = self.install_path / executable_name
         
+        # Fallback executable (bit.exe if bit64.exe not found)
+        self.fallback_executable = self.install_path / 'bit.exe' if executable_name == 'bit64.exe' else None
+        
         # Process tracking
         self._process: Optional[subprocess.Popen] = None
         self._pid: Optional[int] = None
@@ -80,14 +84,36 @@ class BurnInProcessManager:
         Check if BurnIN is installed.
         
         Returns:
-            bool: True if executable exists and is accessible
+            bool: True if executable exists (checks both primary and fallback)
         
         Example:
             >>> manager = BurnInProcessManager("C:\\Program Files\\BurnInTest")
             >>> if manager.is_installed():
             ...     print("BurnIN is installed")
         """
-        return self.executable_path.exists() and self.executable_path.is_file()
+        # Check primary executable
+        if self.executable_path.exists() and self.executable_path.is_file():
+            return True
+        
+        # Check fallback executable
+        if self.fallback_executable and self.fallback_executable.exists() and self.fallback_executable.is_file():
+            return True
+        
+        return False
+    
+    def _get_executable(self) -> Path:
+        """
+        Get the actual executable path (with fallback support).
+        
+        Returns:
+            Path: Primary executable if exists, otherwise fallback
+        """
+        if self.executable_path.exists():
+            return self.executable_path
+        elif self.fallback_executable and self.fallback_executable.exists():
+            return self.fallback_executable
+        else:
+            raise BurnInProcessError(f"BurnIN executable not found: {self.executable_path}")
     
     def install(
         self,
@@ -270,6 +296,10 @@ class BurnInProcessManager:
         if not self.is_installed():
             raise BurnInProcessError("BurnIN not installed")
         
+        # Get actual executable (with fallback support)
+        executable = self._get_executable()
+        LogEvt(f"Using BurnIN executable: {executable}")
+        
         script = Path(script_path)
         if not script.exists():
             raise FileNotFoundError(f"Script not found: {script_path}")
@@ -284,7 +314,7 @@ class BurnInProcessManager:
         # -R: Run tests immediately
         # -W: Windowed mode (not minimized)
         cmd = [
-            str(self.executable_path),
+            str(executable),
             "-S", str(script.absolute()),
             "-K", "-R", "-W"
         ]

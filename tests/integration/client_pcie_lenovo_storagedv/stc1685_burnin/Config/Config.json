@@ -17,16 +17,19 @@
   },
   
   "burnin": {
-    "Path": "",
-    "Installer": "./bin/BurnIn/bitwindows.exe",
-    "LicensePath": "./bin/BurnIn/key.dat",
-    "InstallPath": "C:\\Program Files\\BurnInTest",
-    "ScriptPath": "./Config/BIT_Config/BurnInScript.bits",
-    "CfgFilePath": "./Config/BIT_Config/BurnInScript.bitcfg",
-    "LogPath": "./testlog/Burnin.log",
-    "timeout": 6000,
-    "LogPrefix": "",
-    "test_duration_minutes": 1
+    "installer": "./bin/BurnIn/bitwindows.exe",
+    "license_path": "./bin/BurnIn/key.dat",
+    "install_path": "C:\\Program Files\\BurnInTest",
+    "script_path": "./Config/BIT_Config/BurnInScript.bits",
+    "config_file_path": "./Config/BIT_Config/BurnInScript.bitcfg",
+    "log_path": "./testlog/Burnin.log",
+    "screenshot_path": "./testlog/Burnin.png",
+    "timeout_minutes": 100,
+    "test_duration_minutes": 1,
+    "test_drive_letter": "D",
+    "check_interval_seconds": 2,
+    "enable_screenshot": true,
+    "screenshot_on_error": true
   },
   
   "h2test": {
