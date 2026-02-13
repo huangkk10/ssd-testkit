@@ -558,11 +558,6 @@ class TestSTC1685BurnIN(BaseTestCase):
             logger.error("[TEST_05] FAIL: SmartCheck detected failure during monitoring")
             pytest.fail("SmartCheck detected SMART errors (status=False)")
 
-        # logger.info("[TEST_05] ========================================")
-        # logger.info("[TEST_05] ✓ All tests PASSED")
-        # logger.info(f"[TEST_05] ✓ BurnIN: Success (errors: {burnin_controller.error_count})")
-        # logger.info(f"[TEST_05] ✓ SmartCheck: Success (status={smartcheck_controller.status})")
-        # logger.info("[TEST_05] ========================================")
         logger.info("[TEST_05] Test completed successfully")
     
     @pytest.mark.order(6)
