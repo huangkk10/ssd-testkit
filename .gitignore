@@ -185,5 +185,6 @@ desktop.ini
 
 # tests 
 tests/unit/lib/testtool/test_smartcheck/smartcheck_custom_output
+packaging/release
 
 !requirements.txt

@@ -196,6 +196,78 @@ class BurnInController(threading.Thread):
         logger.info(f"BurnInController initialized with installer={installer_path}, "
                f"install_path={install_path}, executable={executable_name}")
     
+    @classmethod
+    def from_config_dict(cls, config_dict: dict, installer_key: str = 'installer',
+                        install_path_key: str = 'install_path'):
+        """
+        Create BurnInController from a configuration dictionary.
+        
+        This is a convenience factory method that simplifies initialization
+        from Config.json or similar configuration sources.
+        
+        Args:
+            config_dict: Configuration dictionary containing BurnIN parameters
+            installer_key: Key name for installer_path (default: 'installer')
+            install_path_key: Key name for install_path (default: 'install_path')
+        
+        Returns:
+            BurnInController: Configured controller instance
+        
+        Raises:
+            BurnInConfigError: If required keys are missing or invalid
+        
+        Example:
+            >>> config = {
+            ...     "installer": "./bin/BurnIn/setup.exe",
+            ...     "install_path": "C:\\\\Program Files\\\\BurnInTest",
+            ...     "license_path": "./bin/BurnIn/license.key",
+            ...     "test_duration_minutes": 60,
+            ...     "test_drive_letter": "D"
+            ... }
+            >>> controller = BurnInController.from_config_dict(config)
+            >>> controller.install()
+        """
+        # Extract required parameters
+        installer_path = config_dict.get(installer_key)
+        install_path = config_dict.get(install_path_key)
+        
+        if not installer_path:
+            raise BurnInConfigError(f"Required key '{installer_key}' not found in config")
+        if not install_path:
+            raise BurnInConfigError(f"Required key '{install_path_key}' not found in config")
+        
+        # Extract optional parameters
+        executable_name = config_dict.get('executable_name', 'bit.exe')
+        
+        # Create controller instance with basic parameters
+        controller = cls(
+            installer_path=installer_path,
+            install_path=install_path,
+            executable_name=executable_name
+        )
+        
+        # Apply remaining configuration parameters
+        optional_params = {}
+        skip_keys = {installer_key, install_path_key, 'executable_name'}
+        
+        for key, value in config_dict.items():
+            if key not in skip_keys and hasattr(controller, key):
+                # Handle path replacements for packaged environment
+                if isinstance(value, str) and './testlog' in value:
+                    try:
+                        from path_manager import path_manager
+                        testlog_dir = str(path_manager.get_testlog_dir())
+                        value = value.replace('./testlog', testlog_dir)
+                    except ImportError:
+                        pass  # Keep original path
+                optional_params[key] = value
+        
+        if optional_params:
+            controller.set_config(**optional_params)
+        
+        logger.info(f"BurnInController created from config dict with {len(optional_params)} additional parameters")
+        return controller
+    
     def install(self, license_path: Optional[str] = None) -> bool:
         """
         Install BurnIN software.
@@ -306,6 +378,85 @@ class BurnInController(threading.Thread):
             )
         
         return self._process_manager.is_installed()
+    
+    def ensure_clean_state(self) -> bool:
+        """
+        Ensure no existing BurnIN installation before proceeding.
+        Removes existing installation if found.
+        
+        This method is useful for test setup/precondition steps where you need
+        to ensure a clean state before installing or testing BurnIN.
+        
+        Returns:
+            True if ready for fresh install (no installation or removal successful)
+            False if removal failed
+        
+        Example:
+            >>> controller = BurnInController(installer_path="./setup.exe")
+            >>> if controller.ensure_clean_state():
+            ...     controller.install()
+            ... else:
+            ...     print("Failed to prepare clean state")
+        """
+        logger.info("Checking for existing BurnIN installation...")
+        
+        if self.is_installed():
+            logger.info("Existing BurnIN installation found, removing...")
+            try:
+                self.uninstall()
+                logger.info("Old BurnIN installation removed successfully")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to remove old BurnIN installation: {e}")
+                return False
+        else:
+            logger.info("No existing BurnIN installation found")
+            return True
+    
+    @staticmethod
+    def cleanup_logs(testlog_path: str = './testlog') -> None:
+        """
+        Clean up old BurnIN logs from previous test runs.
+        
+        Removes BurnIN log files in testlog directory:
+        - Burnin.log
+        - BurnIN script files (.bits)
+        - BurnIN screenshots and output folders
+        
+        Args:
+            testlog_path: Path to testlog directory (default: './testlog')
+        
+        Example:
+            >>> BurnInController.cleanup_logs('./testlog')
+            >>> # or use default path
+            >>> BurnInController.cleanup_logs()
+        """
+        from pathlib import Path
+        import shutil
+        
+        testlog = Path(testlog_path)
+        
+        if testlog.exists():
+            # Remove BurnIN specific files
+            burnin_files = list(testlog.glob('Burnin*'))
+            burnin_files.extend(testlog.glob('burnin*'))
+            burnin_files.extend(testlog.glob('BurnInTest_*'))  # BurnIN output folders
+            
+            if burnin_files:
+                logger.info(f"Removing {len(burnin_files)} old BurnIN log files")
+                for file in burnin_files:
+                    try:
+                        if file.is_file():
+                            file.unlink()
+                        elif file.is_dir():
+                            shutil.rmtree(file)
+                    except Exception as e:
+                        logger.warning(f"Failed to remove {file}: {e}")
+                logger.info("Old BurnIN logs removed")
+            else:
+                logger.info("No old BurnIN logs found")
+        else:
+            logger.warning(f"Testlog directory not found: {testlog_path}")
     
     def set_config(self, **kwargs) -> None:
         """

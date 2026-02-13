@@ -51,29 +51,19 @@ class TestSTC1685BurnIN(BaseTestCase):
         """
         Remove existing BurnIN installation if present.
         
+        Uses BurnInController.ensure_clean_state() from library.
+        
         Returns:
             bool: True if no existing installation or removal successful, False otherwise
         """
-        logger.info("Checking for existing BurnIN installation...")
-        
         burnin_cfg = self.config['burnin']
-        burnin_check = BurnInController(
+        burnin_controller = BurnInController(
             installer_path=burnin_cfg['installer'],
             install_path=burnin_cfg['install_path']
         )
         
-        if burnin_check.is_installed():
-            logger.info("Existing BurnIN installation found, removing...")
-            try:
-                burnin_check.uninstall()
-                logger.info("Old BurnIN installation removed successfully")
-                return True
-            except Exception as e:
-                logger.error(f"Failed to remove old BurnIN installation: {e}")
-                return False
-        else:
-            logger.info("No existing BurnIN installation found")
-            return True
+        # Use library method for clean state check
+        return burnin_controller.ensure_clean_state()
     
     def _cleanup_cdi_logs(self):
         """
@@ -96,61 +86,17 @@ class TestSTC1685BurnIN(BaseTestCase):
         """
         Clean up old BurnIN logs from previous test runs.
         
-        Removes BurnIN log files in testlog directory:
-        - Burnin.log
-        - BurnIN script files
-        - BurnIN screenshots
+        Uses BurnInController.cleanup_logs() from library.
         """
-        testlog_path = Path('./testlog')
-        
-        if testlog_path.exists():
-            # Remove BurnIN specific files
-            burnin_files = list(testlog_path.glob('Burnin*'))
-            burnin_files.extend(testlog_path.glob('burnin*'))
-            
-            if burnin_files:
-                logger.info(f"Removing {len(burnin_files)} old BurnIN log files")
-                for file in burnin_files:
-                    try:
-                        if file.is_file():
-                            file.unlink()
-                        elif file.is_dir():
-                            shutil.rmtree(file)
-                    except Exception as e:
-                        logger.warning(f"Failed to remove {file}: {e}")
-                logger.info("Old BurnIN logs removed")
-            else:
-                logger.info("No old BurnIN logs found")
+        BurnInController.cleanup_logs(testlog_path='./testlog')
     
     def _cleanup_smartcheck_logs(self):
         """
         Clean up old SmartCheck logs from previous test runs.
         
-        Removes SmartCheck log files in testlog directory:
-        - SmartCheck output files
-        - SMART monitoring logs
+        Uses SmartCheckController.cleanup_logs() from library.
         """
-        testlog_path = Path('./testlog')
-        
-        if testlog_path.exists():
-            # Remove SmartCheck specific files
-            smartcheck_files = list(testlog_path.glob('SmartCheck*'))
-            smartcheck_files.extend(testlog_path.glob('smartcheck*'))
-            smartcheck_files.extend(testlog_path.glob('SMART*'))
-            
-            if smartcheck_files:
-                logger.info(f"Removing {len(smartcheck_files)} old SmartCheck log files")
-                for file in smartcheck_files:
-                    try:
-                        if file.is_file():
-                            file.unlink()
-                        elif file.is_dir():
-                            shutil.rmtree(file)
-                    except Exception as e:
-                        logger.warning(f"Failed to remove {file}: {e}")
-                logger.info("Old SmartCheck logs removed")
-            else:
-                logger.info("No old SmartCheck logs found")
+        SmartCheckController.cleanup_logs(testlog_path='./testlog')
     
     
     def _cleanup_test_logs(self):
@@ -311,13 +257,8 @@ class TestSTC1685BurnIN(BaseTestCase):
         """
         logger.info("[TEST_02] BurnIN installation started")
         
-        # Create BurnInController instance
-        burnin_cfg = self.config['burnin']
-        burnin = BurnInController(
-            installer_path=burnin_cfg['installer'],
-            install_path=burnin_cfg['install_path'],
-            license_path=burnin_cfg.get('license_path')
-        )
+        # Create BurnInController instance from config
+        burnin = BurnInController.from_config_dict(self.config['burnin'])
         
         # Install BurnIN
         burnin.install()
@@ -445,14 +386,10 @@ class TestSTC1685BurnIN(BaseTestCase):
         logger.info("[TEST_05] Initializing BurnINController...")
 
         try:
-            # Create BurnINController 
-            burnin_controller = BurnInController(
-                installer_path=self.config['burnin']['installer'],
-                install_path=self.config['burnin']['install_path'],
-                executable_name='bit64.exe'  # will automatically fallback to bit.exe
-            )
+            # Create BurnINController from config dict
+            burnin_controller = BurnInController.from_config_dict(self.config['burnin'])
             
-            # Load configuration from Config.json file
+            # Load additional configuration from Config.json file
             config_path = Path('./Config/Config.json')
             logger.info(f"[TEST_05] Loading config from: {config_path.absolute()}")
             burnin_controller.load_config_from_json(str(config_path), config_key='burnin')

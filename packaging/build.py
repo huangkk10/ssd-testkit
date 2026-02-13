@@ -298,7 +298,7 @@ exe = EXE(
             return False
     
     def _post_process_dist(self):
-        """Post-process dist directory: copy bin and Config from test project to dist root."""
+        """Post-process dist directory: copy bin and Config from test project to dist subfolder."""
         import shutil
         import os
         
@@ -319,14 +319,36 @@ exe = EXE(
             print("[WARNING] No test projects configured")
             return
         
-        test_project_path = self.project_root / test_projects[0]
+        # Get output folder name from config or extract from test project path
+        output_folder_name = self.config.get('output_folder_name', '')
+        if not output_folder_name:
+            # Fallback: extract subfolder name from test project path (last segment)
+            test_project_rel = test_projects[0]
+            output_folder_name = Path(test_project_rel).name
+        
+        # Combine with version
+        version = self.config.get('version', '1.0.0')
+        subfolder_name = f"{output_folder_name}_v{version}"
+        
+        # Create subfolder in dist
+        target_dist_dir = dist_dir / subfolder_name
+        target_dist_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[OK] Created target directory: dist/{subfolder_name}")
+        
+        # Move exe to subfolder
+        target_exe_file = target_dist_dir / f'{project_name}.exe'
+        if exe_file.exists() and exe_file != target_exe_file:
+            shutil.move(str(exe_file), str(target_exe_file))
+            print(f"[OK] Moved {project_name}.exe to dist/{subfolder_name}/")
+        
+        test_project_path = self.project_root / self.config.get('test_projects', [])[0]
         if not test_project_path.exists():
             print(f"[WARNING] Test project not found: {test_project_path}")
             return
         
-        # Copy bin from test project to dist root
+        # Copy bin from test project to dist subfolder
         bin_src = test_project_path / 'bin'
-        bin_dst = dist_dir / 'bin'
+        bin_dst = target_dist_dir / 'bin'
         if bin_src.exists():
             if bin_dst.exists():
                 shutil.rmtree(bin_dst)
@@ -342,16 +364,16 @@ exe = EXE(
                 return ignored
             
             shutil.copytree(bin_src, bin_dst, ignore=ignore_venv)
-            print(f"[OK] Copied bin/ to dist/bin")
+            print(f"[OK] Copied bin/ to dist/{subfolder_name}/bin")
         
-        # Copy Config from test project to dist root
+        # Copy Config from test project to dist subfolder
         config_src = test_project_path / 'Config'
-        config_dst = dist_dir / 'Config'
+        config_dst = target_dist_dir / 'Config'
         if config_src.exists():
             if config_dst.exists():
                 shutil.rmtree(config_dst)
             shutil.copytree(config_src, config_dst)
-            print(f"[OK] Copied Config/ to dist/Config")
+            print(f"[OK] Copied Config/ to dist/{subfolder_name}/Config")
         
         # Copy convenience batch files if they exist
         bat_files = [
@@ -366,19 +388,19 @@ exe = EXE(
                 # Create default batch file
                 bat_src = dist_dir / bat_file
             if bat_src.exists():
-                bat_dst = dist_dir / bat_file
+                bat_dst = target_dist_dir / bat_file
                 if bat_dst.exists():
                     bat_dst.unlink()
                 if bat_src != bat_dst:
                     shutil.copy2(bat_src, bat_dst)
-                print(f"[OK] Copied {bat_file} to dist/")
+                print(f"[OK] Copied {bat_file} to dist/{subfolder_name}/")
         
-        # Copy test files to dist (maintaining relative path structure)
-        # e.g., tests/integration/.../stc1685_burnin -> dist/tests/integration/.../stc1685_burnin
+        # Copy test files to dist subfolder (maintaining relative path structure)
+        # e.g., tests/integration/.../stc1685_burnin -> dist/stc1685_burnin/tests/integration/.../stc1685_burnin
         test_src = test_project_path  # Full path to test directory
         # Extract relative path from project root
         test_rel_path = test_project_path.relative_to(self.project_root)
-        test_dst = dist_dir / test_rel_path
+        test_dst = target_dist_dir / test_rel_path
         
         if test_src.exists():
             # Remove destination if it exists
@@ -399,19 +421,20 @@ exe = EXE(
                 return ignored
             
             shutil.copytree(test_src, test_dst, ignore=ignore_test_files)
-            print(f"[OK] Copied test files to dist/{test_rel_path}")
+            print(f"[OK] Copied test files to dist/{subfolder_name}/{test_rel_path}")
         
         print(f"\n[OK] Final structure:")
         print(f"  dist/")
-        print(f"    ├── {project_name}.exe")
+        print(f"    └── {subfolder_name}/")
+        print(f"        ├── {project_name}.exe")
         if config_dst.exists():
-            print(f"    ├── Config/")
+            print(f"        ├── Config/")
             if (config_dst / 'Config.json').exists():
-                print(f"    │   └── Config.json")
+                print(f"        │   └── Config.json")
         if bin_dst.exists():
-            print(f"    ├── bin/")
+            print(f"        ├── bin/")
         if test_dst.exists():
-            print(f"    └── {test_rel_path}/")
+            print(f"        └── {test_rel_path}/")
     
     def create_release(self):
         """Create release package."""

@@ -233,6 +233,52 @@ class SmartCheckController(threading.Thread):
         except ValueError as e:
             raise SmartCheckConfigError(f"Invalid configuration: {e}")
     
+    @staticmethod
+    def cleanup_logs(testlog_path: str = './testlog') -> None:
+        """
+        Clean up old SmartCheck logs from previous test runs.
+        
+        Removes SmartCheck log files in testlog directory:
+        - SmartCheck output files
+        - SMART monitoring logs
+        - RunCard.ini files
+        
+        Args:
+            testlog_path: Path to testlog directory (default: './testlog')
+        
+        Example:
+            >>> SmartCheckController.cleanup_logs('./testlog')
+            >>> # or use default path
+            >>> SmartCheckController.cleanup_logs()
+        """
+        from pathlib import Path
+        import shutil
+        
+        testlog = Path(testlog_path)
+        
+        if testlog.exists():
+            # Remove SmartCheck specific files
+            smartcheck_files = list(testlog.glob('SmartCheck*'))
+            smartcheck_files.extend(testlog.glob('smartcheck*'))
+            smartcheck_files.extend(testlog.glob('SMART*'))
+            smartcheck_files.extend(testlog.glob('**/RunCard.ini', ))
+            
+            if smartcheck_files:
+                logger.info(f"Removing {len(smartcheck_files)} old SmartCheck log files")
+                for file in smartcheck_files:
+                    try:
+                        if file.is_file():
+                            file.unlink()
+                        elif file.is_dir():
+                            shutil.rmtree(file)
+                    except Exception as e:
+                        logger.warning(f"Failed to remove {file}: {e}")
+                logger.info("Old SmartCheck logs removed")
+            else:
+                logger.info("No old SmartCheck logs found")
+        else:
+            logger.warning(f"Testlog directory not found: {testlog_path}")
+    
     @classmethod
     def from_config_dict(cls, config_dict: dict, bat_path_key: str = 'bat_path', 
                         output_dir_key: str = 'output_dir'):
