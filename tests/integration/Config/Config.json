@@ -24,11 +24,14 @@
     "script_path": "./Config/BIT_Config/BurnInScript.bits",
     "cfg_file_path": "./Config/BIT_Config/BurnInScript.bitcfg",
     "log_path": "./testlog/Burnin.log",
+    "screenshot_path": "./testlog/Burnin.png",
     "log_prefix": "",
     "timeout_minutes": 100,
     "test_duration_minutes": 1,
     "test_drive_letter": "D",
-    "check_interval_seconds": 2
+    "check_interval_seconds": 2,
+    "enable_screenshot": true,
+    "screenshot_on_error": true
   },
   
   "h2test": {

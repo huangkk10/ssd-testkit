@@ -21,7 +21,7 @@ from typing import Optional, Dict, Any, Tuple
 # Add parent directories to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from lib.logger import LogEvt, LogErr, LogWarn, LogDebug, logConfig
+from lib.logger import get_module_logger
 from .config import BurnInConfig
 from .script_generator import BurnInScriptGenerator
 from .process_manager import BurnInProcessManager
@@ -36,12 +36,8 @@ from .exceptions import (
     BurnInTestFailedError,
 )
 
-# Initialize logger configuration
-try:
-    logConfig()
-except Exception:
-    # If logger setup fails, fall back to basic logging
-    pass
+# Initialize module-level logger
+logger = get_module_logger(__name__)
 
 
 class BurnInController(threading.Thread):
@@ -144,7 +140,7 @@ class BurnInController(threading.Thread):
         # Validate installer path
         installer = Path(installer_path)
         if not installer.exists():
-            LogErr(f"Installer not found at: {installer_path}")
+            logger.error(f"Installer not found at: {installer_path}")
             raise BurnInConfigError(f"Installer not found at: {installer_path}")
         
         # Store basic paths
@@ -197,7 +193,7 @@ class BurnInController(threading.Thread):
         if kwargs:
             self.set_config(**kwargs)
         
-        LogEvt(f"BurnInController initialized with installer={installer_path}, "
+        logger.info(f"BurnInController initialized with installer={installer_path}, "
                f"install_path={install_path}, executable={executable_name}")
     
     def install(self, license_path: Optional[str] = None) -> bool:
@@ -217,7 +213,7 @@ class BurnInController(threading.Thread):
             >>> controller = BurnInController(installer_path="./setup.exe")
             >>> controller.install(license_path="./license.key")
         """
-        LogEvt("Starting BurnIN installation...")
+        logger.info("Starting BurnIN installation...")
         
         try:
             # Create process manager if not exists
@@ -238,15 +234,15 @@ class BurnInController(threading.Thread):
             )
             
             if success:
-                LogEvt("BurnIN installation completed successfully")
+                logger.info("BurnIN installation completed successfully")
             else:
-                LogErr("BurnIN installation failed")
+                logger.error("BurnIN installation failed")
                 raise BurnInInstallError("Installation failed")
             
             return success
             
         except Exception as e:
-            LogErr(f"BurnIN installation error: {e}")
+            logger.error(f"BurnIN installation error: {e}")
             raise BurnInInstallError(f"Installation failed: {e}")
     
     def uninstall(self) -> bool:
@@ -262,11 +258,11 @@ class BurnInController(threading.Thread):
         Example:
             >>> controller.uninstall()
         """
-        LogEvt("Starting BurnIN uninstallation...")
+        logger.info("Starting BurnIN uninstallation...")
         
         try:
             if self._process_manager is None:
-                LogWarn("Process manager not initialized, creating new one")
+                logger.warning("Process manager not initialized, creating new one")
                 self._process_manager = BurnInProcessManager(
                     install_path=self.install_path,
                     executable_name=self.executable_name,
@@ -275,21 +271,21 @@ class BurnInController(threading.Thread):
             
             # Stop any running process first
             if self.is_running():
-                LogWarn("BurnIN process still running, stopping it first")
+                logger.warning("BurnIN process still running, stopping it first")
                 self.stop()
             
             # Perform uninstallation
             success = self._process_manager.uninstall(timeout=300)
             
             if success:
-                LogEvt("BurnIN uninstallation completed successfully")
+                logger.info("BurnIN uninstallation completed successfully")
             else:
-                LogErr("BurnIN uninstallation failed")
+                logger.error("BurnIN uninstallation failed")
             
             return success
             
         except Exception as e:
-            LogErr(f"BurnIN uninstallation error: {e}")
+            logger.error(f"BurnIN uninstallation error: {e}")
             raise BurnInInstallError(f"Uninstallation failed: {e}")
     
     def is_installed(self) -> bool:
@@ -328,7 +324,7 @@ class BurnInController(threading.Thread):
             ...     timeout_minutes=150
             ... )
         """
-        LogDebug(f"Updating configuration: {kwargs}")
+        logger.debug(f"Updating configuration: {kwargs}")
         
         # Validate configuration
         try:
@@ -345,9 +341,9 @@ class BurnInController(threading.Thread):
                 if key in path_params and value and isinstance(value, str):
                     value = os.path.abspath(value)
                 setattr(self, key, value)
-                LogDebug(f"Updated {key} = {value}")
+                logger.debug(f"Updated {key} = {value}")
             else:
-                LogWarn(f"Unknown configuration parameter: {key}")
+                logger.warning(f"Unknown configuration parameter: {key}")
     
     def load_config_from_json(self, json_path: str, config_key: str = 'burnin') -> None:
         """
@@ -408,13 +404,13 @@ class BurnInController(threading.Thread):
                 if hasattr(self, key):
                     valid_params[key] = value
                 else:
-                    LogDebug(f"Skipping unknown configuration parameter: {key}")
+                    logger.debug(f"Skipping unknown configuration parameter: {key}")
             
             # Validate and apply configuration
             self.set_config(**valid_params)
             
-            LogEvt(f"Configuration loaded from {json_path} (key: {config_key})")
-            LogDebug(f"Applied config: {valid_params}")
+            logger.info(f"Configuration loaded from {json_path} (key: {config_key})")
+            logger.debug(f"Applied config: {valid_params}")
             
         except FileNotFoundError:
             raise BurnInConfigError(f"JSON configuration file not found: {json_path}")
@@ -432,7 +428,7 @@ class BurnInController(threading.Thread):
         Raises:
             BurnInConfigError: If script generation fails
         """
-        LogEvt("Generating BurnIN script...")
+        logger.info("Generating BurnIN script...")
         
         try:
             if self._script_generator is None:
@@ -447,10 +443,10 @@ class BurnInController(threading.Thread):
                 output_path=self.script_path
             )
             
-            LogEvt(f"Script generated: {self.script_path}")
+            logger.info(f"Script generated: {self.script_path}")
             
         except Exception as e:
-            LogErr(f"Script generation failed: {e}")
+            logger.error(f"Script generation failed: {e}")
             raise BurnInConfigError(f"Script generation failed: {e}")
     
     def _start_process(self) -> None:
@@ -460,7 +456,7 @@ class BurnInController(threading.Thread):
         Raises:
             BurnInProcessError: If process start fails
         """
-        LogEvt("Starting BurnIN process...")
+        logger.info("Starting BurnIN process...")
         
         try:
             if self._process_manager is None:
@@ -472,12 +468,12 @@ class BurnInController(threading.Thread):
             )
             
             if pid:
-                LogEvt(f"BurnIN process started with PID: {pid}")
+                logger.info(f"BurnIN process started with PID: {pid}")
             else:
                 raise BurnInProcessError("Failed to start BurnIN process")
             
         except Exception as e:
-            LogErr(f"Failed to start BurnIN process: {e}")
+            logger.error(f"Failed to start BurnIN process: {e}")
             raise BurnInProcessError(f"Process start failed: {e}")
     
     def _connect_ui(self) -> None:
@@ -487,7 +483,7 @@ class BurnInController(threading.Thread):
         Raises:
             BurnInUIError: If UI connection fails
         """
-        LogEvt("Connecting to BurnIN UI...")
+        logger.info("Connecting to BurnIN UI...")
         
         try:
             if self._ui_monitor is None:
@@ -499,12 +495,12 @@ class BurnInController(threading.Thread):
             
             # Connect to window
             if self._ui_monitor.connect():
-                LogEvt("Connected to BurnIN UI successfully")
+                logger.info("Connected to BurnIN UI successfully")
             else:
                 raise BurnInUIError("Failed to connect to BurnIN UI")
             
         except Exception as e:
-            LogErr(f"UI connection failed: {e}")
+            logger.error(f"UI connection failed: {e}")
             raise BurnInUIError(f"UI connection failed: {e}")
     
     def _monitor_loop(self) -> None:
@@ -517,7 +513,7 @@ class BurnInController(threading.Thread):
             BurnInTimeoutError: If test exceeds timeout
             BurnInTestFailedError: If test fails
         """
-        LogEvt("Starting monitoring loop...")
+        logger.info("Starting monitoring loop...")
         
         start_time = time.time()
         last_screenshot_time = start_time
@@ -529,7 +525,7 @@ class BurnInController(threading.Thread):
                 elapsed = time.time() - start_time
                 timeout_seconds = self.timeout_minutes * 60
                 if elapsed > timeout_seconds:
-                    LogErr(f"Test timeout after {elapsed:.1f} seconds (timeout: {self.timeout_minutes} minutes)")
+                    logger.error(f"Test timeout after {elapsed:.1f} seconds (timeout: {self.timeout_minutes} minutes)")
                     self._take_screenshot("timeout")
                     raise BurnInTimeoutError(
                         f"Test exceeded timeout of {self.timeout_minutes} minutes ({timeout_seconds} seconds)"
@@ -538,7 +534,7 @@ class BurnInController(threading.Thread):
                 # Read current status
                 try:
                     status = self._ui_monitor.read_status()
-                    LogDebug(f"Current status: {status}")
+                    logger.debug(f"Current status: {status}")
                     
                     # Extract test result from status dict
                     test_result = status.get('test_result', 'unknown')
@@ -547,11 +543,11 @@ class BurnInController(threading.Thread):
                     # Check if test completed
                     if test_result in ['passed', 'failed']:
                         self._test_result = test_result.upper()
-                        LogEvt(f"Test completed with status: {test_result}")
+                        logger.info(f"Test completed with status: {test_result}")
                         
                         # Get error count from status dict
                         self.error_count = status.get('errors', 0)
-                        LogEvt(f"Error count: {self.error_count}")
+                        logger.info(f"Error count: {self.error_count}")
                         
                         # Take final screenshot
                         self._take_screenshot("final")
@@ -559,30 +555,30 @@ class BurnInController(threading.Thread):
                         # Set status
                         if test_result == 'passed' and self.error_count == 0:
                             self.status = True
-                            LogEvt("Test PASSED successfully")
+                            logger.info("Test PASSED successfully")
                         else:
                             self.status = False
                             if test_result == 'failed':
-                                LogErr("Test FAILED")
+                                logger.error("Test FAILED")
                                 raise BurnInTestFailedError(
                                     f"Test failed with {self.error_count} errors"
                                 )
                             elif self.error_count > 0:
-                                LogWarn(f"Test passed but with {self.error_count} errors")
+                                logger.warning(f"Test passed but with {self.error_count} errors")
                         
                         break
                     
                 except BurnInUIError as e:
-                    LogWarn(f"UI read error: {e}")
+                    logger.warning(f"UI read error: {e}")
                     # Try to reconnect - UI monitor now handles dynamic title changes
                     if not self._ui_monitor.is_connected():
-                        LogWarn("UI disconnected, attempting to reconnect...")
+                        logger.warning("UI disconnected, attempting to reconnect...")
                         try:
                             # Give it more time to reconnect (5 retries, 2 seconds each)
                             self._ui_monitor.connect(timeout=10)
-                            LogEvt("UI reconnected successfully")
+                            logger.info("UI reconnected successfully")
                         except Exception as conn_error:
-                            LogErr(f"Reconnection failed: {conn_error}")
+                            logger.error(f"Reconnection failed: {conn_error}")
                             # Don't fail immediately, continue monitoring
                             # Process might still be running even if UI not accessible
                 
@@ -608,12 +604,12 @@ class BurnInController(threading.Thread):
             self.status = False
             raise
         except Exception as e:
-            LogErr(f"Monitoring loop error: {e}")
+            logger.error(f"Monitoring loop error: {e}")
             self.status = False
             raise BurnInError(f"Monitoring failed: {e}")
         finally:
             # Cleanup
-            LogEvt("Monitoring loop ended")
+            logger.info("Monitoring loop ended")
             self._running = False
     
     def _take_screenshot(self, prefix: str = "screenshot") -> None:
@@ -641,10 +637,10 @@ class BurnInController(threading.Thread):
             Path(screenshot_path).parent.mkdir(parents=True, exist_ok=True)
             
             self._ui_monitor.take_screenshot(screenshot_path)
-            LogEvt(f"Screenshot saved: {screenshot_path}")
+            logger.info(f"Screenshot saved: {screenshot_path}")
             
         except Exception as e:
-            LogWarn(f"Failed to take screenshot: {e}")
+            logger.warning(f"Failed to take screenshot: {e}")
     
     def run(self) -> None:
         """
@@ -666,26 +662,26 @@ class BurnInController(threading.Thread):
             >>> controller.join()
             >>> print(controller.status)
         """
-        LogEvt("BurnIN controller thread started")
+        logger.info("BurnIN controller thread started")
         self._running = True
         
         try:
             # Check if stop requested before starting
             if self._stop_event.is_set():
-                LogEvt("Stop requested before execution, exiting...")
+                logger.info("Stop requested before execution, exiting...")
                 return
             
             # Step 1: Generate script
-            LogEvt("Step 1: Generating script...")
+            logger.info("Step 1: Generating script...")
             self._generate_script()
             
             # Check if stop requested
             if self._stop_event.is_set():
-                LogEvt("Stop requested after script generation, exiting...")
+                logger.info("Stop requested after script generation, exiting...")
                 return
             
             # Step 2: Start BurnIN process
-            LogEvt("Step 2: Starting BurnIN process...")
+            logger.info("Step 2: Starting BurnIN process...")
             self._start_process()
             
             # Give process time to start
@@ -693,26 +689,26 @@ class BurnInController(threading.Thread):
             
             # Check if stop requested
             if self._stop_event.is_set():
-                LogEvt("Stop requested after process start, exiting...")
+                logger.info("Stop requested after process start, exiting...")
                 return
             
             # Step 3: Connect to UI
-            LogEvt("Step 3: Connecting to UI...")
+            logger.info("Step 3: Connecting to UI...")
             self._connect_ui()
             
             # Check if stop requested
             if self._stop_event.is_set():
-                LogEvt("Stop requested after UI connection, exiting...")
+                logger.info("Stop requested after UI connection, exiting...")
                 return
             
             # Step 4: Monitor test execution
-            LogEvt("Step 4: Starting monitoring...")
+            logger.info("Step 4: Starting monitoring...")
             self._monitor_loop()
             
-            LogEvt("BurnIN test execution completed")
+            logger.info("BurnIN test execution completed")
             
         except Exception as e:
-            LogErr(f"BurnIN execution error: {e}")
+            logger.error(f"BurnIN execution error: {e}")
             self.status = False
             
             # Take error screenshot
@@ -720,7 +716,7 @@ class BurnInController(threading.Thread):
                 try:
                     self._take_screenshot("error")
                 except Exception as screenshot_error:
-                    LogWarn(f"Failed to take screenshot: {screenshot_error}")
+                    logger.warning(f"Failed to take screenshot: {screenshot_error}")
             
             # Clean up resources (don't call stop() to avoid recursion)
             try:
@@ -742,7 +738,7 @@ class BurnInController(threading.Thread):
         
         finally:
             self._running = False
-            LogEvt("BurnIN controller thread ended")
+            logger.info("BurnIN controller thread ended")
     
     def stop(self, timeout: int = 30) -> None:
         """
@@ -756,7 +752,7 @@ class BurnInController(threading.Thread):
             >>> time.sleep(10)
             >>> controller.stop()  # Stop execution early
         """
-        LogEvt("Stopping BurnIN execution...")
+        logger.info("Stopping BurnIN execution...")
         
         # Signal thread to stop
         self._stop_event.set()
@@ -765,23 +761,23 @@ class BurnInController(threading.Thread):
         if self._ui_monitor and self._ui_monitor.is_connected():
             try:
                 self._ui_monitor.disconnect()
-                LogEvt("UI disconnected")
+                logger.info("UI disconnected")
             except Exception as e:
-                LogWarn(f"Error disconnecting UI: {e}")
+                logger.warning(f"Error disconnecting UI: {e}")
         
         # Stop process
         if self._process_manager:
             try:
                 self._process_manager.stop_process(timeout=timeout)
-                LogEvt("BurnIN process stopped")
+                logger.info("BurnIN process stopped")
             except Exception as e:
-                LogWarn(f"Error stopping process: {e}")
+                logger.warning(f"Error stopping process: {e}")
                 # Try to kill if stop failed
                 try:
                     self._process_manager.kill_process()
-                    LogEvt("BurnIN process killed")
+                    logger.info("BurnIN process killed")
                 except Exception as kill_error:
-                    LogErr(f"Error killing process: {kill_error}")
+                    logger.error(f"Error killing process: {kill_error}")
     
     def is_running(self) -> bool:
         """

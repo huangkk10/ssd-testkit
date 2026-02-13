@@ -16,7 +16,10 @@ from .exceptions import (
     BurnInInstallError,
     BurnInTimeoutError,
 )
-from lib.logger import LogEvt, LogWarn, LogErr
+from lib.logger import get_module_logger
+
+# Initialize module-level logger
+logger = get_module_logger(__name__)
 
 
 class BurnInProcessManager:
@@ -298,7 +301,7 @@ class BurnInProcessManager:
         
         # Get actual executable (with fallback support)
         executable = self._get_executable()
-        LogEvt(f"Using BurnIN executable: {executable}")
+        logger.info(f"Using BurnIN executable: {executable}")
         
         script = Path(script_path)
         if not script.exists():

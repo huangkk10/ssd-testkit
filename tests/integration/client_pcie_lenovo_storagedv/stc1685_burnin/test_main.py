@@ -31,7 +31,9 @@ from lib.testtool import RunCard as RC
 import lib.testtool.DiskPrd as DiskPrd
 from lib.testtool.smartcheck import SmartCheckController
 import lib.testtool.CDI as CDI
-import lib.logger as logger
+from lib.logger import get_module_logger, logConfig
+
+logger = get_module_logger(__name__)
 
 
 @pytest.mark.client_lenovo
@@ -52,7 +54,7 @@ class TestSTC1685BurnIN(BaseTestCase):
         Returns:
             bool: True if no existing installation or removal successful, False otherwise
         """
-        logger.LogEvt("Checking for existing BurnIN installation...")
+        logger.info("Checking for existing BurnIN installation...")
         
         burnin_cfg = self.config['burnin']
         burnin_check = BurnInController(
@@ -61,16 +63,16 @@ class TestSTC1685BurnIN(BaseTestCase):
         )
         
         if burnin_check.is_installed():
-            logger.LogEvt("Existing BurnIN installation found, removing...")
+            logger.info("Existing BurnIN installation found, removing...")
             try:
                 burnin_check.uninstall()
-                logger.LogEvt("Old BurnIN installation removed successfully")
+                logger.info("Old BurnIN installation removed successfully")
                 return True
             except Exception as e:
-                logger.LogErr(f"Failed to remove old BurnIN installation: {e}")
+                logger.error(f"Failed to remove old BurnIN installation: {e}")
                 return False
         else:
-            logger.LogEvt("No existing BurnIN installation found")
+            logger.info("No existing BurnIN installation found")
             return True
     
     def _cleanup_cdi_logs(self):
@@ -83,12 +85,12 @@ class TestSTC1685BurnIN(BaseTestCase):
         cdi_log_path = Path('./testlog/CDILog')
         
         if cdi_log_path.exists():
-            logger.LogEvt(f"Removing old CDI logs: {cdi_log_path}")
+            logger.info(f"Removing old CDI logs: {cdi_log_path}")
             shutil.rmtree(cdi_log_path)
-            logger.LogEvt("Old CDI logs removed")
+            logger.info("Old CDI logs removed")
         
         cdi_log_path.mkdir(parents=True, exist_ok=True)
-        logger.LogEvt(f"Created clean CDI log directory: {cdi_log_path}")
+        logger.info(f"Created clean CDI log directory: {cdi_log_path}")
     
     def _cleanup_burnin_logs(self):
         """
@@ -107,7 +109,7 @@ class TestSTC1685BurnIN(BaseTestCase):
             burnin_files.extend(testlog_path.glob('burnin*'))
             
             if burnin_files:
-                logger.LogEvt(f"Removing {len(burnin_files)} old BurnIN log files")
+                logger.info(f"Removing {len(burnin_files)} old BurnIN log files")
                 for file in burnin_files:
                     try:
                         if file.is_file():
@@ -115,10 +117,10 @@ class TestSTC1685BurnIN(BaseTestCase):
                         elif file.is_dir():
                             shutil.rmtree(file)
                     except Exception as e:
-                        logger.LogWarn(f"Failed to remove {file}: {e}")
-                logger.LogEvt("Old BurnIN logs removed")
+                        logger.warning(f"Failed to remove {file}: {e}")
+                logger.info("Old BurnIN logs removed")
             else:
-                logger.LogEvt("No old BurnIN logs found")
+                logger.info("No old BurnIN logs found")
     
     def _cleanup_smartcheck_logs(self):
         """
@@ -137,7 +139,7 @@ class TestSTC1685BurnIN(BaseTestCase):
             smartcheck_files.extend(testlog_path.glob('SMART*'))
             
             if smartcheck_files:
-                logger.LogEvt(f"Removing {len(smartcheck_files)} old SmartCheck log files")
+                logger.info(f"Removing {len(smartcheck_files)} old SmartCheck log files")
                 for file in smartcheck_files:
                     try:
                         if file.is_file():
@@ -145,10 +147,10 @@ class TestSTC1685BurnIN(BaseTestCase):
                         elif file.is_dir():
                             shutil.rmtree(file)
                     except Exception as e:
-                        logger.LogWarn(f"Failed to remove {file}: {e}")
-                logger.LogEvt("Old SmartCheck logs removed")
+                        logger.warning(f"Failed to remove {file}: {e}")
+                logger.info("Old SmartCheck logs removed")
             else:
-                logger.LogEvt("No old SmartCheck logs found")
+                logger.info("No old SmartCheck logs found")
     
     
     def _cleanup_test_logs(self):
@@ -162,7 +164,7 @@ class TestSTC1685BurnIN(BaseTestCase):
         4. Test-specific log directory (log/STC-1685/)
         5. Recreates testlog base directory
         """
-        logger.LogEvt("Starting test log cleanup...")
+        logger.info("Starting test log cleanup...")
         
         # Create testlog directory if not exists
         testlog_path = Path('./testlog')
@@ -176,14 +178,14 @@ class TestSTC1685BurnIN(BaseTestCase):
         # Clean test-specific log directory
         log_path = self.config.get('log_path', './log/STC-1685')
         if Path(log_path).exists():
-            logger.LogEvt(f"Removing old test log directory: {log_path}")
+            logger.info(f"Removing old test log directory: {log_path}")
             shutil.rmtree(log_path)
-            logger.LogEvt("Old test log directory removed")
+            logger.info("Old test log directory removed")
         
         Path(log_path).mkdir(parents=True, exist_ok=True)
-        logger.LogEvt(f"Created clean test log directory: {log_path}")
+        logger.info(f"Created clean test log directory: {log_path}")
         
-        logger.LogEvt("Test log cleanup completed")
+        logger.info("Test log cleanup completed")
     
     @pytest.fixture(scope="class", autouse=True)
     def setup_test_class(self, request, testcase_config, runcard_params):
@@ -203,7 +205,7 @@ class TestSTC1685BurnIN(BaseTestCase):
         cls._cleanup_testlog_directory()
         
         # Initialize logger after changing directory (so logs are created in test directory)
-        logger.logConfig()
+        logConfig()
         
         # Debug: Show where logs will be created
         import os
@@ -218,10 +220,10 @@ class TestSTC1685BurnIN(BaseTestCase):
         cls.bin_path = testcase_config.bin_directory
         
         # Log test information (框架會自動處理首次/恢復的訊息)
-        logger.LogEvt(f"Working directory: {test_dir}")
-        logger.LogEvt(f"Tool bin path: {cls.bin_path}")
-        logger.LogEvt(f"Test case: {testcase_config.case_id}")
-        logger.LogEvt(f"Script version: {testcase_config.case_version}")
+        logger.info(f"Working directory: {test_dir}")
+        logger.info(f"Tool bin path: {cls.bin_path}")
+        logger.info(f"Test case: {testcase_config.case_id}")
+        logger.info(f"Script version: {testcase_config.case_version}")
         
         # ==================== RunCard Integration Start ====================
         # Initialize RunCard for the entire test class (using config from conftest.py)
@@ -230,14 +232,14 @@ class TestSTC1685BurnIN(BaseTestCase):
         try:
             # Use configuration from conftest.py
             cls.runcard = RC.Runcard(**runcard_params['initialization'])
-            logger.LogEvt("[RunCard] Object created")
+            logger.info("[RunCard] Object created")
             
             # Start RunCard test with auto_setup
             cls.runcard.start_test(**runcard_params['start_params'])
-            logger.LogEvt("[RunCard] Test started successfully")
-            logger.LogEvt(f"[RunCard] Using SmiCli: {testcase_config.smicli_executable if testcase_config.smicli_executable.exists() else 'Not found'}")
+            logger.info("[RunCard] Test started successfully")
+            logger.info(f"[RunCard] Using SmiCli: {testcase_config.smicli_executable if testcase_config.smicli_executable.exists() else 'Not found'}")
         except Exception as e:
-            logger.LogErr(f"[RunCard] Initialization failed - {e} (continuing test)")
+            logger.error(f"[RunCard] Initialization failed - {e} (continuing test)")
             cls.runcard = None
         # ==================== RunCard Integration End ====================
         
@@ -253,15 +255,15 @@ class TestSTC1685BurnIN(BaseTestCase):
                 
                 if not failed:
                     cls.runcard.end_test(RC.TestResult.PASS.value)
-                    logger.LogEvt("[RunCard] All tests PASSED")
+                    logger.info("[RunCard] All tests PASSED")
                 else:
                     cls.runcard.end_test(RC.TestResult.FAIL.value, f"{request.session.testsfailed} test(s) failed")
-                    logger.LogEvt(f"[RunCard] Test suite FAILED - {request.session.testsfailed} test(s) failed")
+                    logger.info(f"[RunCard] Test suite FAILED - {request.session.testsfailed} test(s) failed")
             except Exception as e:
-                logger.LogErr(f"[RunCard] Failed to record final result - {e}")
+                logger.error(f"[RunCard] Failed to record final result - {e}")
         # ==================== RunCard End ====================
         
-        logger.LogEvt("STC-1685 Test Completed")
+        logger.info("STC-1685 Test Completed")
         
         # Restore original working directory
         os.chdir(cls.original_cwd)
@@ -276,7 +278,7 @@ class TestSTC1685BurnIN(BaseTestCase):
         - Clean up old test logs from previous runs
         - Create fresh log directory structure
         """
-        logger.LogEvt("[TEST_01] Precondition setup started")
+        logger.info("[TEST_01] Precondition setup started")
         
         # Step 1: Remove old BurnIN installation
         if not self._remove_existing_burnin():
@@ -285,7 +287,7 @@ class TestSTC1685BurnIN(BaseTestCase):
         # Step 2: Clean up old test logs and create fresh directories
         self._cleanup_test_logs()
         
-        logger.LogEvt("[TEST_01] Precondition completed")
+        logger.info("[TEST_01] Precondition completed")
     
     @pytest.mark.order(2)
     @step(2, "Install BurnIN test tool")
@@ -293,7 +295,7 @@ class TestSTC1685BurnIN(BaseTestCase):
         """
         Install BurnIN test tool (using new BurnInController)
         """
-        logger.LogEvt("[TEST_02] BurnIN installation started")
+        logger.info("[TEST_02] BurnIN installation started")
         
         # Create BurnInController instance
         burnin_cfg = self.config['burnin']
@@ -306,7 +308,7 @@ class TestSTC1685BurnIN(BaseTestCase):
         # Install BurnIN
         burnin.install()
         
-        logger.LogEvt("[TEST_02] BurnIN installation completed")
+        logger.info("[TEST_02] BurnIN installation completed")
     
     @pytest.mark.order(3)
     @step(3, "Create disk partition for testing")
@@ -320,20 +322,20 @@ class TestSTC1685BurnIN(BaseTestCase):
         3. Quick format as NTFS (4K allocation unit)
         4. Assign drive letter D
         """
-        logger.LogEvt("[TEST_03] Disk partition started")
+        logger.info("[TEST_03] Disk partition started")
         
         # Check if D drive already exists
         import os
         if os.path.exists("D:\\"):
-            logger.LogEvt("[TEST_03] D drive exists, deleting and extending C drive")
+            logger.info("[TEST_03] D drive exists, deleting and extending C drive")
             DiskPrd.DelVolume("D")
             DiskPrd.ExtendVolume("C")
         
         # Shrink C and create D partition based on config
-        logger.LogEvt("[TEST_03] Creating new D partition (10GB NTFS 4K)")
+        logger.info("[TEST_03] Creating new D partition (10GB NTFS 4K)")
         DiskPrd.ShrinkAndFormatDisk()
         
-        logger.LogEvt("[TEST_03] Disk partition completed")
+        logger.info("[TEST_03] Disk partition completed")
     
     @pytest.mark.order(4)
     @step(4, "Run CDI before test to establish SMART baseline")
@@ -352,7 +354,7 @@ class TestSTC1685BurnIN(BaseTestCase):
 
         If any SMART errors are detected, the test will fail.
         """
-        logger.LogEvt("[TEST_04] CDI before test started")
+        logger.info("[TEST_04] CDI before test started")
         
         # Initialize CDI tool
         cdi = CDI.CDI()
@@ -360,11 +362,11 @@ class TestSTC1685BurnIN(BaseTestCase):
         # Load CDI settings from config
         if 'cdi' in self.config:
             cdi.SetConfig(self.config['cdi'])
-            logger.LogEvt("[TEST_04] CDI configuration loaded")
+            logger.info("[TEST_04] CDI configuration loaded")
         else:
             # Use default configuration
             cdi.LogPath = './testlog'
-            logger.LogEvt("[TEST_04] Using default CDI configuration")
+            logger.info("[TEST_04] Using default CDI configuration")
         
         # Set CDI output filenames (before baseline)
         cdi.ScreenShotDriveLetter = 'C:'
@@ -372,20 +374,20 @@ class TestSTC1685BurnIN(BaseTestCase):
         cdi.DiskInfo_json_name = 'CDI_before.json'
         cdi.DiskInfo_png_name  = 'CDI_before.png'
         
-        logger.LogEvt(f"[TEST_04] CDI output files:")
-        logger.LogEvt(f"[TEST_04]   - TXT:  {cdi.DiskInfo_txt_name}")
-        logger.LogEvt(f"[TEST_04]   - JSON: {cdi.DiskInfo_json_name}")
-        logger.LogEvt(f"[TEST_04]   - PNG:  {cdi.DiskInfo_png_name}")
+        logger.info(f"[TEST_04] CDI output files:")
+        logger.info(f"[TEST_04]   - TXT:  {cdi.DiskInfo_txt_name}")
+        logger.info(f"[TEST_04]   - JSON: {cdi.DiskInfo_json_name}")
+        logger.info(f"[TEST_04]   - PNG:  {cdi.DiskInfo_png_name}")
         
         try:
             # Run CDI monitoring (synchronous)
-            logger.LogEvt("[TEST_04] Executing CDI monitoring...")
+            logger.info("[TEST_04] Executing CDI monitoring...")
             cdi.RunProcedureParserLog_sync()
-            logger.LogEvt("[TEST_04] CDI monitoring completed")
-            logger.LogEvt("[TEST_04] CDI before baseline data saved")
+            logger.info("[TEST_04] CDI monitoring completed")
+            logger.info("[TEST_04] CDI before baseline data saved")
             
         except Exception as e:
-            logger.LogErr(f"[TEST_04] CDI test exception: {e}")
+            logger.error(f"[TEST_04] CDI test exception: {e}")
             pytest.fail(f"CDI before test failed: {str(e)}")
     
     @pytest.mark.order(5)
@@ -405,28 +407,28 @@ class TestSTC1685BurnIN(BaseTestCase):
 
         Note: Using the new BurnInController (threading-based)
         """
-        logger.LogEvt("[TEST_05] BurnIN and SmartCheck concurrent test started (using new BurnInController)")
+        logger.info("[TEST_05] BurnIN and SmartCheck concurrent test started (using new BurnInController)")
 
         # ===== Initialize SmartCheckController =====
-        logger.LogEvt("[TEST_05] Initializing SmartCheckController...")
+        logger.info("[TEST_05] Initializing SmartCheckController...")
 
         smart_cfg = self.config.get('smartcheck', {})
 
         try:
             smartcheck_controller = SmartCheckController.from_config_dict(smart_cfg)
 
-            logger.LogEvt("[TEST_05] SmartCheckController initialized")
-            logger.LogEvt(f"[TEST_05]   bat_path: {smartcheck_controller.bat_path}")
-            logger.LogEvt(f"[TEST_05]   output_dir: {smartcheck_controller.output_dir}")
-            logger.LogEvt(f"[TEST_05]   total_time: {smartcheck_controller.total_time} minutes")
-            logger.LogEvt(f"[TEST_05]   timeout: {smartcheck_controller.timeout} minutes")
+            logger.info("[TEST_05] SmartCheckController initialized")
+            logger.info(f"[TEST_05]   bat_path: {smartcheck_controller.bat_path}")
+            logger.info(f"[TEST_05]   output_dir: {smartcheck_controller.output_dir}")
+            logger.info(f"[TEST_05]   total_time: {smartcheck_controller.total_time} minutes")
+            logger.info(f"[TEST_05]   timeout: {smartcheck_controller.timeout} minutes")
 
         except Exception as e:
-            logger.LogErr(f"[TEST_05] Failed to initialize SmartCheckController: {e}")
+            logger.error(f"[TEST_05] Failed to initialize SmartCheckController: {e}")
             pytest.fail(f"SmartCheckController initialization failed: {e}")
 
         # ===== Initialize BurnINController (new lib) =====
-        logger.LogEvt("[TEST_05] Initializing BurnINController...")
+        logger.info("[TEST_05] Initializing BurnINController...")
 
         try:
             # Create BurnINController 
@@ -438,33 +440,33 @@ class TestSTC1685BurnIN(BaseTestCase):
             
             # Load configuration from Config.json file
             config_path = Path('./Config/Config.json')
-            logger.LogEvt(f"[TEST_05] Loading config from: {config_path.absolute()}")
+            logger.info(f"[TEST_05] Loading config from: {config_path.absolute()}")
             burnin_controller.load_config_from_json(str(config_path), config_key='burnin')
 
-            logger.LogEvt("[TEST_05] BurnINController initialized")
-            logger.LogEvt(f"[TEST_05]   test_duration: {burnin_controller.test_duration_minutes} minutes")
-            logger.LogEvt(f"[TEST_05]   test_drive: {burnin_controller.test_drive_letter}")
-            logger.LogEvt(f"[TEST_05]   timeout: {burnin_controller.timeout_minutes} minutes")
-            logger.LogEvt(f"[TEST_05]   log_path: {burnin_controller.log_path}")
+            logger.info("[TEST_05] BurnINController initialized")
+            logger.info(f"[TEST_05]   test_duration: {burnin_controller.test_duration_minutes} minutes")
+            logger.info(f"[TEST_05]   test_drive: {burnin_controller.test_drive_letter}")
+            logger.info(f"[TEST_05]   timeout: {burnin_controller.timeout_minutes} minutes")
+            logger.info(f"[TEST_05]   log_path: {burnin_controller.log_path}")
 
         except Exception as e:
-            logger.LogErr(f"[TEST_05] Failed to initialize BurnINController: {e}")
+            logger.error(f"[TEST_05] Failed to initialize BurnINController: {e}")
             pytest.fail(f"BurnINController initialization failed: {e}")
 
         # ===== Start threads in correct order =====
         # Step 1: Start SmartCheckController thread FIRST
-        logger.LogEvt("[TEST_05] Step 1: Starting SmartCheckController thread...")
+        logger.info("[TEST_05] Step 1: Starting SmartCheckController thread...")
         smartcheck_controller.start()
-        logger.LogEvt(f"[TEST_05] SmartCheckController started (is_alive: {smartcheck_controller.is_alive()})")
+        logger.info(f"[TEST_05] SmartCheckController started (is_alive: {smartcheck_controller.is_alive()})")
 
         time.sleep(2)  # give SmartCheck a moment to start
 
         # Step 2: Start BurnINController thread (Controller itself is a Thread)
-        logger.LogEvt("[TEST_05] Step 2: Starting BurnINController thread...")
+        logger.info("[TEST_05] Step 2: Starting BurnINController thread...")
         burnin_controller.start()
-        logger.LogEvt(f"[TEST_05] BurnINController started (is_alive: {burnin_controller.is_alive()})")
+        logger.info(f"[TEST_05] BurnINController started (is_alive: {burnin_controller.is_alive()})")
 
-        logger.LogEvt("[TEST_05] All threads started, entering monitoring loop...")
+        logger.info("[TEST_05] All threads started, entering monitoring loop...")
 
         # ===== Monitoring Loop =====
         timeout_seconds = burnin_controller.timeout_minutes * 60  # Convert minutes to seconds
@@ -478,31 +480,35 @@ class TestSTC1685BurnIN(BaseTestCase):
                 # Check 1: SmartCheck failed → stop BurnIN
                 if not smartcheck_failed and smartcheck_controller.status is False:
                     smartcheck_failed = True
-                    logger.LogErr("[TEST_05] SmartCheck status became False!")
-                    logger.LogErr("[TEST_05] Will stop BurnIN in cleanup phase...")
+                    logger.error("[TEST_05] SmartCheck status became False!")
+                    logger.error("[TEST_05] Will stop BurnIN in cleanup phase...")
 
                 # Check 2: BurnIN failed → stop SmartCheck
                 if not burnin_failed and burnin_controller.status is False:
                     burnin_failed = True
-                    logger.LogErr(f"[TEST_05] BurnIN failed (errors: {burnin_controller.error_count})!")
-                    logger.LogErr("[TEST_05] Will stop SmartCheck in cleanup phase...")
+                    logger.error(f"[TEST_05] BurnIN failed (errors: {burnin_controller.error_count})!")
+                    logger.error("[TEST_05] Will stop SmartCheck in cleanup phase...")
 
-                # Check 3: BurnIN completed successfully → stop SmartCheck
-                if not burnin_controller._running and burnin_controller.status is True:
-                    logger.LogEvt("[TEST_05] BurnIN completed successfully")
-                    logger.LogEvt("[TEST_05] Will stop SmartCheck in cleanup phase")
-                    break
+                # Check 3: BurnIN thread ended
+                # Wait briefly to ensure status is updated if there was an error
+                if not burnin_controller.is_alive():
+                    time.sleep(0.5)  # Allow exception handler to update status
+                    if burnin_controller.status is True:
+                        logger.info("[TEST_05] BurnIN completed successfully")
+                        logger.info("[TEST_05] Will stop SmartCheck in cleanup phase")
+                        break
+                    # If status is False, let Check 2 handle it in next iteration
 
                 # Check 4: Both threads finished
                 if not burnin_controller.is_alive() and not smartcheck_controller.is_alive():
-                    logger.LogEvt("[TEST_05] Both threads finished, exiting monitoring loop")
+                    logger.info("[TEST_05] Both threads finished, exiting monitoring loop")
                     break
 
                 # Check 5: Timeout
                 if time.time() - start_time > timeout_seconds:
                     timeout_hit = True
-                    logger.LogErr(f"[TEST_05] Test timeout reached ({timeout_seconds}s)")
-                    logger.LogErr("[TEST_05] Will stop both tasks in cleanup phase...")
+                    logger.error(f"[TEST_05] Test timeout reached ({timeout_seconds}s)")
+                    logger.error("[TEST_05] Will stop both tasks in cleanup phase...")
                     break
 
                 # Sleep before next check
@@ -510,54 +516,54 @@ class TestSTC1685BurnIN(BaseTestCase):
 
         finally:
             # ===== Cleanup =====
-            logger.LogEvt("[TEST_05] Entering cleanup phase...")
+            logger.info("[TEST_05] Entering cleanup phase...")
 
             # Stop both controllers (idempotent - safe to call multiple times)
-            logger.LogEvt("[TEST_05] Stopping BurnINController...")
+            logger.info("[TEST_05] Stopping BurnINController...")
             burnin_controller.stop()
             
-            logger.LogEvt("[TEST_05] Stopping SmartCheckController...")
+            logger.info("[TEST_05] Stopping SmartCheckController...")
             smartcheck_controller.stop()
 
             # Wait for threads to finish
-            logger.LogEvt("[TEST_05] Waiting for BurnINController thread...")
+            logger.info("[TEST_05] Waiting for BurnINController thread...")
             burnin_controller.join(timeout=10)
 
-            logger.LogEvt("[TEST_05] Waiting for SmartCheckController thread...")
+            logger.info("[TEST_05] Waiting for SmartCheckController thread...")
             smartcheck_controller.join(timeout=10)
 
             # Force cleanup if threads are still alive
             if burnin_controller.is_alive():
-                logger.LogErr("[TEST_05] BurnINController thread did not exit cleanly")
+                logger.error("[TEST_05] BurnINController thread did not exit cleanly")
 
             if smartcheck_controller.is_alive():
-                logger.LogErr("[TEST_05] SmartCheckController thread did not exit cleanly, forcing stop")
+                logger.error("[TEST_05] SmartCheckController thread did not exit cleanly, forcing stop")
                 smartcheck_controller.stop_smartcheck_bat(force=True)
                 smartcheck_controller.join(timeout=5)
 
-            logger.LogEvt("[TEST_05] Cleanup completed")
+            logger.info("[TEST_05] Cleanup completed")
 
         # ===== Final Result Determination =====
-        logger.LogEvt("[TEST_05] Determining final test result...")
+        logger.info("[TEST_05] Determining final test result...")
 
         if timeout_hit:
-            logger.LogErr("[TEST_05] FAIL: Test timeout")
+            logger.error("[TEST_05] FAIL: Test timeout")
             pytest.fail("Test timeout: BurnIN and SmartCheck did not complete within expected time")
 
         if burnin_controller.status is False:
-            logger.LogErr(f"[TEST_05] FAIL: BurnIN test failed (errors: {burnin_controller.error_count})")
+            logger.error(f"[TEST_05] FAIL: BurnIN test failed (errors: {burnin_controller.error_count})")
             pytest.fail(f"BurnIN test failed with {burnin_controller.error_count} error(s)")
 
         if smartcheck_controller.status is False:
-            logger.LogErr("[TEST_05] FAIL: SmartCheck detected failure during monitoring")
+            logger.error("[TEST_05] FAIL: SmartCheck detected failure during monitoring")
             pytest.fail("SmartCheck detected SMART errors (status=False)")
 
-        # logger.LogEvt("[TEST_05] ========================================")
-        # logger.LogEvt("[TEST_05] ✓ All tests PASSED")
-        # logger.LogEvt(f"[TEST_05] ✓ BurnIN: Success (errors: {burnin_controller.error_count})")
-        # logger.LogEvt(f"[TEST_05] ✓ SmartCheck: Success (status={smartcheck_controller.status})")
-        # logger.LogEvt("[TEST_05] ========================================")
-        logger.LogEvt("[TEST_05] Test completed successfully")
+        # logger.info("[TEST_05] ========================================")
+        # logger.info("[TEST_05] ✓ All tests PASSED")
+        # logger.info(f"[TEST_05] ✓ BurnIN: Success (errors: {burnin_controller.error_count})")
+        # logger.info(f"[TEST_05] ✓ SmartCheck: Success (status={smartcheck_controller.status})")
+        # logger.info("[TEST_05] ========================================")
+        logger.info("[TEST_05] Test completed successfully")
     
     @pytest.mark.order(6)
     @step(6, "Run CDI after test to compare SMART changes")
@@ -575,7 +581,7 @@ class TestSTC1685BurnIN(BaseTestCase):
 
         If any SMART anomalies are detected, the test will fail.
         """
-        logger.LogEvt("[TEST_06] CDI after test started")
+        logger.info("[TEST_06] CDI after test started")
         
         # Initialize CDI tool
         cdi = CDI.CDI()
@@ -583,39 +589,39 @@ class TestSTC1685BurnIN(BaseTestCase):
         # Load CDI settings from config
         if 'cdi' in self.config:
             cdi.SetConfig(self.config['cdi'])
-            logger.LogEvt("[TEST_06] CDI configuration loaded")
+            logger.info("[TEST_06] CDI configuration loaded")
         else:
             # Use default configuration
             cdi.LogPath = './testlog'
-            logger.LogEvt("[TEST_06] Using default CDI configuration")
+            logger.info("[TEST_06] Using default CDI configuration")
         
         try:
             # ========================================
             # Step 1: Collect C: after data
             # ========================================
-            logger.LogEvt("[TEST_06] Collecting C: CDI after data...")
+            logger.info("[TEST_06] Collecting C: CDI after data...")
             cdi.ScreenShotDriveLetter = 'C:'
             cdi.DiskInfo_txt_name  = 'CDI_after.txt'
             cdi.DiskInfo_json_name = 'CDI_after.json'
             cdi.DiskInfo_png_name  = 'CDI_after.png'
             
-            logger.LogEvt(f"[TEST_06] C: output files:")
-            logger.LogEvt(f"[TEST_06]   - TXT:  {cdi.DiskInfo_txt_name}")
-            logger.LogEvt(f"[TEST_06]   - JSON: {cdi.DiskInfo_json_name}")
-            logger.LogEvt(f"[TEST_06]   - PNG:  {cdi.DiskInfo_png_name}")
+            logger.info(f"[TEST_06] C: output files:")
+            logger.info(f"[TEST_06]   - TXT:  {cdi.DiskInfo_txt_name}")
+            logger.info(f"[TEST_06]   - JSON: {cdi.DiskInfo_json_name}")
+            logger.info(f"[TEST_06]   - PNG:  {cdi.DiskInfo_png_name}")
             
             cdi.RunProcedureParserLog_sync()
-            logger.LogEvt("[TEST_06] C: CDI monitoring completed")
+            logger.info("[TEST_06] C: CDI monitoring completed")
             
             # ========================================
             # Step 2: Compare C: SMART attributes
             # ========================================
-            logger.LogEvt("[TEST_06] ======================================")
-            logger.LogEvt("[TEST_06] Starting comparison of C: SMART attributes...")
-            logger.LogEvt("[TEST_06] ======================================")
+            logger.info("[TEST_06] ======================================")
+            logger.info("[TEST_06] Starting comparison of C: SMART attributes...")
+            logger.info("[TEST_06] ======================================")
             
             # 2.1 Check C: Unsafe Shutdowns should not increase
-            logger.LogEvt("[TEST_06] Checking C: Unsafe Shutdowns...")
+            logger.info("[TEST_06] Checking C: Unsafe Shutdowns...")
             keys = ['Unsafe Shutdowns']
             cdi.DiskInfo_json_name = '.json'
             result, msg = cdi.__CompareSmartValueNoIncrease__(
@@ -623,13 +629,13 @@ class TestSTC1685BurnIN(BaseTestCase):
             )
             
             if not result:
-                logger.LogErr(f"[TEST_06] C: Unsafe Shutdowns validation failed: {msg}")
+                logger.error(f"[TEST_06] C: Unsafe Shutdowns validation failed: {msg}")
                 pytest.fail(f"C: SMART validation failed: {msg}")
             else:
-                logger.LogEvt(f"[TEST_06] ✓ C: Unsafe Shutdowns validation passed: {msg}")
+                logger.info(f"[TEST_06] ✓ C: Unsafe Shutdowns validation passed: {msg}")
             
             # 2.2 Check C: error counts should remain 0
-            logger.LogEvt("[TEST_06] Checking C: error counts...")
+            logger.info("[TEST_06] Checking C: error counts...")
             keys = [
                 'Number of Error Information Log Entries',
                 'Media and Data Integrity Errors'
@@ -638,21 +644,21 @@ class TestSTC1685BurnIN(BaseTestCase):
             result, msg = cdi.__CompareSmartValue__('C:', '', keys, 0)
             
             if not result:
-                logger.LogErr(f"[TEST_06] C: error count validation failed: {msg}")
+                logger.error(f"[TEST_06] C: error count validation failed: {msg}")
                 pytest.fail(f"C: SMART errors: {msg}")
             else:
-                logger.LogEvt(f"[TEST_06] ✓ C: error count validation passed: {msg}")
+                logger.info(f"[TEST_06] ✓ C: error count validation passed: {msg}")
             
             # ========================================
             # Test complete
             # ========================================
-            logger.LogEvt("[TEST_06] ======================================")
-            logger.LogEvt("[TEST_06] All SMART validations passed!")
-            logger.LogEvt("[TEST_06] ======================================")
-            logger.LogEvt("[TEST_06] CDI after test completed")
+            logger.info("[TEST_06] ======================================")
+            logger.info("[TEST_06] All SMART validations passed!")
+            logger.info("[TEST_06] ======================================")
+            logger.info("[TEST_06] CDI after test completed")
             
         except Exception as e:
-            logger.LogErr(f"[TEST_06] CDI test exception: {e}")
+            logger.error(f"[TEST_06] CDI test exception: {e}")
             pytest.fail(f"CDI after test failed: {str(e)}")
 
 

@@ -24,7 +24,7 @@ from typing import Optional, Dict, Any
 # Add parent directories to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from lib.logger import LogEvt, LogErr, LogWarn, LogDebug, logConfig
+from lib.logger import get_module_logger
 from .config import SmartCheckConfig
 from .exceptions import (
     SmartCheckConfigError,
@@ -33,12 +33,8 @@ from .exceptions import (
     SmartCheckRunCardError,
 )
 
-# Initialize logger configuration
-try:
-    logConfig()
-except Exception:
-    # If logger setup fails, fall back to basic logging
-    pass
+# Initialize module-level logger
+logger = get_module_logger(__name__)
 
 
 class SmartCheckController(threading.Thread):
@@ -114,10 +110,10 @@ class SmartCheckController(threading.Thread):
         
         # Validate bat_path and cfg_ini_path exist
         if not os.path.exists(self.bat_path):
-            LogErr(f"SmartCheck.bat not found at: {self.bat_path}")
+            logger.error(f"SmartCheck.bat not found at: {self.bat_path}")
             raise SmartCheckConfigError(f"SmartCheck.bat not found at: {self.bat_path}")
         if not os.path.exists(self.cfg_ini_path):
-            LogErr(f"SmartCheck.ini not found at: {self.cfg_ini_path}")
+            logger.error(f"SmartCheck.ini not found at: {self.cfg_ini_path}")
             raise SmartCheckConfigError(f"SmartCheck.ini not found at: {self.cfg_ini_path}")
         
         # Load default configuration
@@ -146,7 +142,7 @@ class SmartCheckController(threading.Thread):
         if kwargs:
             self.set_config(**kwargs)
         
-        LogEvt(f"SmartCheckController initialized with bat_path={bat_path}, output_dir={output_dir}")
+        logger.info(f"SmartCheckController initialized with bat_path={bat_path}, output_dir={output_dir}")
     
     def load_config_from_json(self, json_path: str) -> None:
         """
@@ -185,7 +181,7 @@ class SmartCheckController(threading.Thread):
             SmartCheckConfig.validate_config(config)
             self.set_config(**config)
             
-            LogEvt(f"Configuration loaded from {json_path}")
+            logger.info(f"Configuration loaded from {json_path}")
             
         except FileNotFoundError:
             raise SmartCheckConfigError(f"JSON configuration file not found: {json_path}")
@@ -218,9 +214,9 @@ class SmartCheckController(threading.Thread):
             for key, value in kwargs.items():
                 if hasattr(self, key):
                     setattr(self, key, value)
-                    LogDebug(f"Configuration updated: {key}={value}")
+                    logger.debug(f"Configuration updated: {key}={value}")
                 else:
-                    LogWarn(f"Unknown configuration parameter ignored: {key}")
+                    logger.warning(f"Unknown configuration parameter ignored: {key}")
             
         except ValueError as e:
             raise SmartCheckConfigError(f"Invalid configuration: {e}")
@@ -288,7 +284,7 @@ class SmartCheckController(threading.Thread):
         if kwargs:
             controller.set_config(**kwargs)
         
-        LogEvt(f"SmartCheckController created from config dict: {bat_path}")
+        logger.info(f"SmartCheckController created from config dict: {bat_path}")
         return controller
     
     def update_smartcheck_ini(self, section: str, key: str, value: str) -> bool:
@@ -328,11 +324,11 @@ class SmartCheckController(threading.Thread):
             with open(self.cfg_ini_path, 'w', encoding='utf-8') as f:
                 config.write(f)
             
-            LogDebug(f"Updated SmartCheck.ini: [{section}] {key}={value}")
+            logger.debug(f"Updated SmartCheck.ini: [{section}] {key}={value}")
             return True
             
         except Exception as e:
-            LogErr(f"Failed to update SmartCheck.ini: {e}")
+            logger.error(f"Failed to update SmartCheck.ini: {e}")
             raise SmartCheckConfigError(f"Failed to update INI file: {e}")
     
     def write_all_config_to_ini(self) -> bool:
@@ -378,11 +374,11 @@ class SmartCheckController(threading.Thread):
             with open(self.cfg_ini_path, 'w', encoding='utf-8') as f:
                 config.write(f)
             
-            LogEvt("All configuration written to SmartCheck.ini")
+            logger.info("All configuration written to SmartCheck.ini")
             return True
             
         except Exception as e:
-            LogErr(f"Failed to write configuration to INI: {e}")
+            logger.error(f"Failed to write configuration to INI: {e}")
             raise SmartCheckConfigError(f"Failed to write INI file: {e}")
     
     def clear_output_dir(self) -> None:
@@ -407,7 +403,7 @@ class SmartCheckController(threading.Thread):
         """
         # Validate output_dir is safe to clear
         if not self.output_dir or self.output_dir.strip() == '':
-            LogWarn("Output directory is empty, skipping clear")
+            logger.warning("Output directory is empty, skipping clear")
             return
         
         # Convert to absolute path and validate
@@ -417,19 +413,19 @@ class SmartCheckController(threading.Thread):
         dangerous_paths = ['/', 'C:\\', 'C:\\Windows', 'C:\\Program Files', 
                           'C:\\Program Files (x86)', os.path.expanduser('~')]
         if abs_output_dir in dangerous_paths or len(abs_output_dir) <= 3:
-            LogErr(f"Refusing to clear dangerous path: {abs_output_dir}")
+            logger.error(f"Refusing to clear dangerous path: {abs_output_dir}")
             raise SmartCheckConfigError(f"Cannot clear dangerous path: {abs_output_dir}")
         
         # Clear the configured output directory
         if os.path.exists(abs_output_dir):
             try:
-                LogDebug(f"Clearing configured output directory: {abs_output_dir}")
+                logger.debug(f"Clearing configured output directory: {abs_output_dir}")
                 self._clear_directory_contents(abs_output_dir)
-                LogEvt(f"Cleared configured output directory: {abs_output_dir}")
+                logger.info(f"Cleared configured output directory: {abs_output_dir}")
             except Exception as e:
-                LogErr(f"Error clearing configured output directory: {e}")
+                logger.error(f"Error clearing configured output directory: {e}")
         else:
-            LogDebug(f"Configured output directory does not exist: {abs_output_dir}")
+            logger.debug(f"Configured output directory does not exist: {abs_output_dir}")
         
         # Also clear SmartCheck.bat's default log directory if it exists
         # Default is: <SmartCheck.bat directory>/log_SmartCheck/
@@ -438,11 +434,11 @@ class SmartCheckController(threading.Thread):
         
         if os.path.exists(default_log_dir) and default_log_dir != abs_output_dir:
             try:
-                LogDebug(f"Clearing default SmartCheck log directory: {default_log_dir}")
+                logger.debug(f"Clearing default SmartCheck log directory: {default_log_dir}")
                 self._clear_directory_contents(default_log_dir)
-                LogEvt(f"Cleared default log directory: {default_log_dir}")
+                logger.info(f"Cleared default log directory: {default_log_dir}")
             except Exception as e:
-                LogWarn(f"Failed to clear default log directory: {e}")
+                logger.warning(f"Failed to clear default log directory: {e}")
     
     def _clear_directory_contents(self, directory: str) -> None:
         """
@@ -457,14 +453,14 @@ class SmartCheckController(threading.Thread):
                 try:
                     if os.path.isfile(item_path) or os.path.islink(item_path):
                         os.unlink(item_path)
-                        LogDebug(f"Deleted file: {item_path}")
+                        logger.debug(f"Deleted file: {item_path}")
                     elif os.path.isdir(item_path):
                         shutil.rmtree(item_path)
-                        LogDebug(f"Deleted directory: {item_path}")
+                        logger.debug(f"Deleted directory: {item_path}")
                 except Exception as e:
-                    LogWarn(f"Failed to delete {item_path}: {e}")
+                    logger.warning(f"Failed to delete {item_path}: {e}")
         except Exception as e:
-            LogErr(f"Error listing directory {directory}: {e}")
+            logger.error(f"Error listing directory {directory}: {e}")
             raise
     
     def ensure_output_dir_exists(self) -> None:
@@ -476,9 +472,9 @@ class SmartCheckController(threading.Thread):
         """
         try:
             os.makedirs(self.output_dir, exist_ok=True)
-            LogDebug(f"Output directory ensured: {self.output_dir}")
+            logger.debug(f"Output directory ensured: {self.output_dir}")
         except Exception as e:
-            LogErr(f"Failed to create output directory: {e}")
+            logger.error(f"Failed to create output directory: {e}")
             raise SmartCheckConfigError(f"Cannot create output directory: {e}")
     
     def start_smartcheck_bat(self) -> bool:
@@ -507,7 +503,7 @@ class SmartCheckController(threading.Thread):
             bat_abs_path = os.path.abspath(self.bat_path)
             bat_dir = os.path.dirname(bat_abs_path)
             
-            LogEvt(f"Starting SmartCheck.bat: {bat_abs_path}")
+            logger.info(f"Starting SmartCheck.bat: {bat_abs_path}")
             
             # Start process in new console window
             # On Windows, we use CREATE_NEW_CONSOLE to run in separate window
@@ -534,11 +530,11 @@ class SmartCheckController(threading.Thread):
                 # Process already terminated
                 raise SmartCheckProcessError(f"SmartCheck.bat terminated immediately with code {self._process.returncode}")
             
-            LogEvt(f"SmartCheck.bat started successfully (PID: {self._process.pid})")
+            logger.info(f"SmartCheck.bat started successfully (PID: {self._process.pid})")
             return True
             
         except Exception as e:
-            LogErr(f"Failed to start SmartCheck.bat: {e}")
+            logger.error(f"Failed to start SmartCheck.bat: {e}")
             raise SmartCheckProcessError(f"Cannot start SmartCheck.bat: {e}")
     
     def _check_process_exists(self, pid: int) -> bool:
@@ -584,24 +580,24 @@ class SmartCheckController(threading.Thread):
             - Cleans up process handle after termination
         """
         if self._process is None:
-            LogDebug("No process to stop")
+            logger.debug("No process to stop")
             return
         
         try:
             # Check if process is still running
             if self._process.poll() is not None:
-                LogEvt(f"Process already terminated with code {self._process.returncode}")
+                logger.info(f"Process already terminated with code {self._process.returncode}")
                 self._process = None
                 return
             
             pid = self._process.pid
-            LogEvt(f"Stopping SmartCheck.bat and child processes (PID: {pid})")
+            logger.info(f"Stopping SmartCheck.bat and child processes (PID: {pid})")
             
             # Strategy 1: Use taskkill /T first to terminate entire process tree
             # This is the most effective way on Windows to kill .bat and all children
             taskkill_success = False
             try:
-                LogDebug(f"Attempting taskkill /T /PID {pid}...")
+                logger.debug(f"Attempting taskkill /T /PID {pid}...")
                 result = subprocess.run(
                     ['taskkill', '/F', '/T', '/PID', str(pid)],
                     capture_output=True,
@@ -610,61 +606,61 @@ class SmartCheckController(threading.Thread):
                 )
                 
                 if result.returncode == 0:
-                    LogEvt("Process tree terminated successfully with taskkill")
+                    logger.info("Process tree terminated successfully with taskkill")
                     taskkill_success = True
                 else:
-                    LogWarn(f"taskkill returned non-zero code: {result.returncode}, stderr: {result.stderr}")
+                    logger.warning(f"taskkill returned non-zero code: {result.returncode}, stderr: {result.stderr}")
                     
             except subprocess.TimeoutExpired:
-                LogWarn("taskkill command timed out")
+                logger.warning("taskkill command timed out")
             except FileNotFoundError:
-                LogWarn("taskkill command not found (not on Windows?)")
+                logger.warning("taskkill command not found (not on Windows?)")
             except Exception as e:
-                LogWarn(f"taskkill failed: {e}")
+                logger.warning(f"taskkill failed: {e}")
             
             # Strategy 2: If taskkill failed or we're forcing, use Python's process control
             if not taskkill_success:
                 if force:
                     # Force kill immediately
-                    LogDebug("Force killing process...")
+                    logger.debug("Force killing process...")
                     self._process.kill()
-                    LogEvt("Process killed forcefully")
+                    logger.info("Process killed forcefully")
                 else:
                     # Try graceful termination first
-                    LogDebug("Attempting graceful termination...")
+                    logger.debug("Attempting graceful termination...")
                     self._process.terminate()
-                    LogEvt("Terminate signal sent")
+                    logger.info("Terminate signal sent")
                     
                     # Wait for process to terminate (up to 5 seconds)
                     try:
                         self._process.wait(timeout=5)
-                        LogEvt("Process terminated gracefully")
+                        logger.info("Process terminated gracefully")
                     except subprocess.TimeoutExpired:
-                        LogWarn("Graceful termination timeout, forcing kill")
+                        logger.warning("Graceful termination timeout, forcing kill")
                         self._process.kill()
                         try:
                             self._process.wait(timeout=2)
-                            LogEvt("Process killed after timeout")
+                            logger.info("Process killed after timeout")
                         except subprocess.TimeoutExpired:
-                            LogErr("Failed to kill process even after timeout")
+                            logger.error("Failed to kill process even after timeout")
                 
                 # Final cleanup: Try taskkill again in case child processes remain
                 try:
-                    LogDebug("Final cleanup with taskkill...")
+                    logger.debug("Final cleanup with taskkill...")
                     subprocess.run(
                         ['taskkill', '/F', '/T', '/PID', str(pid)],
                         capture_output=True,
                         timeout=3
                     )
                 except Exception as e:
-                    LogDebug(f"Final taskkill cleanup: {e}")
+                    logger.debug(f"Final taskkill cleanup: {e}")
             
             # Wait a moment for cleanup
             time.sleep(0.5)
             
             # Verify process is really terminated
             if self._check_process_exists(pid):
-                LogWarn(f"Process {pid} still exists after termination attempts!")
+                logger.warning(f"Process {pid} still exists after termination attempts!")
                 # Last resort: try one more taskkill
                 try:
                     subprocess.run(
@@ -674,19 +670,19 @@ class SmartCheckController(threading.Thread):
                     )
                     time.sleep(0.5)
                     if self._check_process_exists(pid):
-                        LogErr(f"Failed to terminate process {pid} - manual intervention may be required")
+                        logger.error(f"Failed to terminate process {pid} - manual intervention may be required")
                     else:
-                        LogEvt(f"Process {pid} terminated on final attempt")
+                        logger.info(f"Process {pid} terminated on final attempt")
                 except Exception as e:
-                    LogErr(f"Final termination attempt failed: {e}")
+                    logger.error(f"Final termination attempt failed: {e}")
             else:
-                LogEvt(f"Verified: Process {pid} successfully terminated")
+                logger.info(f"Verified: Process {pid} successfully terminated")
             
         except Exception as e:
-            LogErr(f"Error stopping process: {e}")
+            logger.error(f"Error stopping process: {e}")
         finally:
             self._process = None
-            LogEvt("SmartCheck.bat process cleanup completed")
+            logger.info("SmartCheck.bat process cleanup completed")
     
     def find_runcard_ini(self) -> Optional[Path]:
         """
@@ -709,7 +705,7 @@ class SmartCheckController(threading.Thread):
             return self._runcard_path
         
         if not os.path.exists(self.output_dir):
-            LogDebug(f"Output directory does not exist: {self.output_dir}")
+            logger.debug(f"Output directory does not exist: {self.output_dir}")
             return None
         
         try:
@@ -720,7 +716,7 @@ class SmartCheckController(threading.Thread):
                 if 'RunCard.ini' in files:
                     runcard_path = Path(root) / 'RunCard.ini'
                     found_paths.append(runcard_path)
-                    LogDebug(f"Found RunCard.ini at: {runcard_path}")
+                    logger.debug(f"Found RunCard.ini at: {runcard_path}")
             
             if not found_paths:
                 return None
@@ -728,14 +724,14 @@ class SmartCheckController(threading.Thread):
             # If multiple found, return the most recently modified
             if len(found_paths) > 1:
                 found_paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                LogDebug(f"Multiple RunCard.ini found, using most recent: {found_paths[0]}")
+                logger.debug(f"Multiple RunCard.ini found, using most recent: {found_paths[0]}")
             
             # Cache the path
             self._runcard_path = found_paths[0]
             return self._runcard_path
             
         except Exception as e:
-            LogErr(f"Error searching for RunCard.ini: {e}")
+            logger.error(f"Error searching for RunCard.ini: {e}")
             return None
     
     def read_runcard_status(self, runcard_path: Path) -> Dict[str, Any]:
@@ -786,7 +782,7 @@ class SmartCheckController(threading.Thread):
                 'err_msg': config.get('Test Status', 'err_msg', fallback='No Error'),
             }
             
-            LogDebug(f"RunCard status: {status_dict['test_result']}, cycle: {status_dict['cycle']}, err_msg: {status_dict['err_msg']}")
+            logger.debug(f"RunCard status: {status_dict['test_result']}, cycle: {status_dict['cycle']}, err_msg: {status_dict['err_msg']}")
             return status_dict
             
         except configparser.Error as e:
@@ -818,7 +814,7 @@ class SmartCheckController(threading.Thread):
         # Check test_result first
         test_result = status_dict.get('test_result', '').upper()
         if test_result == 'FAILED':
-            LogWarn(f"Test result is FAILED")
+            logger.warning(f"Test result is FAILED")
             return False
         
         # Check error message (case-insensitive)
@@ -829,7 +825,7 @@ class SmartCheckController(threading.Thread):
             return True
         
         # Any other error message indicates failure
-        LogWarn(f"Error detected in RunCard: {status_dict.get('err_msg')}")
+        logger.warning(f"Error detected in RunCard: {status_dict.get('err_msg')}")
         return False
     
     def run(self) -> None:
@@ -863,14 +859,14 @@ class SmartCheckController(threading.Thread):
             - Ensures process cleanup even on exceptions
         """
         start_time = time.time()
-        LogEvt("SmartCheckController thread started")
+        logger.info("SmartCheckController thread started")
         
         # Convert timeout from minutes to seconds for internal use
         timeout_seconds = self.timeout * 60
         
         try:
             # ===== Phase 1: Preparation =====
-            LogEvt("Phase 1: Preparation")
+            logger.info("Phase 1: Preparation")
             
             # Write configuration to SmartCheck.ini FIRST
             # This ensures output_dir is set before clearing
@@ -887,10 +883,10 @@ class SmartCheckController(threading.Thread):
             # Start SmartCheck.bat
             self.start_smartcheck_bat()
             
-            LogEvt(f"SmartCheck.bat started, monitoring for {self.timeout} minutes ({timeout_seconds} seconds)...")
+            logger.info(f"SmartCheck.bat started, monitoring for {self.timeout} minutes ({timeout_seconds} seconds)...")
             
             # ===== Phase 2: Monitoring Loop =====
-            LogEvt("Phase 2: Monitoring")
+            logger.info("Phase 2: Monitoring")
             
             # Track when we started SmartCheck.bat for RunCard.ini timeout
             smartcheck_start_time = time.time()
@@ -900,7 +896,7 @@ class SmartCheckController(threading.Thread):
                 # Check timeout
                 elapsed = time.time() - start_time
                 if elapsed > timeout_seconds:
-                    LogErr(f"Timeout reached ({self.timeout} minutes / {timeout_seconds}s), stopping SmartCheck")
+                    logger.error(f"Timeout reached ({self.timeout} minutes / {timeout_seconds}s), stopping SmartCheck")
                     self.status = False
                     break
                 
@@ -909,11 +905,11 @@ class SmartCheckController(threading.Thread):
                 if not runcard_path:
                     # RunCard.ini not yet created, wait and retry
                     elapsed_since_start = time.time() - smartcheck_start_time
-                    LogDebug(f"RunCard.ini not found yet, waiting... ({elapsed_since_start:.1f}s since start)")
+                    logger.debug(f"RunCard.ini not found yet, waiting... ({elapsed_since_start:.1f}s since start)")
                     
                     # Check if we've exceeded the 5-minute timeout for finding RunCard.ini
                     if elapsed_since_start > runcard_timeout:
-                        LogErr(f"RunCard.ini not found within {runcard_timeout}s (5 minutes), stopping SmartCheck")
+                        logger.error(f"RunCard.ini not found within {runcard_timeout}s (5 minutes), stopping SmartCheck")
                         self.status = False
                         break
                     
@@ -924,57 +920,57 @@ class SmartCheckController(threading.Thread):
                 try:
                     status_dict = self.read_runcard_status(runcard_path)
                 except SmartCheckRunCardError as e:
-                    LogWarn(f"Failed to read RunCard.ini: {e}")
+                    logger.warning(f"Failed to read RunCard.ini: {e}")
                     time.sleep(self.check_interval)
                     continue
                 
                 # Check if status is normal
                 if not self.check_runcard_status(status_dict):
-                    LogErr(f"Error detected in RunCard: {status_dict.get('err_msg')}")
+                    logger.error(f"Error detected in RunCard: {status_dict.get('err_msg')}")
                     self.status = False
                     break
                 
                 # Check if test completed
                 test_result = status_dict.get('test_result', '').upper()
                 if test_result == 'PASSED':
-                    LogEvt("SmartCheck completed successfully (PASSED)")
+                    logger.info("SmartCheck completed successfully (PASSED)")
                     self.status = True
                     break
                 elif test_result == 'FAILED':
-                    LogErr("SmartCheck failed (FAILED)")
+                    logger.error("SmartCheck failed (FAILED)")
                     self.status = False
                     break
                 
                 # Test still ongoing, continue monitoring
-                LogDebug(f"Status: {test_result}, Cycle: {status_dict.get('cycle')}, Elapsed: {elapsed:.1f}s")
+                logger.debug(f"Status: {test_result}, Cycle: {status_dict.get('cycle')}, Elapsed: {elapsed:.1f}s")
                 time.sleep(self.check_interval)
             
             # Check if stopped by user request
             if self._stop_event.is_set():
-                LogEvt("SmartCheck stopped by user request")
+                logger.info("SmartCheck stopped by user request")
                 # Don't set status to False - it should reflect actual test state
                 # If status is still None, it means test was stopped before completion
                 # If status is True/False, keep that value
                 pass
             
         except SmartCheckProcessError as e:
-            LogErr(f"Process error: {e}")
+            logger.error(f"Process error: {e}")
             self.status = False
         except SmartCheckConfigError as e:
-            LogErr(f"Configuration error: {e}")
+            logger.error(f"Configuration error: {e}")
             self.status = False
         except Exception as e:
-            LogErr(f"Unexpected error in SmartCheck thread: {e}", exc_info=True)
+            logger.error(f"Unexpected error in SmartCheck thread: {e}", exc_info=True)
             self.status = False
         finally:
             # ===== Phase 3: Cleanup =====
-            LogEvt("Phase 3: Cleanup")
+            logger.info("Phase 3: Cleanup")
             
             # Always stop the process
             self.stop_smartcheck_bat()
             
             elapsed_total = time.time() - start_time
-            LogEvt(f"SmartCheckController thread finished (Status: {self.status}, Duration: {elapsed_total:.1f}s)")
+            logger.info(f"SmartCheckController thread finished (Status: {self.status}, Duration: {elapsed_total:.1f}s)")
     
     def stop(self) -> None:
         """
@@ -993,7 +989,7 @@ class SmartCheckController(threading.Thread):
             >>> controller.stop()  # Request stop and kill process
             >>> controller.join()  # Wait for thread cleanup
         """
-        LogEvt("Stop requested for SmartCheckController")
+        logger.info("Stop requested for SmartCheckController")
         self._stop_event.set()
         # Immediately stop the process to avoid waiting for sleep interval
         self.stop_smartcheck_bat()
