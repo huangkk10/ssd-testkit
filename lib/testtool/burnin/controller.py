@@ -459,8 +459,12 @@ class BurnInController(threading.Thread):
         logger.info("Starting BurnIN process...")
         
         try:
+            # Initialize process manager if not exists
             if self._process_manager is None:
-                raise BurnInProcessError("Process manager not initialized")
+                self._process_manager = BurnInProcessManager(
+                    install_path=self.install_path,
+                    executable_name=self.executable_name
+                )
             
             # Start the process
             pid = self._process_manager.start_process(
