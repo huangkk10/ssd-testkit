@@ -177,6 +177,18 @@ class SmartCheckController(threading.Thread):
             
             config = data['smartcheck']
             
+            # Try to get testlog path from path_manager (for packaged environment)
+            try:
+                from path_manager import path_manager
+                testlog_dir = str(path_manager.get_testlog_dir())
+            except ImportError:
+                testlog_dir = './testlog'
+            
+            # Replace ./testlog with correct path for packaged environment
+            for key, value in config.items():
+                if isinstance(value, str) and './testlog' in value:
+                    config[key] = value.replace('./testlog', testlog_dir)
+            
             # Validate and apply configuration
             SmartCheckConfig.validate_config(config)
             self.set_config(**config)
@@ -258,6 +270,17 @@ class SmartCheckController(threading.Thread):
             raise SmartCheckConfigError(f"Required key '{bat_path_key}' not found in config")
         if not output_dir:
             raise SmartCheckConfigError(f"Required key '{output_dir_key}' not found in config")
+        
+        # Try to get testlog path from path_manager (for packaged environment)
+        try:
+            from path_manager import path_manager
+            testlog_dir = str(path_manager.get_testlog_dir())
+        except ImportError:
+            testlog_dir = './testlog'
+        
+        # Replace ./testlog with correct path for packaged environment
+        if isinstance(output_dir, str) and './testlog' in output_dir:
+            output_dir = output_dir.replace('./testlog', testlog_dir)
         
         # Derive cfg_ini_path from bat_path (replace .bat with .ini)
         cfg_ini_path = os.path.splitext(bat_path)[0] + '.ini'

@@ -10,6 +10,13 @@ from pathlib import Path
 import re
 import json
 
+# Try to import path_manager for packaged environment support
+try:
+    from path_manager import path_manager
+    TESTLOG_DIR = str(path_manager.get_testlog_dir())
+except ImportError:
+    TESTLOG_DIR = "./testlog"
+
 
 class TestCaseConfiguration:
     """Test case configuration with clear semantic naming"""
@@ -26,13 +33,24 @@ class TestCaseConfiguration:
         self.case_version = "1.0.0"
         self.autoit_version = f"{self.case_id}_v{self.case_version}"
         
-        # Path configurations
-        self.bin_directory = case_root_dir / "bin"
-        self.config_file = case_root_dir / "Config" / "Config.json"
-        self.smicli_executable = case_root_dir / "bin/SmiCli/SmiCli2.exe"
+        # Determine base directory for paths
+        # In packaged environment: use exe directory (flat structure)
+        # In development: use test case directory (original structure)
+        try:
+            from path_manager import path_manager
+            # Packaged environment: bin/Config at exe level
+            base_dir = path_manager.app_dir
+        except ImportError:
+            # Development environment: bin/Config in test directory
+            base_dir = case_root_dir
+        
+        # Path configurations (works for both environments)
+        self.bin_directory = base_dir / "bin"
+        self.config_file = base_dir / "Config" / "Config.json"
+        self.smicli_executable = base_dir / "bin/SmiCli/SmiCli2.exe"
         
         # RunCard configurations
-        self.runcard_log_path = "./testlog"
+        self.runcard_log_path = TESTLOG_DIR
         self.runcard_auto_setup = True
         
         # Log directory configurations

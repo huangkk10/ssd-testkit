@@ -397,11 +397,21 @@ class BurnInController(threading.Thread):
             
             burnin_config = data[config_key]
             
+            # Try to get testlog path from path_manager (for packaged environment)
+            try:
+                from path_manager import path_manager
+                testlog_dir = str(path_manager.get_testlog_dir())
+            except ImportError:
+                testlog_dir = './testlog'
+            
             # Filter out only valid BurnIN controller attributes
             # This prevents errors from legacy or unknown fields in Config.json
             valid_params = {}
             for key, value in burnin_config.items():
                 if hasattr(self, key):
+                    # Replace ./testlog with correct path for packaged environment
+                    if isinstance(value, str) and './testlog' in value:
+                        value = value.replace('./testlog', testlog_dir)
                     valid_params[key] = value
                 else:
                     logger.debug(f"Skipping unknown configuration parameter: {key}")

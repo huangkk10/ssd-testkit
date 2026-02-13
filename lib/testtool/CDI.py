@@ -30,8 +30,15 @@ class ReadMode(enum.Enum):
 class CDI:
 
     def __init__(self):
+        # Try to get testlog path from path_manager (for packaged environment)
+        try:
+            from path_manager import path_manager
+            testlog_dir = str(path_manager.get_testlog_dir())
+        except ImportError:
+            testlog_dir = './testlog'
+        
         self.ExePath = './bin/CrystalDiskInfo/DiskInfo64.exe'
-        self.LogPath = './testlog'
+        self.LogPath = testlog_dir
         self.LogPrefix = ""
         self.ScreenShotDriveLetter = ''
         self.file_rename = ''

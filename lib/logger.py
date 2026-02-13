@@ -28,6 +28,28 @@ import logging
 import datetime
 import sys
 from typing import Optional, Dict
+from pathlib import Path
+
+# Global variable to store log directory (will be set at init time)
+_LOG_DIR = None
+
+def _get_log_dir() -> Path:
+    """
+    Get log directory path dynamically.
+    - In packaged environment: use path_manager
+    - In development: use relative path (supports os.chdir)
+    """
+    global _LOG_DIR
+    
+    # Try to import path_manager for packaged environment
+    try:
+        from path_manager import path_manager
+        return path_manager.get_log_dir()
+    except ImportError:
+        # In development: use relative path (recalculated each time)
+        log_dir = Path('./log')
+        log_dir.mkdir(parents=True, exist_ok=True)
+        return log_dir
 
 
 class Logger:
@@ -87,46 +109,98 @@ class Logger:
         - Console handler for INFO level
         - Common formatter with timestamp
         
+        Note: When working directory changes (e.g., in tests), file handlers
+        will be recreated to write to the new location.
+        
         Example:
             >>> Logger.init_logging()
         """
-        if cls._initialized:
-            return
-        
-        # Ensure log directory exists
-        if not os.path.exists('./log'):
-            os.mkdir('./log')
+        # Get log directory (dynamically calculated based on current working directory)
+        log_dir = _get_log_dir()
+        log_dir_abs = log_dir.resolve()  # Get absolute path for comparison
         
         # Formatter for log messages (includes logger name for module identification)
         formatter = logging.Formatter('[%(levelname)s %(asctime)s] [%(name)s] %(message)s')
         
-        # Main logger configuration
-        main_logger = logging.getLogger('main')
+        # Configure root logger (so all child loggers inherit handlers)
+        root_logger = logging.getLogger()
         
-        # Avoid adding handlers multiple times
-        if not main_logger.handlers:
+        # Remove existing file handlers if log directory changed
+        # (This handles the case where os.chdir() changes working directory)
+        handlers_to_remove = []
+        for handler in root_logger.handlers[:]:  # Use slice to iterate over copy
+            if isinstance(handler, logging.FileHandler):
+                try:
+                    # Check if handler's file is in a different directory
+                    handler_path = Path(handler.baseFilename)
+                    handler_dir_abs = handler_path.resolve().parent
+                    if handler_dir_abs != log_dir_abs:
+                        handlers_to_remove.append(handler)
+                except Exception:
+                    # If we can't determine the path, remove the handler to be safe
+                    handlers_to_remove.append(handler)
+        
+        for handler in handlers_to_remove:
+            try:
+                handler.close()
+                root_logger.removeHandler(handler)
+            except Exception:
+                pass  # Ignore errors during handler removal
+        
+        # Check if we need to add file handlers
+        # Note: We always add our own FileHandlers (log.txt, log.err) even if pytest has its own
+        our_log_file = str(log_dir / "log.txt")
+        our_err_file = str(log_dir / "log.err")
+        
+        has_our_log_handler = any(
+            isinstance(h, logging.FileHandler) and 
+            hasattr(h, 'baseFilename') and 
+            Path(h.baseFilename).name == "log.txt"
+            for h in root_logger.handlers
+        )
+        has_our_err_handler = any(
+            isinstance(h, logging.FileHandler) and 
+            hasattr(h, 'baseFilename') and 
+            Path(h.baseFilename).name == "log.err"
+            for h in root_logger.handlers
+        )
+        has_console_handler = any(isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler) for h in root_logger.handlers)
+        
+        # Debug: print handler info
+        if not has_our_log_handler:
+            print(f"[Logger Debug] Adding log.txt handler to {log_dir}")
+        else:
+            print(f"[Logger Debug] log.txt handler already exists")
+            
+        if not has_our_err_handler:
+            print(f"[Logger Debug] Adding log.err handler to {log_dir}")
+        else:
+            print(f"[Logger Debug] log.err handler already exists")
+        
+        if not has_our_log_handler:
             # INFO log file (append mode to preserve all test logs)
-            log_filename = "./log/log.txt"
-            file_handler = logging.FileHandler(log_filename, mode='a', encoding='utf-8')
+            file_handler = logging.FileHandler(our_log_file, mode='a', encoding='utf-8')
             file_handler.setLevel(logging.INFO)
             file_handler.setFormatter(formatter)
             
+            root_logger.addHandler(file_handler)
+        
+        if not has_our_err_handler:
             # ERROR log file (append mode to preserve all test logs)
-            err_filename = "./log/log.err"
-            err_handler = logging.FileHandler(err_filename, mode='a', encoding='utf-8')
+            err_handler = logging.FileHandler(our_err_file, mode='a', encoding='utf-8')
             err_handler.setLevel(logging.ERROR)
             err_handler.setFormatter(formatter)
             
+            root_logger.addHandler(err_handler)
+        
+        if not has_console_handler:
             # Console output
             console_handler = logging.StreamHandler(sys.stdout)
             console_handler.setLevel(logging.INFO)
             console_handler.setFormatter(formatter)
-            
-            main_logger.addHandler(file_handler)
-            main_logger.addHandler(err_handler)
-            main_logger.addHandler(console_handler)
-            main_logger.setLevel(logging.DEBUG)
+            root_logger.addHandler(console_handler)
         
+        root_logger.setLevel(logging.DEBUG)
         cls._initialized = True
 
 

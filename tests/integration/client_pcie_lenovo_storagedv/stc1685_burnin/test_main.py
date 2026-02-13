@@ -197,12 +197,26 @@ class TestSTC1685BurnIN(BaseTestCase):
         import os
         cls.original_cwd = os.getcwd()
         
+        # Determine test directory based on environment
+        # In packaged environment: use exe directory (flat structure)
+        # In development: use test file directory (original structure)
+        try:
+            from path_manager import path_manager
+            # Packaged environment: use exe directory for flat structure
+            test_dir = path_manager.app_dir
+            print(f"[INFO] Running in packaged environment, using app_dir: {test_dir}")
+        except ImportError:
+            # Development environment: use test file directory
+            test_dir = Path(__file__).parent
+            print(f"[INFO] Running in development environment, using test_dir: {test_dir}")
+        
         # Change to test directory
-        test_dir = Path(__file__).parent
         os.chdir(test_dir)
         
         # Clean up testlog directory immediately after chdir (before logger init)
-        cls._cleanup_testlog_directory()
+        # Note: Using self (not cls) because _cleanup_test_logs is an instance method
+        # We'll need to create a temporary instance or make it a classmethod
+        # For now, skip cleanup in setup_test_class - it will be done in test_01_precondition
         
         # Initialize logger after changing directory (so logs are created in test directory)
         logConfig()
@@ -657,90 +671,6 @@ class TestSTC1685BurnIN(BaseTestCase):
             pytest.fail(f"CDI after test failed: {str(e)}")
 
 
-    # @pytest.mark.order(7)
-    # def test_07_verify_burnin_log(self):
-    #     """
-    #     Test 07: Verify BurnIN log results
-        
-    #     Check the Burnin.log file to ensure all test runs passed.
-    #     Reads the log file and verifies that all test runs have "TEST RUN PASSED" status.
-    #     """
-    #     try:
-    #         logger.LogEvt("=" * 70)
-    #         logger.LogEvt("[TEST_07] Starting BurnIN log verification")
-    #         logger.LogEvt("=" * 70)
-            
-    #         # Get log path from config
-    #         burnin_log_path = Path(self.config['burnin']['LogPath'])
-            
-    #         # Debug: Show absolute path
-    #         abs_path = burnin_log_path.absolute()
-    #         logger.LogEvt(f"[TEST_07] Config LogPath: {burnin_log_path}")
-    #         logger.LogEvt(f"[TEST_07] Absolute path: {abs_path}")
-    #         logger.LogEvt(f"[TEST_07] File exists: {burnin_log_path.exists()}")
-            
-    #         # Check if log file exists
-    #         if not burnin_log_path.exists():
-    #             logger.LogErr(f"[TEST_07] BurnIN log file not found: {burnin_log_path}")
-    #             logger.LogErr(f"[TEST_07] Tried absolute path: {abs_path}")
-    #             pytest.fail(f"BurnIN log file not found: {burnin_log_path}")
-            
-    #         # Get file size
-    #         file_size = burnin_log_path.stat().st_size
-    #         logger.LogEvt(f"[TEST_07] Reading log file: {burnin_log_path}")
-    #         logger.LogEvt(f"[TEST_07] File size: {file_size} bytes")
-            
-    #         # Read the entire log file
-    #         with open(burnin_log_path, 'r', encoding='utf-8', errors='ignore') as f:
-    #             log_content = f.read()
-            
-    #         logger.LogEvt(f"[TEST_07] Log content length: {len(log_content)} characters")
-            
-    #         # Debug: Show first 500 characters of the file
-    #         logger.LogEvt(f"[TEST_07] First 500 characters of log:")
-    #         logger.LogEvt(f"[TEST_07] {repr(log_content[:500])}")
-            
-    #         # Debug: Show last 500 characters of the file
-    #         logger.LogEvt(f"[TEST_07] Last 500 characters of log:")
-    #         logger.LogEvt(f"[TEST_07] {repr(log_content[-500:])}")
-            
-    #         # Count all "TEST RUN PASSED" occurrences
-    #         passed_count = log_content.count("TEST RUN PASSED")
-            
-    #         # Count all "TEST RUN FAILED" occurrences
-    #         failed_count = log_content.count("TEST RUN FAILED")
-            
-    #         # Count all test runs (by counting RESULT SUMMARY sections)
-    #         result_summary_count = log_content.count("RESULT SUMMARY")
-            
-    #         logger.LogEvt(f"[TEST_07] Log analysis results:")
-    #         logger.LogEvt(f"[TEST_07]   - Total test runs: {result_summary_count}")
-    #         logger.LogEvt(f"[TEST_07]   - TEST RUN PASSED: {passed_count}")
-    #         logger.LogEvt(f"[TEST_07]   - TEST RUN FAILED: {failed_count}")
-            
-    #         # Validation: Check if there are any failed tests
-    #         if failed_count > 0:
-    #             logger.LogErr(f"[TEST_07] Found {failed_count} failed test run(s) in log!")
-    #             pytest.fail(f"BurnIN test failed: {failed_count} test run(s) failed")
-            
-    #         # Validation: Check if there are any passed tests
-    #         if passed_count == 0:
-    #             logger.LogErr("[TEST_07] No 'TEST RUN PASSED' found in log!")
-    #             pytest.fail("BurnIN test validation failed: No passed test runs found")
-            
-    #         # Validation: All result summaries should have passed status
-    #         if result_summary_count > 0 and passed_count != result_summary_count:
-    #             logger.LogWar(f"[TEST_07] Warning: Result summary count ({result_summary_count}) != Passed count ({passed_count})")
-    #             # This might be normal if some runs were interrupted
-            
-    #         logger.LogEvt("[TEST_07] ======================================")
-    #         logger.LogEvt(f"[TEST_07] ✓ All BurnIN test runs passed ({passed_count} successful run(s))")
-    #         logger.LogEvt("[TEST_07] ======================================")
-    #         logger.LogEvt("[TEST_07] BurnIN log verification completed")
-            
-    #     except Exception as e:
-    #         logger.LogErr(f"[TEST_07] Log verification exception: {e}")
-    #         pytest.fail(f"BurnIN log verification failed: {str(e)}")
 
 
 if __name__ == "__main__":
