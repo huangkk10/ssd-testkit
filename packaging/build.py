@@ -445,8 +445,10 @@ exe = EXE(
             shutil.copytree(test_src, test_dst, ignore=ignore_test_files)
             print(f"[OK] Copied test files to dist/{subfolder_name}/{test_rel_path}")
 
-            # Also copy parent-level __init__.py and conftest.py files
-            # so that 'from tests.integration.conftest import ...' resolves correctly
+            # Walk up from test_src to project_root, copying __init__.py and
+            # conftest.py for each ancestor package. Ensures the full package
+            # chain has __init__.py so pytest prepend importmode resolves the
+            # project root correctly (prevents fallback to external PYTHONPATH).
             parent = test_src.parent
             while True:
                 try:
@@ -460,25 +462,11 @@ exe = EXE(
                         fdst.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(str(fsrc), str(fdst))
                         print(f"[OK] Copied {rel / fname} to dist")
-                if parent == self.project_root:
-                    break
-                parent = parent.parent
-
-            # Also copy parent-level __init__.py and conftest.py files
-            # so that 'from tests.integration.conftest import ...' resolves correctly
-            parent = test_src.parent
-            while True:
-                try:
-                    rel = parent.relative_to(self.project_root)
-                except ValueError:
-                    break
-                for fname in ('__init__.py', 'conftest.py'):
-                    fsrc = parent / fname
-                    fdst = target_dist_dir / rel / fname
-                    if fsrc.exists() and not fdst.exists():
+                    elif fname == '__init__.py' and not fdst.exists():
+                        # Auto-create empty __init__.py to maintain package chain
                         fdst.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(str(fsrc), str(fdst))
-                        print(f"[OK] Copied {rel / fname} to dist")
+                        fdst.touch()
+                        print(f"[OK] Created empty {rel / fname} in dist")
                 if parent == self.project_root:
                     break
                 parent = parent.parent
