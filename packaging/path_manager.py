@@ -48,9 +48,9 @@ class PathManager:
         
         # Configure sys.path for import resolution
         if self._is_frozen:
-            # In packaged mode: restrict sys.path to only _MEIPASS and app_dir.
-            # This prevents PYTHONPATH (e.g. C:\automation) from shadowing
-            # bundled copies of framework/, lib/, etc. inside the package.
+            # Clear PYTHONPATH env var so pytest cannot re-inject external paths.
+            os.environ.pop('PYTHONPATH', None)
+            # Restrict sys.path to only _MEIPASS and app_dir.
             _keep = {str(self._base_dir), str(self._app_dir)}
             sys.path = [p for p in sys.path if p in _keep or p == '']
             for _d in (str(self._base_dir), str(self._app_dir)):
