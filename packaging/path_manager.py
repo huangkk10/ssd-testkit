@@ -46,10 +46,21 @@ class PathManager:
             # APP_DIR: project root directory (parent of packaging)
             self._app_dir = self._base_dir.parent
         
-        # Add project root to Python path (ensure framework and lib can be imported)
-        project_root = str(self._app_dir)
-        if project_root not in sys.path:
-            sys.path.insert(0, project_root)
+        # Configure sys.path for import resolution
+        if self._is_frozen:
+            # In packaged mode: restrict sys.path to only _MEIPASS and app_dir.
+            # This prevents PYTHONPATH (e.g. C:\automation) from shadowing
+            # bundled copies of framework/, lib/, etc. inside the package.
+            _keep = {str(self._base_dir), str(self._app_dir)}
+            sys.path = [p for p in sys.path if p in _keep or p == '']
+            for _d in (str(self._base_dir), str(self._app_dir)):
+                if _d not in sys.path:
+                    sys.path.insert(0, _d)
+        else:
+            # Development: just ensure project root is on sys.path
+            project_root = str(self._app_dir)
+            if project_root not in sys.path:
+                sys.path.insert(0, project_root)
     
     @property
     def is_frozen(self) -> bool:
