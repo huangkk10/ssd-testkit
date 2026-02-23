@@ -1,0 +1,14 @@
+# PyInstaller packaging configuration file
+# Only configure the core information; others use defaults
+
+# Version and project information
+version: "1.0.0"
+project_name: "RunTest"
+
+# Output folder name (will be combined with version, e.g., stc1685_burnin_v1.0.0)
+# If not specified, will use the last segment of test_projects path
+output_folder_name: "stc1685_burnin"
+
+# Test projects to package
+test_projects:
+  - tests/integration/client_pcie_lenovo_storagedv/stc1685_burnin
