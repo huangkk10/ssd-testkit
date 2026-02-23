@@ -25,6 +25,7 @@ import time
 import threading
 from framework.base_test import BaseTestCase
 from framework.decorators import step
+from framework.test_utils import cleanup_directory
 from lib.testtool import BurnIN  # Old lib - will be replaced
 from lib.testtool.burnin import BurnInController  # New lib
 from lib.testtool import RunCard as RC
@@ -64,41 +65,6 @@ class TestSTC1685BurnIN(BaseTestCase):
         
         # Use library method for clean state check
         return burnin_controller.ensure_clean_state()
-    
-    def _cleanup_cdi_logs(self):
-        """
-        Clean up old CDI logs from previous test runs.
-        
-        Removes and recreates:
-        - testlog/CDILog directory (CDI output files: txt, json, png)
-        """
-        cdi_log_path = Path('./testlog/CDILog')
-        
-        if cdi_log_path.exists():
-            logger.info(f"Removing old CDI logs: {cdi_log_path}")
-            shutil.rmtree(cdi_log_path)
-            logger.info("Old CDI logs removed")
-        
-        cdi_log_path.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Created clean CDI log directory: {cdi_log_path}")
-    
-    def _cleanup_burnin_logs(self):
-        """
-        Clean up old BurnIN logs from previous test runs.
-        
-        Uses BurnInController.cleanup_logs() from library.
-        """
-        BurnInController.cleanup_logs(testlog_path='./testlog')
-    
-    def _cleanup_smartcheck_logs(self):
-        """
-        Clean up old SmartCheck logs from previous test runs.
-        
-        Uses SmartCheckController.cleanup_logs() from library.
-        """
-        SmartCheckController.cleanup_logs(testlog_path='./testlog')
-    
-    
     def _cleanup_test_logs(self):
         """
         Clean up all test logs from previous test runs.
@@ -108,28 +74,22 @@ class TestSTC1685BurnIN(BaseTestCase):
         2. BurnIN logs (testlog/Burnin*)
         3. SmartCheck logs (testlog/SmartCheck*)
         4. Test-specific log directory (log/STC-1685/)
-        5. Recreates testlog base directory
         """
         logger.info("Starting test log cleanup...")
         
-        # Create testlog directory if not exists
-        testlog_path = Path('./testlog')
-        testlog_path.mkdir(parents=True, exist_ok=True)
+        # Ensure testlog base directory exists
+        Path('./testlog').mkdir(parents=True, exist_ok=True)
         
-        # Clean individual tool logs
-        self._cleanup_cdi_logs()
-        self._cleanup_burnin_logs()
-        self._cleanup_smartcheck_logs()
+        # 1. Clean CDI logs using framework utility
+        cleanup_directory('./testlog/CDILog', 'CDI log directory', logger)
         
-        # Clean test-specific log directory
+        # 2-3. Clean BurnIN and SmartCheck logs using library methods
+        BurnInController.cleanup_logs(testlog_path='./testlog')
+        SmartCheckController.cleanup_logs(testlog_path='./testlog')
+        
+        # 4. Clean test-specific log directory
         log_path = self.config.get('log_path', './log/STC-1685')
-        if Path(log_path).exists():
-            logger.info(f"Removing old test log directory: {log_path}")
-            shutil.rmtree(log_path)
-            logger.info("Old test log directory removed")
-        
-        Path(log_path).mkdir(parents=True, exist_ok=True)
-        logger.info(f"Created clean test log directory: {log_path}")
+        cleanup_directory(log_path, 'test log directory', logger)
         
         logger.info("Test log cleanup completed")
     

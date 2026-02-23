@@ -1,44 +1,44 @@
-"""
-通用測試工具函數
+﻿"""
+Common test utility functions
 """
 import shutil
 from pathlib import Path
 import subprocess
 import time
 
-# ========== 環境管理 ==========
+# ========== Environment Management ==========
 def setup_test_environment(log_path: str):
-    """初始化測試環境"""
-    # 清理舊日誌
+    """Initialize test environment"""
+    # Clean old logs
     if Path(log_path).exists():
         shutil.rmtree(log_path)
     
-    # 創建日誌目錄
+    # Create log directory
     Path(log_path).mkdir(parents=True, exist_ok=True)
     print(f"[TestUtils] Test environment initialized: {log_path}")
 
 def cleanup_test_environment():
-    """清理測試環境"""
+    """Clean up test environment"""
     print("[TestUtils] Test environment cleaned up")
 
-# ========== 重啟相關 ==========
+# ========== Reboot Related ==========
 def need_reboot() -> bool:
-    """判斷是否需要重啟（示例實現）"""
-    # 可根據實際需求實現判斷邏輯
+    """Check if reboot is needed (example implementation)"""
+    # Can implement logic based on actual needs
     return False
 
 def reboot_system(delay: int = 10, reason: str = "Test requires reboot", test_file: str = None):
     """
-    重啟系統的便利函數
+    Convenience function for system reboot
     
-    使用方式：
+    Usage:
         from framework.test_utils import reboot_system
         reboot_system(delay=10, reason="After S3/S4 test", test_file=__file__)
     
     Args:
-        delay: 重啟延遲時間（秒）
-        reason: 重啟原因
-        test_file: 當前測試文件路徑（用於重啟後恢復）
+        delay: Reboot delay time (seconds)
+        reason: Reboot reason
+        test_file: Current test file path (for recovery after reboot)
     """
     from framework.reboot_manager import RebootManager
     
@@ -46,18 +46,18 @@ def reboot_system(delay: int = 10, reason: str = "Test requires reboot", test_fi
     mgr = RebootManager()
     mgr.setup_reboot(delay=delay, reason=reason, test_file=test_file)
 
-# ========== 工具執行 ==========
+# ========== Tool Execution ==========
 def run_tool_with_retry(tool_func, max_retry: int = 3, retry_delay: int = 5):
     """
-    帶重試機制的工具執行
+    Tool execution with retry mechanism
     
     Args:
-        tool_func: 工具函數
-        max_retry: 最大重試次數
-        retry_delay: 重試延遲（秒）
+        tool_func: Tool function
+        max_retry: Maximum retry count
+        retry_delay: Retry delay (seconds)
     
     Returns:
-        執行結果
+        Execution result
     """
     for attempt in range(max_retry):
         try:
@@ -70,17 +70,41 @@ def run_tool_with_retry(tool_func, max_retry: int = 3, retry_delay: int = 5):
             else:
                 raise
 
-# ========== 文件操作 ==========
-def ensure_file_exists(file_path: str, timeout: int = 30) -> bool:
+# ========== Directory Management ==========
+def cleanup_directory(path: str, description: str = "directory", logger=None):
     """
-    等待文件生成
+    Common directory cleanup: delete and recreate
     
     Args:
-        file_path: 文件路徑
-        timeout: 超時時間（秒）
+        path: Directory path
+        description: Directory description (for logging)
+        logger: Optional logger object (uses print if not provided)
+    
+    Example:
+        from framework.test_utils import cleanup_directory
+        cleanup_directory('./testlog/CDI', 'CDI log directory', logger)
+    """
+    path_obj = Path(path)
+    log = logger.info if logger else print
+    
+    if path_obj.exists():
+        log(f"[TestUtils] Removing old {description}: {path_obj}")
+        shutil.rmtree(path_obj)
+    
+    path_obj.mkdir(parents=True, exist_ok=True)
+    log(f"[TestUtils] Created clean {description}: {path_obj}")
+
+# ========== File Operations ==========
+def ensure_file_exists(file_path: str, timeout: int = 30) -> bool:
+    """
+    Wait for file generation
+    
+    Args:
+        file_path: File path
+        timeout: Timeout (seconds)
     
     Returns:
-        文件是否存在
+        Whether file exists
     """
     start_time = time.time()
     while time.time() - start_time < timeout:
