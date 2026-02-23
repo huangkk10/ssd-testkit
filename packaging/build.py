@@ -208,7 +208,7 @@ block_cipher = None
 
 a = Analysis(
     ['run_test.py'],
-    pathex=[],
+    pathex=['..'],  # Ensure ssd-testkit root is found before PYTHONPATH entries
     binaries=[],
     datas=[
 {datas_str}
@@ -278,9 +278,16 @@ exe = EXE(
         print()
         
         try:
+            # Remove PYTHONPATH from subprocess env so PyInstaller analysis
+            # does not pick up external paths (e.g. C:\automation) and bundle
+            # wrong versions of framework/, lib/, etc.
+            build_env = os.environ.copy()
+            build_env.pop('PYTHONPATH', None)
+
             result = subprocess.run(
                 cmd,
                 cwd=str(self.packaging_dir),
+                env=build_env,
                 check=True,
             )
             
