@@ -8,6 +8,7 @@ Automates the packaging process with sensible defaults.
 import sys
 import os
 import shutil
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 import subprocess
 import argparse
 from pathlib import Path
@@ -338,6 +339,12 @@ exe = EXE(
         # Move exe to subfolder
         target_exe_file = target_dist_dir / f'{project_name}.exe'
         if exe_file.exists() and exe_file != target_exe_file:
+            if target_exe_file.exists():
+                try:
+                    target_exe_file.unlink()
+                except PermissionError:
+                    import subprocess as _spd
+                    _spd.run(['cmd', '/c', 'del', '/F', '/Q', str(target_exe_file)], check=False)
             shutil.move(str(exe_file), str(target_exe_file))
             print(f"[OK] Moved {project_name}.exe to dist/{subfolder_name}/")
         
@@ -351,19 +358,34 @@ exe = EXE(
         bin_dst = target_dist_dir / 'bin'
         if bin_src.exists():
             if bin_dst.exists():
-                shutil.rmtree(bin_dst)
+                def _force_remove(func, path, exc_info):
+                    import stat as _stat, os as _os
+                    try:
+                        _os.chmod(path, _stat.S_IWRITE)
+                        func(path)
+                    except Exception:
+                        pass
+                shutil.rmtree(bin_dst, onerror=_force_remove)
+                # Fallback: force-remove via cmd if any locked file remains
+                if bin_dst.exists():
+                    import subprocess as _sp
+                    _sp.run(['cmd', '/c', 'rmdir', '/S', '/Q', str(bin_dst)],
+                            check=False)
             
             # Copy with exclusions
             def ignore_venv(dir_path, names):
                 ignored = []
+                blocked_dirs = {'__pycache__', '.pytest_cache', 'venv', '.venv',
+                                'smiwintool_venv'}
                 for name in names:
-                    if 'venv' in name.lower() or name in ['__pycache__', '.pytest_cache']:
+                    full_path = Path(dir_path) / name
+                    if full_path.is_dir() and name.lower() in blocked_dirs:
                         ignored.append(name)
                     elif name.endswith(('.pyc', '.pyo')):
                         ignored.append(name)
                 return ignored
             
-            shutil.copytree(bin_src, bin_dst, ignore=ignore_venv)
+            shutil.copytree(bin_src, bin_dst, ignore=ignore_venv, dirs_exist_ok=True)
             print(f"[OK] Copied bin/ to dist/{subfolder_name}/bin")
         
         # Copy Config from test project to dist subfolder
@@ -437,36 +459,36 @@ exe = EXE(
             print(f"        └── {test_rel_path}/")
     
     def create_release(self):
-        """Create release package."""
+        """Create release package (zips assembled dist subfolder)."""
         if not self.config.get('release', {}).get('create_zip', True):
             return
-        
+
         print("\n" + "=" * 70)
         print("CREATING RELEASE PACKAGE")
         print("=" * 70)
-        
-        # Find the built executable directory
-        exe_name = self.config.get('project_name', 'RunTest')
-        exe_dir = self.dist_dir / exe_name
-        
-        if not exe_dir.exists():
-            print(f"[ERROR] Executable directory not found: {exe_dir}")
+
+        output_folder_name = (
+            self.config.get('output_folder_name', '')
+            or self.config.get('project_name', 'RunTest')
+        )
+        version = self.config.get('version', '1.0.0')
+        subfolder_name = f"{output_folder_name}_v{version}"
+        subfolder_dir = self.dist_dir / subfolder_name
+
+        if not subfolder_dir.exists():
+            print(f"[ERROR] Dist subfolder not found: {subfolder_dir}")
             return
-        
-        # Create release directory
+
         release_dir = self.packaging_dir / 'release'
         release_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Create ZIP
-        version = self.config.get('version', '1.0.0')
-        zip_name = f"{exe_name}_v{version}"
-        zip_path = release_dir / zip_name
-        
+
+        zip_path = release_dir / subfolder_name
         print(f"Creating ZIP: {zip_path}.zip")
-        shutil.make_archive(str(zip_path), 'zip', self.dist_dir, exe_name)
-        
+        shutil.make_archive(str(zip_path), 'zip', str(self.dist_dir), subfolder_name)
+
+        size_mb = Path(str(zip_path) + '.zip').stat().st_size / 1024 / 1024
         print(f"[OK] Release package created: {zip_path}.zip")
-        print(f"  Size: {(zip_path.with_suffix('.zip').stat().st_size / 1024 / 1024):.1f} MB")
+        print(f"  Size: {size_mb:.1f} MB")
 
 
 def parse_args() -> argparse.Namespace:
