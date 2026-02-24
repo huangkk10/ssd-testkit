@@ -360,3 +360,48 @@ class TestCDIControllerIntegration:
         assert ctrl.status is False, (
             f"Expected status=False for missing exe, got {ctrl.status!r}"
         )
+
+    # ------------------------------------------------------------------
+    # T08 – Load configuration from Config.json
+    # ------------------------------------------------------------------
+
+    @pytest.mark.timeout(180)
+    def test_workflow_from_config_json(self, cdi_env, check_environment, clean_log_dir, test_root):
+        """
+        CDIController.load_config_from_json() must correctly map the
+        legacy Config.json keys (ExePath, LogPath, …) to CDIConfig keys,
+        and the full workflow must succeed.
+
+        Uses the centralized integration test Config.json at
+        tests/integration/Config/Config.json, overriding the ExePath to
+        point at the shared unit-test binary so the test is self-contained.
+        """
+        config_path = test_root / "integration" / "Config" / "Config.json"
+        if not config_path.exists():
+            pytest.skip(f"Config.json not found at {config_path}")
+
+        # Build controller with no positional args first
+        controller = CDIController()
+
+        # Load from Config.json (legacy key names)
+        controller.load_config_from_json(str(config_path), config_key='cdi')
+
+        # Override exe path and log dir to match the test environment
+        controller.set_config(
+            executable_path=cdi_env['executable_path'],
+            log_path=str(clean_log_dir),
+            timeout_seconds=cdi_env['timeout'],
+        )
+
+        print(f"\nexecutable_path : {controller._config['executable_path']}")
+        print(f"log_path        : {controller._config['log_path']}")
+        print(f"log_prefix      : {controller._config['log_prefix']}")
+        print(f"drive_letter    : {controller._config['screenshot_drive_letter']}")
+
+        controller.start()
+        controller.join(timeout=cdi_env['timeout'] + 30)
+
+        assert controller.status is True, (
+            f"Workflow failed after loading Config.json. status={controller.status!r}"
+        )
+        assert (clean_log_dir / "DiskInfo.json").exists(), "DiskInfo.json not created"
