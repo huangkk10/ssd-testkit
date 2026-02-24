@@ -29,6 +29,8 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.spec
+# Track our customised spec (has hand-tuned hiddenimports for win32/pywinauto)
+!packaging/run_test.spec
 
 # Installer logs
 pip-log.txt
