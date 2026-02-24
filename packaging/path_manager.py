@@ -50,12 +50,40 @@ class PathManager:
         if self._is_frozen:
             # Clear PYTHONPATH env var so pytest cannot re-inject external paths.
             os.environ.pop('PYTHONPATH', None)
-            # Restrict sys.path to only _MEIPASS and app_dir.
+
+            # Restrict sys.path to _MEIPASS, its sub-directories, and app_dir.
+            # Sub-directories of _MEIPASS (e.g. _MEIPASS\win32\, _MEIPASS\base_library.zip)
+            # must be preserved so that pywin32 (.pyd files in win32\) and
+            # other bundled C extensions remain importable after the
+            # pyi_rth_pywintypes / pyi_rth_inspect runtime hooks have run.
             _keep = {str(self._base_dir), str(self._app_dir)}
-            sys.path = [p for p in sys.path if p in _keep or p == '']
+            _meipass_norm = os.path.normpath(str(self._base_dir)) + os.sep
+            sys.path = [
+                p for p in sys.path
+                if p in _keep
+                or p == ''
+                or os.path.normpath(p).startswith(_meipass_norm)
+            ]
             for _d in (str(self._base_dir), str(self._app_dir)):
                 if _d not in sys.path:
                     sys.path.insert(0, _d)
+
+            # Evict any already-cached modules that came from outside our
+            # allowed paths (e.g. C:\automation). Python caches every import
+            # in sys.modules, so even after fixing sys.path the wrong version
+            # would keep being returned from the cache.
+            _bad_prefixes = ('framework', 'lib', 'tests')
+            _to_delete = []
+            for _mod_name, _mod in sys.modules.items():
+                if not any(_mod_name == p or _mod_name.startswith(p + '.') for p in _bad_prefixes):
+                    continue
+                _mod_file = getattr(_mod, '__file__', None) or ''
+                if not _mod_file:
+                    continue
+                if not any(_mod_file.startswith(d) for d in _keep):
+                    _to_delete.append(_mod_name)
+            for _mod_name in _to_delete:
+                del sys.modules[_mod_name]
         else:
             # Development: just ensure project root is on sys.path
             project_root = str(self._app_dir)
@@ -156,14 +184,22 @@ class PathManager:
     def get_pytest_ini(self) -> Optional[Path]:
         """
         Get pytest.ini path.
-        - Frozen: BASE_DIR/pytest.ini (in _MEIPASS)
+        - Frozen: APP_DIR/pytest.ini (dist folder) first, fallback to BASE_DIR (_MEIPASS)
+          Placing pytest.ini in app_dir sets rootdir = app_dir so pytest does not
+          scan ancestor directories (e.g. C:\\automation) for conftest.py files.
         - Dev: project_root/pytest.ini
         """
         if self._is_frozen:
+            # Prefer pytest.ini in the dist folder (app_dir) so that rootdir is
+            # the dist folder rather than the ephemeral _MEIPASS temp directory.
+            pytest_ini = self._app_dir / 'pytest.ini'
+            if pytest_ini.exists():
+                return pytest_ini
+            # Fallback: bundled copy inside _MEIPASS
             pytest_ini = self._base_dir / 'pytest.ini'
         else:
             pytest_ini = self._app_dir / 'pytest.ini'
-        
+
         return pytest_ini if pytest_ini.exists() else None
     
     def resolve_path(self, relative_path: str) -> Path:

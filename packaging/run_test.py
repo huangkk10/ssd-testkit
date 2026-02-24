@@ -212,6 +212,13 @@ def build_pytest_args(args: argparse.Namespace) -> List[str]:
     pytest_ini = path_manager.get_pytest_ini()
     if pytest_ini:
         pytest_args.extend(['-c', str(pytest_ini)])
+
+    # Explicitly set rootdir to app_dir so pytest conftest.py discovery is
+    # confined to the dist folder and does not walk up into parent directories
+    # (e.g. C:\automation) which may have unrelated conftest.py files that
+    # corrupt sys.path and shadow bundled packages like 'framework'.
+    if path_manager.is_frozen:
+        pytest_args.extend(['--rootdir', str(path_manager.app_dir)])
     
     # Add markers
     if args.markers:
@@ -324,9 +331,9 @@ def main() -> int:
     # Print summary
     print("\n" + "=" * 70)
     if exit_code == 0:
-        print("✓ TESTS PASSED")
+        print("TESTS PASSED")
     else:
-        print(f"✗ TESTS FAILED (exit code: {exit_code})")
+        print(f"TESTS FAILED (exit code: {exit_code})")
     print("=" * 70 + "\n")
     
     return exit_code
