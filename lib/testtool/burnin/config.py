@@ -85,7 +85,7 @@ class BurnInConfig:
     # Value constraints
     PARAM_CONSTRAINTS: Dict[str, Dict[str, Any]] = {
         'test_duration_minutes': {'min': 0, 'max': 10080},  # 0-7 days
-        'timeout_minutes': {'min': 1, 'max': 1440},  # 1-1440 minutes (1 day)
+        'timeout_minutes': {'min': 1, 'max': 10080},  # 1 min - 7 days (same ceiling as test_duration_minutes)
         'check_interval_seconds': {'min': 0.1, 'max': 60},
         'ui_retry_max': {'min': 1, 'max': 300},
         'ui_retry_interval_seconds': {'min': 0.1, 'max': 60},
