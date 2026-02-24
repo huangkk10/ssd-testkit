@@ -1,5 +1,5 @@
 """
-測試裝飾器 - 提供測試步驟管理
+Test Decorators - Provide test step management
 """
 import functools
 import time
@@ -7,10 +7,10 @@ import lib.logger as logger
 
 def step(step_number: int, description: str = ""):
     """
-    測試步驟裝飾器
-    
-    使用方式：
-        @step(1, "初始化測試環境")
+    Test step decorator
+
+    Usage:
+        @step(1, "Initialize test environment")
         def test_01_init(self):
             pass
     """
@@ -37,12 +37,12 @@ def step(step_number: int, description: str = ""):
 
 def require_reboot_after(delay: int = 10):
     """
-    標記測試需要重啟
-    
-    使用方式：
+    Mark test as requiring reboot
+
+    Usage:
         @require_reboot_after(delay=15)
         def test_03_s3_s4(self):
-            # 測試邏輯
+            # Test logic
             pass
     """
     def decorator(func):
@@ -50,7 +50,7 @@ def require_reboot_after(delay: int = 10):
         def wrapper(*args, **kwargs):
             result = func(*args, **kwargs)
             
-            # 測試完成後觸發重啟
+            # Trigger reboot after test completion
             from framework.test_utils import reboot_system
             reboot_system(delay=delay, reason=f"After {func.__name__}")
             
