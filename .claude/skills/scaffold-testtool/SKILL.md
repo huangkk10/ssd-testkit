@@ -93,15 +93,50 @@ Optional (create only if the corresponding module exists):
 
 **For complete templates and examples**, see `references/test_templates.md`
 
-### Step 4 — Verify
+### Step 4 — Generate Integration Test Skeleton
+
+Create `tests/integration/lib/testtool/test_<package_name>/` with:
+
+```
+tests/integration/lib/testtool/test_<package_name>/
+├── __init__.py
+├── conftest.py                          # env fixture + env-var overrides + skip guard
+└── test_<package_name>_workflow.py      # real-executable tests (no mocks)
+```
+
+Also add a `"<package_name>"` section to `tests/integration/Config/Config.json`:
+```json
+"<package_name>": {
+    "ExePath": "./bin/<ToolDir>/<executable>",
+    "LogPath": "./testlog/<Tool>Log",
+    "timeout": 120
+}
+```
+
+**Key rules:**
+- Tool executable path: support `<TOOL>_EXE_PATH` environment variable override; default to `tests/unit/lib/testtool/bin/<ToolDir>/`
+- Use `pytest.skip()` in `check_environment` if executable not found — never fail due to missing binary
+- Tag every test with `@pytest.mark.integration` and `@pytest.mark.requires_<package_name>`
+- **No mocks** — integration tests must run the real executable
+- Each test gets an isolated `clean_log_dir` (timestamped sub-directory)
+
+**For complete templates**, see `references/integration_test_templates.md`
+
+### Step 5 — Verify
 
 After generating:
 ```powershell
 # Check for syntax errors
 python -m py_compile lib/testtool/<package_name>/*.py
 
-# Run generated tests
-python -m pytest tests/unit/lib/<package_name>/ -v
+# Run unit tests
+python -m pytest tests/unit/lib/testtool/test_<package_name>/ -v
+
+# Run integration tests (requires real executable)
+python -m pytest tests/integration/lib/testtool/test_<package_name>/ -v -m "integration"
+
+# Skip integration tests during normal dev
+python -m pytest tests/ -m "not integration"
 ```
 
 ---
@@ -225,15 +260,18 @@ Generate all 7 modules including `ui_monitor.py`.
 
 ## Related Files
 
-- **Template Reference**: `lib/testtool/burnin/` — canonical example package
+- **Template Reference**: `lib/testtool/burnin/` — canonical library package
 - **Secondary Template**: `lib/testtool/smartcheck/` — simpler example (no UI, no install)
-- **Unit Test Reference**: `tests/unit/lib/testtool/test_burnin/` — canonical test suite
+- **Unit Test Reference**: `tests/unit/lib/testtool/test_burnin/` — canonical unit test suite
+- **Integration Test Reference**: `tests/integration/lib/testtool/test_cdi/` — canonical integration test
+- **Shared Integration Config**: `tests/integration/Config/Config.json` — per-tool path config
+- **Shared Integration conftest**: `tests/integration/conftest.py` — `TestCaseConfiguration` class
 - **Logger**: `lib/logger.py` — use `get_module_logger(__name__)` in all modules
-- **Test Base**: `framework/base_test.py` — for integration test scaffolding
 - **Full Schema**: `.claude/skills/scaffold-testtool/references/tool_spec_schema.md`
 - **Burnin Example**: `.claude/skills/scaffold-testtool/references/burnin_example.md`
 - **Module Templates**: `.claude/skills/scaffold-testtool/references/module_templates.md`
-- **Test Templates**: `.claude/skills/scaffold-testtool/references/test_templates.md`
+- **Unit Test Templates**: `.claude/skills/scaffold-testtool/references/test_templates.md`
+- **Integration Test Templates**: `.claude/skills/scaffold-testtool/references/integration_test_templates.md`
 
 ## Important Notes
 
