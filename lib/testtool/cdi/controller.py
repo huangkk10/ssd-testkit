@@ -279,6 +279,82 @@ class CDIController(threading.Thread):
         """Update runtime configuration."""
         self._config = CDIConfig.merge_config(self._config, kwargs)
 
+    def load_config_from_json(self, json_path: str, config_key: str = 'cdi') -> None:
+        """
+        Load CDI configuration from a Config.json file.
+
+        Reads the specified key from the JSON file and maps the legacy
+        CrystalDiskInfo field names to the CDIConfig parameter names:
+
+        +------------------------+-----------------------------+
+        | Config.json key        | CDIConfig key               |
+        +------------------------+-----------------------------+
+        | ExePath                | executable_path             |
+        | LogPath                | log_path                    |
+        | LogPrefix              | log_prefix                  |
+        | ScreenShotDriveLetter  | screenshot_drive_letter     |
+        +------------------------+-----------------------------+
+
+        Unknown or unmapped keys are silently skipped.
+
+        Args:
+            json_path:  Path to the JSON configuration file.
+            config_key: Top-level key that contains the CDI section
+                        (default: 'cdi').
+
+        Raises:
+            CDIConfigError: If the file is missing, not valid JSON, or the
+                            config_key is absent.
+
+        Example:
+            >>> controller = CDIController()
+            >>> controller.load_config_from_json('./Config/Config.json')
+            >>> controller.start()
+        """
+        # Legacy key → CDIConfig key mapping
+        _KEY_MAP: Dict[str, str] = {
+            'ExePath':               'executable_path',
+            'LogPath':               'log_path',
+            'LogPrefix':             'log_prefix',
+            'ScreenShotDriveLetter': 'screenshot_drive_letter',
+        }
+
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            raise CDIConfigError(f"Config file not found: {json_path}")
+        except json.JSONDecodeError as exc:
+            raise CDIConfigError(f"Invalid JSON in {json_path}: {exc}")
+
+        if config_key not in data:
+            raise CDIConfigError(
+                f"Key '{config_key}' not found in {json_path}"
+            )
+
+        raw = data[config_key]
+
+        # Resolve testlog path for packaged environments
+        try:
+            from path_manager import path_manager
+            testlog_dir = str(path_manager.get_testlog_dir())
+        except ImportError:
+            testlog_dir = './testlog'
+
+        mapped: Dict[str, Any] = {}
+        for raw_key, value in raw.items():
+            cdi_key = _KEY_MAP.get(raw_key, raw_key)  # fall back to same name
+            if cdi_key not in CDIConfig.VALID_PARAMS:
+                logger.debug(f"CDIController.load_config_from_json: skipping unknown key '{raw_key}'")
+                continue
+            if isinstance(value, str) and './testlog' in value:
+                value = value.replace('./testlog', testlog_dir)
+            mapped[cdi_key] = value
+
+        self.set_config(**mapped)
+        logger.info(f"CDIController: config loaded from {json_path} (key='{config_key}')")
+        logger.debug(f"CDIController: applied config: {mapped}")
+
     @property
     def status(self) -> Optional[bool]:
         """
