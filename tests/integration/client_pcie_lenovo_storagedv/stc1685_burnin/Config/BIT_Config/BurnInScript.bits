@@ -1,7 +1,0 @@
-
-        LOAD "c:\automation\ssd-testkit\tests\integration\client_pcie_lenovo_storagedv\stc1685_burnin\Config\BIT_Config\BurnInScript.bitcfg" 
-        SETLOG LOG yes Name "c:\automation\ssd-testkit\tests\integration\client_pcie_lenovo_storagedv\stc1685_burnin\testlog\Burnin.log" TIME no REPORT text
-        SETDURATION 1
-        SETDISK DISK D:
-        RUN DISK
-        
