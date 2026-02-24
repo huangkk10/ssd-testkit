@@ -1,3 +1,24 @@
+"""
+DEPRECATED: lib/testtool/CDI.py
+
+This monolithic file has been migrated to the structured sub-package:
+    lib/testtool/cdi/
+
+Please update your imports to:
+    from lib.testtool.cdi import CDIController, CDIConfig
+
+This file is kept for backward compatibility only and will be removed in a
+future release.
+"""
+
+import warnings
+warnings.warn(
+    "lib.testtool.CDI is deprecated and will be removed in a future release. "
+    "Use 'from lib.testtool.cdi import CDIController' instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 import lib.logger as logger
 import subprocess
 import os
