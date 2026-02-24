@@ -690,7 +690,21 @@ exe = EXE(
 
         zip_path = release_dir / subfolder_name
         print(f"Creating ZIP: {zip_path}.zip")
-        shutil.make_archive(str(zip_path), 'zip', str(self.dist_dir), subfolder_name)
+
+        # Temporarily restore original stdout/stderr during make_archive.
+        # The _Tee wrapper's fileno() delegation can cause zipfile's internal
+        # file-I/O to truncate the ZIP if it flushes through the wrong fd.
+        _tee_stdout = sys.stdout
+        _tee_stderr = sys.stderr
+        _orig = getattr(_tee_stdout, '_streams', None)
+        if _orig:
+            sys.stdout = _orig[0]
+            sys.stderr = getattr(_tee_stderr, '_streams', [_tee_stderr])[0]
+        try:
+            shutil.make_archive(str(zip_path), 'zip', str(self.dist_dir), subfolder_name)
+        finally:
+            sys.stdout = _tee_stdout
+            sys.stderr = _tee_stderr
 
         size_mb = Path(str(zip_path) + '.zip').stat().st_size / 1024 / 1024
         print(f"[OK] Release package created: {zip_path}.zip")
