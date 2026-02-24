@@ -67,11 +67,31 @@ Generate each file in this order:
 
 ### Step 3 — Generate Test Skeleton
 
-Create `tests/unit/lib/<package_name>/` with:
-- `__init__.py`
-- `test_config.py` — unit tests for `<Tool>Config`
-- `test_exceptions.py` — unit tests for exception hierarchy
-- `test_controller.py` — unit tests for `<Tool>Controller` (mocked process)
+Create `tests/unit/lib/testtool/test_<package_name>/` with:
+
+```
+tests/unit/lib/testtool/test_<package_name>/
+├── __init__.py           # empty, required for pytest discovery
+├── conftest.py           # shared fixtures (temp_dir, sample_config)
+├── test_exceptions.py    # pytest style — raise + inheritance for every exception class
+├── test_config.py        # pytest style — get_default_config / validate / merge
+└── test_controller.py    # unittest style — mocked dependencies, init/status/stop/run
+```
+
+Optional (create only if the corresponding module exists):
+- `test_process_manager.py` — if `requires_install: true`
+- `test_script_generator.py` — if `has_script_generator: true`
+- `test_ui_monitor.py` — if `has_ui: true`
+
+**Key rules:**
+- `test_exceptions.py` / `test_config.py` → use **pytest** class style
+- `test_controller.py` → use **unittest.TestCase** style with `setUp` / `tearDown`
+- **Never** call real executables or touch the real file system — mock everything
+- Patch `pathlib.Path.exists`, `subprocess.Popen`, sub-components as needed
+- `status` property: assert `None` before `start()`, `True`/`False` after `join()`
+- Shared fixtures go in `conftest.py`; adapt `sample_config` to tool's required params
+
+**For complete templates and examples**, see `references/test_templates.md`
 
 ### Step 4 — Verify
 
@@ -207,11 +227,13 @@ Generate all 7 modules including `ui_monitor.py`.
 
 - **Template Reference**: `lib/testtool/burnin/` — canonical example package
 - **Secondary Template**: `lib/testtool/smartcheck/` — simpler example (no UI, no install)
+- **Unit Test Reference**: `tests/unit/lib/testtool/test_burnin/` — canonical test suite
 - **Logger**: `lib/logger.py` — use `get_module_logger(__name__)` in all modules
 - **Test Base**: `framework/base_test.py` — for integration test scaffolding
 - **Full Schema**: `.claude/skills/scaffold-testtool/references/tool_spec_schema.md`
 - **Burnin Example**: `.claude/skills/scaffold-testtool/references/burnin_example.md`
 - **Module Templates**: `.claude/skills/scaffold-testtool/references/module_templates.md`
+- **Test Templates**: `.claude/skills/scaffold-testtool/references/test_templates.md`
 
 ## Important Notes
 
