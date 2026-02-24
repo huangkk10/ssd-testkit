@@ -26,7 +26,6 @@ import threading
 from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.test_utils import cleanup_directory
-from lib.testtool import BurnIN  # Old lib - will be replaced
 from lib.testtool.burnin import BurnInController  # New lib
 from lib.testtool import RunCard as RC
 import lib.testtool.DiskPrd as DiskPrd
