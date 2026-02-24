@@ -246,9 +246,30 @@ class BurnInProcessManager:
         uninstaller = self.install_path / "unins000.exe"
         
         if not uninstaller.exists():
-            raise BurnInInstallError(
-                f"Uninstaller not found: {uninstaller}"
+            # Fallback: no uninstaller (manually copied), kill process then force remove directory
+            import shutil
+            import psutil
+            logger.warning(
+                f"Uninstaller not found: {uninstaller}. "
+                f"Falling back to force-removing install directory."
             )
+            # Kill any running bit.exe / bit64.exe before removing
+            for proc in psutil.process_iter(['name', 'exe']):
+                try:
+                    if proc.info['name'] and proc.info['name'].lower() in ('bit.exe', 'bit64.exe'):
+                        logger.warning(f"Killing running BurnIN process: PID {proc.pid}")
+                        proc.kill()
+                        proc.wait(timeout=10)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            try:
+                shutil.rmtree(self.install_path)
+                logger.info(f"Forcefully removed install directory: {self.install_path}")
+                return True
+            except Exception as e:
+                raise BurnInInstallError(
+                    f"Uninstaller not found and force removal failed: {e}"
+                )
         
         try:
             # Run uninstaller silently
