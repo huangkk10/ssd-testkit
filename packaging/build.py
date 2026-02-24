@@ -375,9 +375,29 @@ exe = EXE(
         # Combine with version
         version = self.config.get('version', '1.0.0')
         subfolder_name = f"{output_folder_name}_v{version}"
-        
-        # Create subfolder in dist
         target_dist_dir = dist_dir / subfolder_name
+
+        # Wipe the entire target dist subfolder so every build starts clean.
+        # This prevents stale files from previous builds accumulating.
+        if target_dist_dir.exists():
+            print(f"Removing old dist folder: {target_dist_dir}")
+
+            def _force_remove_all(func, path, exc_info):
+                import stat as _stat
+                try:
+                    os.chmod(path, _stat.S_IWRITE)
+                    func(path)
+                except Exception:
+                    pass
+
+            shutil.rmtree(target_dist_dir, onerror=_force_remove_all)
+            # Fallback via cmd for any kernel-locked files (e.g. .sys drivers)
+            if target_dist_dir.exists():
+                import subprocess as _sp
+                _sp.run(['cmd', '/c', 'rmdir', '/S', '/Q', str(target_dist_dir)],
+                        check=False)
+
+        # (Re)create the now-empty target directory
         target_dist_dir.mkdir(parents=True, exist_ok=True)
         print(f"[OK] Created target directory: dist/{subfolder_name}")
         
@@ -416,7 +436,7 @@ exe = EXE(
                     import subprocess as _sp
                     _sp.run(['cmd', '/c', 'rmdir', '/S', '/Q', str(bin_dst)],
                             check=False)
-            
+
             # Copy with exclusions
             def ignore_venv(dir_path, names):
                 ignored = []
@@ -429,8 +449,36 @@ exe = EXE(
                     elif name.endswith(('.pyc', '.pyo')):
                         ignored.append(name)
                 return ignored
-            
-            shutil.copytree(bin_src, bin_dst, ignore=ignore_venv, dirs_exist_ok=True)
+
+            # Custom copy: if a file is locked by the Windows kernel (e.g.
+            # WinIoEx.sys loaded as a driver service), stop+delete the driver
+            # service to release the lock, then retry the copy.
+            def _safe_copy2(src, dst):
+                try:
+                    shutil.copy2(src, dst)
+                except PermissionError:
+                    fname = os.path.basename(src)
+                    if fname.lower().endswith('.sys'):
+                        print(f"  [INFO] {fname} is locked. Attempting to unload driver...")
+                        if self._unload_kernel_driver(src):
+                            # Short pause to let Windows release the handle
+                            import time
+                            time.sleep(1)
+                            try:
+                                shutil.copy2(src, dst)
+                                print(f"  [OK] {fname} copied after driver unload")
+                                return
+                            except PermissionError:
+                                pass
+                        # Unload failed or retry still denied – keep existing copy
+                        if os.path.exists(dst):
+                            print(f"  [SKIP] {fname} still locked after unload attempt. "
+                                  f"Existing copy kept. Reboot if you need to update it.")
+                            return
+                    raise
+
+            shutil.copytree(bin_src, bin_dst, ignore=ignore_venv,
+                            copy_function=_safe_copy2, dirs_exist_ok=True)
             print(f"[OK] Copied bin/ to dist/{subfolder_name}/bin")
         
         # Copy Config from test project to dist subfolder
@@ -539,6 +587,73 @@ exe = EXE(
         if test_dst.exists():
             print(f"        +-- {test_rel_path}/")
     
+    def _unload_kernel_driver(self, sys_path: str) -> bool:
+        """
+        Stop and delete the kernel driver service that is locking a .sys file.
+
+        Searches HKLM\\SYSTEM\\CurrentControlSet\\Services for a service whose
+        ImagePath contains the filename, then runs 'sc stop' + 'sc delete'.
+
+        Returns True if the driver was successfully unloaded.
+        """
+        import winreg
+        import subprocess as _sp
+
+        sys_filename = os.path.basename(sys_path).lower()
+        service_name = None
+
+        # --- Search registry for the service that owns this .sys file ---
+        try:
+            svc_key = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r'SYSTEM\CurrentControlSet\Services'
+            )
+            idx = 0
+            while True:
+                try:
+                    name = winreg.EnumKey(svc_key, idx)
+                    sub = winreg.OpenKey(svc_key, name)
+                    try:
+                        img, _ = winreg.QueryValueEx(sub, 'ImagePath')
+                        if sys_filename in img.lower():
+                            service_name = name
+                    except FileNotFoundError:
+                        pass
+                    finally:
+                        winreg.CloseKey(sub)
+                    if service_name:
+                        break
+                    idx += 1
+                except OSError:
+                    break
+            winreg.CloseKey(svc_key)
+        except Exception as e:
+            print(f"  [WARNING] Registry search failed: {e}")
+            return False
+
+        if not service_name:
+            print(f"  [WARNING] No driver service found for {sys_filename}")
+            return False
+
+        print(f"  [INFO] Found kernel driver service: {service_name}")
+
+        # --- Stop the service ---
+        r = _sp.run(['sc', 'stop', service_name],
+                    capture_output=True, text=True)
+        # 1062 = ERROR_SERVICE_NOT_ACTIVE (already stopped)
+        if r.returncode not in (0, 1062):
+            print(f"  [WARNING] sc stop {service_name} failed: {r.stdout.strip()}")
+
+        # --- Delete (unregister) the service so Windows releases the file ---
+        r = _sp.run(['sc', 'delete', service_name],
+                    capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"  [WARNING] sc delete {service_name} failed: {r.stdout.strip()}")
+            return False
+
+        print(f"  [OK] Kernel driver service '{service_name}' stopped and deleted")
+        return True
+
     def create_release(self):
         """Create release package (zips assembled dist subfolder)."""
         if not self.config.get('release', {}).get('create_zip', True):
@@ -614,6 +729,45 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     """Main entry point."""
+    # Tee all stdout/stderr to build_output.log in the packaging directory
+    # so every build automatically produces a log file alongside console output.
+    import io
+
+    class _Tee:
+        def __init__(self, *streams):
+            self._streams = streams
+        def write(self, data):
+            for s in self._streams:
+                try:
+                    s.write(data)
+                except Exception:
+                    pass
+        def flush(self):
+            for s in self._streams:
+                try:
+                    s.flush()
+                except Exception:
+                    pass
+        def fileno(self):
+            return self._streams[0].fileno()
+
+    log_path = Path(__file__).parent / 'build_output.log'
+    _log_file = open(log_path, 'w', encoding='utf-8', errors='replace')
+    _orig_stdout = sys.stdout
+    _orig_stderr = sys.stderr
+    sys.stdout = _Tee(_orig_stdout, _log_file)
+    sys.stderr = _Tee(_orig_stderr, _log_file)
+
+    try:
+        return _main_impl()
+    finally:
+        sys.stdout = _orig_stdout
+        sys.stderr = _orig_stderr
+        _log_file.close()
+
+
+def _main_impl() -> int:
+    """Actual build logic (called by main after Tee is set up)."""
     print("=" * 70)
     print("SSD-TestKit PyInstaller Build Script")
     print("=" * 70)
