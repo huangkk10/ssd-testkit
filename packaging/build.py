@@ -343,6 +343,30 @@ exe = EXE(
             print(f"\n[ERROR] Build error: {e}")
             return False
     
+    def _get_release_name(self) -> str:
+        """
+        Return the dist subfolder / ZIP base name.
+
+        Priority:
+          1. ``release_name`` in build_config.yaml (if non-empty)
+             - ``{date}`` is replaced with today's date in YYYYMMDD format.
+          2. Fallback: ``{output_folder_name}_v{version}``
+        """
+        from datetime import date as _date
+
+        release_name = self.config.get('release_name', '').strip()
+        if release_name:
+            today = _date.today().strftime('%Y%m%d')
+            return release_name.replace('{date}', today)
+
+        # Default: stc1685_burnin_v1.0.0
+        output_folder_name = self.config.get('output_folder_name', '')
+        if not output_folder_name:
+            test_projects = self.config.get('test_projects', [])
+            output_folder_name = Path(test_projects[0]).name if test_projects else 'RunTest'
+        version = self.config.get('version', '1.0.0')
+        return f"{output_folder_name}_v{version}"
+
     def _post_process_dist(self):
         """Post-process dist directory: copy bin and Config from test project to dist subfolder."""
         import shutil
@@ -365,16 +389,7 @@ exe = EXE(
             print("[WARNING] No test projects configured")
             return
         
-        # Get output folder name from config or extract from test project path
-        output_folder_name = self.config.get('output_folder_name', '')
-        if not output_folder_name:
-            # Fallback: extract subfolder name from test project path (last segment)
-            test_project_rel = test_projects[0]
-            output_folder_name = Path(test_project_rel).name
-        
-        # Combine with version
-        version = self.config.get('version', '1.0.0')
-        subfolder_name = f"{output_folder_name}_v{version}"
+        subfolder_name = self._get_release_name()
         target_dist_dir = dist_dir / subfolder_name
 
         # Wipe the entire target dist subfolder so every build starts clean.
@@ -663,12 +678,7 @@ exe = EXE(
         print("CREATING RELEASE PACKAGE")
         print("=" * 70)
 
-        output_folder_name = (
-            self.config.get('output_folder_name', '')
-            or self.config.get('project_name', 'RunTest')
-        )
-        version = self.config.get('version', '1.0.0')
-        subfolder_name = f"{output_folder_name}_v{version}"
+        subfolder_name = self._get_release_name()
         subfolder_dir = self.dist_dir / subfolder_name
 
         if not subfolder_dir.exists():
