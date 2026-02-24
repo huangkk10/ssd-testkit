@@ -9,6 +9,21 @@ project_name: "RunTest"
 # If not specified, will use the last segment of test_projects path
 output_folder_name: "stc1685_burnin"
 
+# Release package name override.
+# If set, this value is used as the dist subfolder name AND the ZIP filename
+# instead of the default "{output_folder_name}_v{version}" pattern.
+# Supports the {date} placeholder which expands to today's date (YYYYMMDD).
+#
+# Examples:
+#   release_name: "STC-1691_S3_S4_Cycling_test_{date}"
+#     → STC-1691_S3_S4_Cycling_test_20260203
+#
+#   release_name: "STC-1691_S3_S4_Cycling_test_20260203"
+#     → STC-1691_S3_S4_Cycling_test_20260203  (fixed, no date substitution)
+#
+# Comment out or leave empty to use the default naming.
+release_name: "STC-1685_Burnin_test_{date}"
+
 # Test projects to package
 test_projects:
   - tests/integration/client_pcie_lenovo_storagedv/stc1685_burnin
