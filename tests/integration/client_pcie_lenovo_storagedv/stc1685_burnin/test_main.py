@@ -275,8 +275,8 @@ class TestSTC1685BurnIN(BaseTestCase):
         cdi.load_config_from_json('./Config/Config.json', config_key='cdi')
 
         # Override per-snapshot filenames (empty prefix, full filenames)
+        # Note: screenshot_drive_letter is already loaded from Config.json (ScreenShotDriveLetter)
         cdi.set_config(
-            screenshot_drive_letter='C:',
             diskinfo_txt_name='CDI_before.txt',
             diskinfo_json_name='CDI_before.json',
             diskinfo_png_name='CDI_before.png',
@@ -491,8 +491,8 @@ class TestSTC1685BurnIN(BaseTestCase):
             # Step 1: Collect C: after data
             # ========================================
             logger.info("[TEST_06] Collecting C: CDI after data...")
+            # Note: screenshot_drive_letter is already loaded from Config.json (ScreenShotDriveLetter)
             cdi.set_config(
-                screenshot_drive_letter='C:',
                 diskinfo_txt_name='CDI_after.txt',
                 diskinfo_json_name='CDI_after.json',
                 diskinfo_png_name='CDI_after.png',
