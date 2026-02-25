@@ -30,7 +30,7 @@ from lib.testtool.burnin import BurnInController  # New lib
 from lib.testtool import RunCard as RC
 import lib.testtool.DiskPrd as DiskPrd
 from lib.testtool.smartcheck import SmartCheckController
-import lib.testtool.CDI as CDI
+from lib.testtool.cdi import CDIController  # New CDI lib
 from lib.logger import get_module_logger, logConfig
 
 logger = get_module_logger(__name__)
@@ -268,40 +268,35 @@ class TestSTC1685BurnIN(BaseTestCase):
         If any SMART errors are detected, the test will fail.
         """
         logger.info("[TEST_04] CDI before test started")
-        
-        # Initialize CDI tool
-        cdi = CDI.CDI()
-        
-        # Load CDI settings from config
-        if 'cdi' in self.config:
-            cdi.SetConfig(self.config['cdi'])
-            logger.info("[TEST_04] CDI configuration loaded")
-        else:
-            # Use default configuration
-            cdi.LogPath = './testlog'
-            logger.info("[TEST_04] Using default CDI configuration")
-        
-        # Set CDI output filenames (before baseline)
-        cdi.ScreenShotDriveLetter = 'C:'
-        cdi.DiskInfo_txt_name  = 'CDI_before.txt'
-        cdi.DiskInfo_json_name = 'CDI_before.json'
-        cdi.DiskInfo_png_name  = 'CDI_before.png'
-        
+
+        # Build CDIController, load settings from Config.json (legacy key mapping
+        # is handled automatically by load_config_from_json)
+        cdi = CDIController()
+        cdi.load_config_from_json('./Config/Config.json', config_key='cdi')
+
+        # Override per-snapshot filenames (empty prefix, full filenames)
+        cdi.set_config(
+            screenshot_drive_letter='C:',
+            diskinfo_txt_name='CDI_before.txt',
+            diskinfo_json_name='CDI_before.json',
+            diskinfo_png_name='CDI_before.png',
+        )
+
         logger.info(f"[TEST_04] CDI output files:")
-        logger.info(f"[TEST_04]   - TXT:  {cdi.DiskInfo_txt_name}")
-        logger.info(f"[TEST_04]   - JSON: {cdi.DiskInfo_json_name}")
-        logger.info(f"[TEST_04]   - PNG:  {cdi.DiskInfo_png_name}")
-        
-        try:
-            # Run CDI monitoring (synchronous)
-            logger.info("[TEST_04] Executing CDI monitoring...")
-            cdi.RunProcedureParserLog_sync()
-            logger.info("[TEST_04] CDI monitoring completed")
-            logger.info("[TEST_04] CDI before baseline data saved")
-            
-        except Exception as e:
-            logger.error(f"[TEST_04] CDI test exception: {e}")
-            pytest.fail(f"CDI before test failed: {str(e)}")
+        logger.info(f"[TEST_04]   - TXT:  {cdi._config['diskinfo_txt_name']}")
+        logger.info(f"[TEST_04]   - JSON: {cdi._config['diskinfo_json_name']}")
+        logger.info(f"[TEST_04]   - PNG:  {cdi._config['diskinfo_png_name']}")
+
+        # Run CDI workflow in thread and block until done
+        logger.info("[TEST_04] Executing CDI monitoring...")
+        cdi.start()
+        cdi.join(timeout=120)
+
+        if cdi.status is not True:
+            pytest.fail("CDI before test failed (controller.status is not True)")
+
+        logger.info("[TEST_04] CDI monitoring completed")
+        logger.info("[TEST_04] CDI before baseline data saved")
     
     @pytest.mark.order(5)
     @step(5, "Run BurnIN and SmartCheck concurrently")
@@ -486,73 +481,74 @@ class TestSTC1685BurnIN(BaseTestCase):
         If any SMART anomalies are detected, the test will fail.
         """
         logger.info("[TEST_06] CDI after test started")
-        
-        # Initialize CDI tool
-        cdi = CDI.CDI()
-        
-        # Load CDI settings from config
-        if 'cdi' in self.config:
-            cdi.SetConfig(self.config['cdi'])
-            logger.info("[TEST_06] CDI configuration loaded")
-        else:
-            # Use default configuration
-            cdi.LogPath = './testlog'
-            logger.info("[TEST_06] Using default CDI configuration")
-        
+
+        # Build CDIController, load settings from Config.json
+        cdi = CDIController()
+        cdi.load_config_from_json('./Config/Config.json', config_key='cdi')
+
         try:
             # ========================================
             # Step 1: Collect C: after data
             # ========================================
             logger.info("[TEST_06] Collecting C: CDI after data...")
-            cdi.ScreenShotDriveLetter = 'C:'
-            cdi.DiskInfo_txt_name  = 'CDI_after.txt'
-            cdi.DiskInfo_json_name = 'CDI_after.json'
-            cdi.DiskInfo_png_name  = 'CDI_after.png'
-            
+            cdi.set_config(
+                screenshot_drive_letter='C:',
+                diskinfo_txt_name='CDI_after.txt',
+                diskinfo_json_name='CDI_after.json',
+                diskinfo_png_name='CDI_after.png',
+            )
+
             logger.info(f"[TEST_06] C: output files:")
-            logger.info(f"[TEST_06]   - TXT:  {cdi.DiskInfo_txt_name}")
-            logger.info(f"[TEST_06]   - JSON: {cdi.DiskInfo_json_name}")
-            logger.info(f"[TEST_06]   - PNG:  {cdi.DiskInfo_png_name}")
-            
-            cdi.RunProcedureParserLog_sync()
+            logger.info(f"[TEST_06]   - TXT:  {cdi._config['diskinfo_txt_name']}")
+            logger.info(f"[TEST_06]   - JSON: {cdi._config['diskinfo_json_name']}")
+            logger.info(f"[TEST_06]   - PNG:  {cdi._config['diskinfo_png_name']}")
+
+            cdi.start()
+            cdi.join(timeout=120)
+
+            if cdi.status is not True:
+                pytest.fail("CDI after snapshot failed (controller.status is not True)")
+
             logger.info("[TEST_06] C: CDI monitoring completed")
-            
+
             # ========================================
             # Step 2: Compare C: SMART attributes
             # ========================================
             logger.info("[TEST_06] ======================================")
             logger.info("[TEST_06] Starting comparison of C: SMART attributes...")
             logger.info("[TEST_06] ======================================")
-            
+
             # 2.1 Check C: Unsafe Shutdowns should not increase
+            # compare_smart_value_no_increase uses:
+            #   {log_path}/{before_prefix}{diskinfo_json_name}
+            #   {log_path}/{after_prefix}{diskinfo_json_name}
+            # With diskinfo_json_name='.json' → CDI_before.json / CDI_after.json
             logger.info("[TEST_06] Checking C: Unsafe Shutdowns...")
-            keys = ['Unsafe Shutdowns']
-            cdi.DiskInfo_json_name = '.json'
-            result, msg = cdi.__CompareSmartValueNoIncrease__(
-                'C:', 'CDI_before', 'CDI_after', keys
+            cdi.set_config(diskinfo_json_name='.json')
+            result, msg = cdi.compare_smart_value_no_increase(
+                'C:', 'CDI_before', 'CDI_after', ['Unsafe Shutdowns']
             )
-            
             if not result:
                 logger.error(f"[TEST_06] C: Unsafe Shutdowns validation failed: {msg}")
                 pytest.fail(f"C: SMART validation failed: {msg}")
-            else:
-                logger.info(f"[TEST_06] ✓ C: Unsafe Shutdowns validation passed: {msg}")
-            
+            logger.info(f"[TEST_06] \u2713 C: Unsafe Shutdowns validation passed: {msg}")
+
             # 2.2 Check C: error counts should remain 0
+            # compare_smart_value uses:
+            #   {log_path}/{log_prefix}{diskinfo_json_name}
+            # With log_prefix='' and diskinfo_json_name='CDI_after.json' → CDI_after.json
             logger.info("[TEST_06] Checking C: error counts...")
-            keys = [
+            error_keys = [
                 'Number of Error Information Log Entries',
-                'Media and Data Integrity Errors'
+                'Media and Data Integrity Errors',
             ]
-            cdi.DiskInfo_json_name = 'CDI_after.json'
-            result, msg = cdi.__CompareSmartValue__('C:', '', keys, 0)
-            
+            cdi.set_config(diskinfo_json_name='CDI_after.json')
+            result, msg = cdi.compare_smart_value('C:', '', error_keys, 0)
             if not result:
                 logger.error(f"[TEST_06] C: error count validation failed: {msg}")
                 pytest.fail(f"C: SMART errors: {msg}")
-            else:
-                logger.info(f"[TEST_06] ✓ C: error count validation passed: {msg}")
-            
+            logger.info(f"[TEST_06] \u2713 C: error count validation passed: {msg}")
+
             # ========================================
             # Test complete
             # ========================================
@@ -560,7 +556,7 @@ class TestSTC1685BurnIN(BaseTestCase):
             logger.info("[TEST_06] All SMART validations passed!")
             logger.info("[TEST_06] ======================================")
             logger.info("[TEST_06] CDI after test completed")
-            
+
         except Exception as e:
             logger.error(f"[TEST_06] CDI test exception: {e}")
             pytest.fail(f"CDI after test failed: {str(e)}")
