@@ -75,6 +75,17 @@
     "test_drive_letter": "K"
   },
   
+  "python_installer": {
+    "version": "3.11",
+    "architecture": "amd64",
+    "install_path": "./testlog/py_install_test",
+    "installer_path": "",
+    "download_dir": "./testlog/python_installer_cache",
+    "add_to_path": false,
+    "uninstall_after_test": true,
+    "timeout": 300
+  },
+
   "system_settings": {
     "disable_uac": true,
     "disable_power_plan_timeouts": true,
