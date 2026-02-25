@@ -150,34 +150,38 @@ class BurnInProcessManager:
             ... )
             True
         """
-        installer = Path(installer_path)
-        
+        installer = Path(installer_path).resolve()
+
         if not installer.exists():
             raise FileNotFoundError(f"Installer not found: {installer_path}")
-        
-        # Build installation command
-        cmd = [str(installer)]
-        
+
+        # Build command string (no shell=True).
+        # Pass as a string directly to CreateProcess (Windows behaviour) so that
+        # the installer's UAC elevation manifest is honoured correctly.
+        # Using shell=True routes through cmd.exe which can break the elevated
+        # child's stdin handle and cause Inno Setup to cancel (exit code 5).
+        # This matches the original BurnIN.py: subprocess.run(cmd_string).
         if silent:
-            # Common silent install flags
-            cmd.extend(['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'])
-        
-        # Add installation directory
-        cmd.append(f'/DIR={self.install_path}')
-        
+            flags = '/SILENT /SUPPRESSMSGBOXES /NORESTART'
+        else:
+            flags = ''
+        cmd = f'"{installer}" {flags} /DIR="{self.install_path}"'.strip()
+
+        logger.info(f"Installer command: {cmd}")
+
         try:
-            # Run installer
+            # Run installer: string + no shell=True → direct CreateProcess call.
+            # No capture_output so that stdout/stderr handles are inherited,
+            # allowing UAC elevation to proceed without pipe errors.
             result = subprocess.run(
                 cmd,
-                timeout=timeout,
-                capture_output=True,
-                text=True
+                timeout=timeout
             )
-            
+
+            logger.info(f"Installer returncode: {result.returncode}")
+
             if result.returncode != 0:
                 error_msg = f"Installation failed with code {result.returncode}"
-                if result.stderr:
-                    error_msg += f": {result.stderr}"
                 raise BurnInInstallError(error_msg)
             
             # Copy license file if provided

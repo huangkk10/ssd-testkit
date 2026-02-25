@@ -52,7 +52,6 @@ class TestSTC1685BurnIN(BaseTestCase):
         Remove existing BurnIN installation if present.
         
         Uses BurnInController.ensure_clean_state() from library.
-        
         Returns:
             bool: True if no existing installation or removal successful, False otherwise
         """

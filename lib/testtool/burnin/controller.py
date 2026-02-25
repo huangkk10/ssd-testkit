@@ -405,13 +405,30 @@ class BurnInController(threading.Thread):
             try:
                 self.uninstall()
                 logger.info("Old BurnIN installation removed successfully")
-                return True
             except Exception as e:
                 logger.error(f"Failed to remove old BurnIN installation: {e}")
                 return False
         else:
             logger.info("No existing BurnIN installation found")
-            return True
+
+        # Clean up residual install directory (e.g. leftover driver files from
+        # a previous partial install). The installer (Inno Setup) will exit with
+        # code 5 if it finds unexpected files in the target directory.
+        install_dir = Path(self.install_path)
+        if install_dir.exists():
+            logger.warning(f"Residual install directory found, removing: {install_dir}")
+            try:
+                import shutil
+                shutil.rmtree(str(install_dir), ignore_errors=True)
+                if install_dir.exists():
+                    # Some files (e.g. kernel drivers) may be locked; force via cmd
+                    import subprocess
+                    subprocess.run(f'rd /s /q "{install_dir}"', shell=True)
+                logger.info("Residual install directory removed")
+            except Exception as e:
+                logger.warning(f"Could not fully remove residual directory: {e}")
+
+        return True
     
     @staticmethod
     def cleanup_logs(testlog_path: str = './testlog') -> None:
