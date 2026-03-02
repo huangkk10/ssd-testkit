@@ -105,5 +105,20 @@
     "test_duration_minutes": 60,
     "enable_modern_standby": true,
     "check_interval_seconds": 5
+  },
+
+  "pwrtest": {
+    "_comment": "pwrtest.exe from SmiWinTools — OS sleep/resume cycle testing",
+    "pwrtest_base_dir": "./tests/unit/lib/testtool/bin/SmiWinTools/bin/x64/pwrtest",
+    "os_name": "win11",
+    "os_version": "25H2",
+    "executable_path": "",
+    "cycle_count": 1,
+    "delay_seconds": 5,
+    "wake_after_seconds": 30,
+    "log_path": "./testlog/PwrTestLog",
+    "log_prefix": "",
+    "timeout_seconds": 300,
+    "check_interval_seconds": 2.0
   }
 }
