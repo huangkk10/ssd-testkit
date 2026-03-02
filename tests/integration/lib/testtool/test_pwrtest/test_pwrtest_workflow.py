@@ -15,10 +15,9 @@ Environment-variable overrides
 PWRTEST_EXE_PATH       Full path to pwrtest.exe
 PWRTEST_OS_NAME        win7 | win10 | win11  (default win11)
 PWRTEST_OS_VERSION     e.g. 25H2, 2004       (default 25H2)
-PWRTEST_CYCLE_COUNT    Number of sleep cycles (default 1)
-PWRTEST_WAKE_AFTER     Wake delay in seconds  (default 30)
 PWRTEST_LOG_DIR        Base directory for output
-PWRTEST_TIMEOUT        Per-test timeout (s)   (default 300)
+
+Execution parameters are passed directly to PwrTestController in each test.
 
 Run integration tests only
 --------------------------
@@ -47,19 +46,36 @@ from lib.testtool.pwrtest.exceptions import PwrTestError
 # Helper
 # ---------------------------------------------------------------------------
 
-def _make_controller(env: dict, log_dir: Path, **extra) -> PwrTestController:
-    """Build a PwrTestController for a given test run."""
+def _make_controller(
+    env: dict,
+    log_dir: Path,
+    cycle_count: int = 1,
+    delay_seconds: int = 5,
+    wake_after_seconds: int = 30,
+    timeout_seconds: int = 300,
+    **extra,
+) -> PwrTestController:
+    """
+    Build a PwrTestController.
+
+    env           — session-scoped environment (paths, os_name, os_version)
+    log_dir       — output directory for this test run
+    cycle_count   — number of sleep/resume cycles
+    delay_seconds — seconds before entering sleep (/d)
+    wake_after_seconds — seconds until wake-up alarm fires (/p)
+    timeout_seconds    — hard timeout for the whole run
+    **extra       — any additional PwrTestController kwargs (override above)
+    """
     kwargs = {
-        'pwrtest_base_dir':  env['pwrtest_base_dir'],
-        'os_name':           env['os_name'],
-        'os_version':        env['os_version'],
-        'cycle_count':       env['cycle_count'],
-        'delay_seconds':     env['delay_seconds'],
-        'wake_after_seconds':env['wake_after_seconds'],
-        'log_path':          str(log_dir),
-        'timeout_seconds':   env['timeout'],
+        'pwrtest_base_dir':   env['pwrtest_base_dir'],
+        'os_name':            env['os_name'],
+        'os_version':         env['os_version'],
+        'cycle_count':        cycle_count,
+        'delay_seconds':      delay_seconds,
+        'wake_after_seconds': wake_after_seconds,
+        'log_path':           str(log_dir),
+        'timeout_seconds':    timeout_seconds,
     }
-    # If an explicit exe path is set, override auto-composition
     if env.get('executable_path'):
         kwargs['executable_path'] = env['executable_path']
     kwargs.update(extra)
@@ -90,15 +106,21 @@ class TestPwrTestControllerIntegration:
         RTC wake alarm.  pwrtest.exe will put the machine to sleep for
         ``wake_after_seconds`` seconds then resume and report.
         """
-        ctrl = _make_controller(pwrtest_env, clean_log_dir)
+        ctrl = _make_controller(
+            pwrtest_env, clean_log_dir,
+            cycle_count=1,
+            delay_seconds=5,
+            wake_after_seconds=30,
+            timeout_seconds=300,
+        )
         ctrl.start()
-        ctrl.join(timeout=pwrtest_env['timeout'])
+        ctrl.join(timeout=300)
 
         assert ctrl.status is True, (
             f"PwrTest reported status={ctrl.status}. "
             f"Summary: {ctrl.result_summary}"
         )
-        assert ctrl.result_summary.get('completed_cycles', 0) == pwrtest_env['cycle_count']
+        assert ctrl.result_summary.get('completed_cycles', 0) == 1
 
     @pytest.mark.timeout(60)
     def test_t02_stop_signal_terminates_gracefully(
@@ -114,12 +136,13 @@ class TestPwrTestControllerIntegration:
         stop() fires.  The test expects status to be set (True or False),
         never None.
         """
-        # Use a long wake time to ensure the process is still running
-        env_long = dict(pwrtest_env)
-        env_long['wake_after_seconds'] = 120
-        env_long['timeout'] = 300
-
-        ctrl = _make_controller(env_long, clean_log_dir)
+        ctrl = _make_controller(
+            pwrtest_env, clean_log_dir,
+            cycle_count=1,
+            delay_seconds=5,
+            wake_after_seconds=60,   # long wake — process will still be sleeping
+            timeout_seconds=300,
+        )
         ctrl.start()
 
         # Stop the controller after 5 seconds (process will still be sleeping)
@@ -144,9 +167,15 @@ class TestPwrTestControllerIntegration:
         """
         T03 — Verify that pwrtestlog.log is created in the configured log_path.
         """
-        ctrl = _make_controller(pwrtest_env, clean_log_dir)
+        ctrl = _make_controller(
+            pwrtest_env, clean_log_dir,
+            cycle_count=1,
+            delay_seconds=5,
+            wake_after_seconds=30,
+            timeout_seconds=300,
+        )
         ctrl.start()
-        ctrl.join(timeout=pwrtest_env['timeout'])
+        ctrl.join(timeout=300)
 
         log_file = clean_log_dir / 'pwrtestlog.log'
         assert log_file.exists(), (
@@ -164,9 +193,15 @@ class TestPwrTestControllerIntegration:
         """
         T04 — Verify result_summary contains expected keys after run.
         """
-        ctrl = _make_controller(pwrtest_env, clean_log_dir)
+        ctrl = _make_controller(
+            pwrtest_env, clean_log_dir,
+            cycle_count=1,
+            delay_seconds=5,
+            wake_after_seconds=30,
+            timeout_seconds=300,
+        )
         ctrl.start()
-        ctrl.join(timeout=pwrtest_env['timeout'])
+        ctrl.join(timeout=300)
 
         summary = ctrl.result_summary
         for key in ('status', 'cycles_attempted', 'cycles_passed', 'errors', 'log_path'):

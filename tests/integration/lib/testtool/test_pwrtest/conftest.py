@@ -14,10 +14,10 @@ Environment-variable overrides
 PWRTEST_EXE_PATH       Full path to pwrtest.exe (overrides os_name+os_version)
 PWRTEST_OS_NAME        OS directory name: win7 | win10 | win11  (default: win11)
 PWRTEST_OS_VERSION     OS version sub-dir (default: 25H2)
-PWRTEST_CYCLE_COUNT    Number of sleep cycles per test (default: 1)
-PWRTEST_WAKE_AFTER     Seconds until OS wakes from sleep (default: 30)
 PWRTEST_LOG_DIR        Base directory for output files
-PWRTEST_TIMEOUT        Per-test timeout in seconds (default: 300)
+
+Execution parameters (cycle_count, delay_seconds, wake_after_seconds,
+timeout_seconds) are passed directly to PwrTestController in each test.
 """
 
 import os
@@ -75,15 +75,11 @@ def pwrtest_env(test_root) -> Dict[str, Any]:
     default_log_dir = str(testlog_dir / f"pwrtest_integration_{timestamp}")
 
     return {
-        'executable_path':   os.getenv("PWRTEST_EXE_PATH", ""),
-        'pwrtest_base_dir':  str(bin_root),
-        'os_name':           os_name,
-        'os_version':        os_version,
-        'cycle_count':       int(os.getenv("PWRTEST_CYCLE_COUNT", "1")),
-        'wake_after_seconds':int(os.getenv("PWRTEST_WAKE_AFTER",  "30")),
-        'delay_seconds':     5,
-        'log_dir':           os.getenv("PWRTEST_LOG_DIR", default_log_dir),
-        'timeout':           int(os.getenv("PWRTEST_TIMEOUT", "300")),
+        'executable_path': os.getenv("PWRTEST_EXE_PATH", ""),
+        'pwrtest_base_dir': str(bin_root),
+        'os_name':          os_name,
+        'os_version':       os_version,
+        'log_dir':          os.getenv("PWRTEST_LOG_DIR", default_log_dir),
     }
 
 
