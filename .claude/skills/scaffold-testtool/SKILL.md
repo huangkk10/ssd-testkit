@@ -78,7 +78,7 @@ tests/unit/lib/testtool/test_<package_name>/
 ├── conftest.py           # shared fixtures (temp_dir, sample_config)
 ├── test_exceptions.py    # pytest style — raise + inheritance for every exception class
 ├── test_config.py        # pytest style — get_default_config / validate / merge
-└── test_controller.py    # unittest style — mocked dependencies, init/status/stop/run
+└── test_controller.py    # pytest style — @pytest.fixture, @pytest.mark.parametrize, mocked deps
 ```
 
 Optional (create only if the corresponding module exists):
@@ -88,8 +88,8 @@ Optional (create only if the corresponding module exists):
 - `test_log_parser.py` — if `has_log_parser: true`
 
 **Key rules:**
-- `test_exceptions.py` / `test_config.py` → use **pytest** class style
-- `test_controller.py` → use **unittest.TestCase** style with `setUp` / `tearDown`
+- All test files (`test_exceptions.py`, `test_config.py`, `test_controller.py`) → use **pytest** style
+- `test_controller.py`: use `@pytest.fixture(autouse=True)` for path patches, `@pytest.fixture` for the controller instance, `@pytest.mark.parametrize` for multi-exception cases
 - **Never** call real executables or touch the real file system — mock everything
 - Patch `pathlib.Path.exists`, `subprocess.Popen`, sub-components as needed
 - `status` property: assert `None` before `start()`, `True`/`False` after `join()`
@@ -117,12 +117,17 @@ Also add a `"<package_name>"` section to `tests/integration/Config/Config.json`:
 }
 ```
 
+> **Config.json design principle:** Only environment/path params (exe path, log dir, OS-version) belong here.
+> Execution params (`cycle_count`, `delay_seconds`, `wake_after_seconds`, etc.) vary per test — pass them as explicit kwargs to the controller inside each test function, **not** through Config.json or the env fixture.
+
 **Key rules:**
 - Tool executable path: support `<TOOL>_EXE_PATH` environment variable override; default to `tests/unit/lib/testtool/bin/<ToolDir>/`
 - Use `pytest.skip()` in `check_environment` if executable not found — never fail due to missing binary
 - Tag every test with `@pytest.mark.integration` and `@pytest.mark.requires_<package_name>`
 - **No mocks** — integration tests must run the real executable
 - Each test gets an isolated `clean_log_dir` (timestamped sub-directory)
+- **`__init__.py` at every level**: `tests/integration/lib/`, `tests/integration/lib/testtool/`, and `tests/integration/lib/testtool/test_<package_name>/` all require an empty `__init__.py` — otherwise VS Code Test Explorer cannot discover the tests
+- **Register marker in `pytest.ini`**: append `requires_<package_name>: ...` to the `markers` list; the project uses `--strict-markers` so undeclared markers cause collection errors
 
 **For complete templates**, see `references/integration_test_templates.md`
 

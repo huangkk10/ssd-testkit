@@ -231,7 +231,7 @@ class Test<Tool>Config:
 
 ## `test_controller.py` Template
 
-Uses **unittest** style (`class TestX(unittest.TestCase)` + `setUp`/`tearDown`).  
+Uses **pytest** style (`@pytest.fixture`, `@pytest.mark.parametrize`).  
 All external dependencies (subprocess, file system, sub-components) must be **mocked**.
 
 ```python
@@ -240,9 +240,9 @@ Unit tests for <Tool> Controller.
 Tests <Tool>Controller with mocked dependencies.
 """
 
-import unittest
-from unittest.mock import Mock, patch
 import threading
+import pytest
+from unittest.mock import patch
 
 from lib.testtool.<package_name>.controller import <Tool>Controller
 from lib.testtool.<package_name>.exceptions import (
@@ -252,100 +252,86 @@ from lib.testtool.<package_name>.exceptions import (
 )
 
 
-class Test<Tool>Controller(unittest.TestCase):
+# ── Minimal valid kwargs ────────────────────────────────────────────────────────────────────────────
+_VALID_KWARGS = {
+    'executable_path': './bin/tool.exe',
+    'timeout_seconds': 60,
+}
 
-    def setUp(self):
-        """Set up minimal valid kwargs for __init__."""
-        self.valid_kwargs = {
-            'executable_path': './bin/tool.exe',
-            'timeout_seconds': 60,
-        }
-        # Patch file system checks if __init__ validates paths
-        self._patch_exists = patch('pathlib.Path.exists', return_value=True)
-        self._patch_exists.start()
 
-    def tearDown(self):
-        self._patch_exists.stop()
+@pytest.fixture(autouse=True)
+def patch_path_exists():
+    """Prevent __init__ / _execute_test from checking real file paths."""
+    with patch('pathlib.Path.exists', return_value=True):
+        yield
 
-    # ----- Initialization -----
 
-    def test_init_sets_defaults(self):
-        ctrl = <Tool>Controller(**self.valid_kwargs)
-        self.assertEqual(ctrl._config['timeout_seconds'], 60)
-        self.assertIsNone(ctrl.status)
-        self.assertEqual(ctrl.error_count, 0)
+@pytest.fixture
+def ctrl():
+    """Return a fresh, not-started controller."""
+    return <Tool>Controller(**_VALID_KWARGS)
 
-    def test_is_thread(self):
-        ctrl = <Tool>Controller(**self.valid_kwargs)
-        self.assertIsInstance(ctrl, threading.Thread)
 
-    def test_init_invalid_config_raises(self):
-        with self.assertRaises(<Tool>ConfigError):
+# ── Initialization ─────────────────────────────────────────────────────────────────────────────
+class Test<Tool>ControllerInit:
+
+    def test_sets_defaults(self, ctrl):
+        assert ctrl._config['timeout_seconds'] == 60
+        assert ctrl.status is None
+        assert ctrl.error_count == 0
+
+    def test_is_thread(self, ctrl):
+        assert isinstance(ctrl, threading.Thread)
+
+    def test_invalid_config_raises(self):
+        with pytest.raises(<Tool>ConfigError):
             <Tool>Controller(unknown_param='bad')
 
-    # ----- set_config -----
 
-    def test_set_config_updates_value(self):
-        ctrl = <Tool>Controller(**self.valid_kwargs)
+# ── set_config ────────────────────────────────────────────────────────────────────────────────
+class Test<Tool>ControllerSetConfig:
+
+    def test_updates_value(self, ctrl):
         ctrl.set_config(timeout_seconds=120)
-        self.assertEqual(ctrl._config['timeout_seconds'], 120)
+        assert ctrl._config['timeout_seconds'] == 120
 
-    def test_set_config_invalid_key_raises(self):
-        ctrl = <Tool>Controller(**self.valid_kwargs)
-        with self.assertRaises(<Tool>ConfigError):
+    def test_invalid_key_raises(self, ctrl):
+        with pytest.raises(<Tool>ConfigError):
             ctrl.set_config(bad_key='value')
 
-    # ----- status property -----
 
-    def test_status_initially_none(self):
-        ctrl = <Tool>Controller(**self.valid_kwargs)
-        self.assertIsNone(ctrl.status)
+# ── stop ─────────────────────────────────────────────────────────────────────────────────────
+class Test<Tool>ControllerStop:
 
-    # ----- stop -----
-
-    def test_stop_sets_event(self):
-        ctrl = <Tool>Controller(**self.valid_kwargs)
-        self.assertFalse(ctrl._stop_event.is_set())
+    def test_sets_stop_event(self, ctrl):
+        assert not ctrl._stop_event.is_set()
         ctrl.stop()
-        self.assertTrue(ctrl._stop_event.is_set())
+        assert ctrl._stop_event.is_set()
 
-    # ----- run (mocked execution) -----
 
-    @patch.object(<Tool>Controller, '_execute_test')
-    def test_run_pass(self, mock_execute):
+# ── run (mocked execution) ───────────────────────────────────────────────────────────────
+class Test<Tool>ControllerRun:
+
+    def test_run_sets_true_on_success(self, ctrl):
         """run() sets status=True when _execute_test succeeds."""
-        mock_execute.return_value = None
-        ctrl = <Tool>Controller(**self.valid_kwargs)
-        # Manually set status to simulate pass inside _execute_test
         def fake_execute():
             ctrl._status = True
-        mock_execute.side_effect = fake_execute
+        with patch.object(<Tool>Controller, '_execute_test', side_effect=fake_execute):
+            ctrl.start()
+            ctrl.join(timeout=5)
+        assert ctrl.status is True
 
-        ctrl.start()
-        ctrl.join(timeout=5)
-        self.assertTrue(ctrl.status)
-
-    @patch.object(<Tool>Controller, '_execute_test')
-    def test_run_timeout(self, mock_execute):
-        """run() sets status=False on TimeoutError."""
-        mock_execute.side_effect = <Tool>TimeoutError("timed out")
-        ctrl = <Tool>Controller(**self.valid_kwargs)
-        ctrl.start()
-        ctrl.join(timeout=5)
-        self.assertFalse(ctrl.status)
-
-    @patch.object(<Tool>Controller, '_execute_test')
-    def test_run_process_error(self, mock_execute):
-        """run() sets status=False on ProcessError."""
-        mock_execute.side_effect = <Tool>ProcessError("proc failed")
-        ctrl = <Tool>Controller(**self.valid_kwargs)
-        ctrl.start()
-        ctrl.join(timeout=5)
-        self.assertFalse(ctrl.status)
-
-
-if __name__ == '__main__':
-    unittest.main()
+    @pytest.mark.parametrize("exc_cls", [
+        <Tool>TimeoutError,
+        <Tool>ProcessError,
+    ])
+    def test_run_sets_false_on_exception(self, exc_cls):
+        """run() sets status=False for every tool-specific exception."""
+        with patch.object(<Tool>Controller, '_execute_test', side_effect=exc_cls("err")):
+            c = <Tool>Controller(**_VALID_KWARGS)
+            c.start()
+            c.join(timeout=5)
+        assert c.status is False
 ```
 
 ---

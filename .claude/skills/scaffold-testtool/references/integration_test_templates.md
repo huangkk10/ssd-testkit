@@ -43,17 +43,22 @@ Every tool gets its own top-level key. Add a new section when scaffolding a new 
   "test_duration_minutes": 1,
   "test_drive_letter":     "D"
 },
-"smartcheck": {
-  "bat_path":   "./bin/SmiWinTools/SmartCheck.bat",
-  "output_dir": "./testlog/SmartLog",
-  "total_time": 10080
-},
 "cdi": {
-  "ExePath":                "./bin/CrystalDiskInfo/DiskInfo64.exe",
-  "LogPath":                "./testlog/CDILog",
-  "ScreenShotDriveLetter":  "C:"
+  "ExePath":               "./bin/CrystalDiskInfo/DiskInfo64.exe",
+  "LogPath":               "./testlog/CDILog"
 }
 ```
+
+> **Design principle — what belongs in Config.json vs code:**
+>
+> | Category | Examples | Where |
+> |----------|----------|-------|
+> | Environment / path | exe path, log dir, OS name/version, `check_interval_seconds` | Config.json |
+> | Execution params | `cycle_count`, `delay_seconds`, `wake_after_seconds`, `timeout_seconds` | Passed directly to the controller per test |
+>
+> Execution params vary between test cases — hardcoding them in Config.json hides intent and prevents
+> individual tests from using different values. Always pass them as explicit keyword arguments when
+> calling `_make_controller()` or constructing the controller directly.
 
 **How to read Config.json in a test fixture:**
 
@@ -134,8 +139,10 @@ def <package_name>_env(test_root) -> Dict[str, Any]:
     +-----------------------+--------------------------------------------------+
     | <TOOL>_EXE_PATH       | tests/unit/lib/testtool/bin/<ToolDir>/<exe>      |
     | <TOOL>_LOG_DIR        | tests/testlog/<package_name>_integration_<ts>    |
-    | <TOOL>_TIMEOUT        | 120                                              |
     +-----------------------+--------------------------------------------------+
+
+    Execution params (timeout, cycle counts, delays) are passed directly
+    to the controller inside each test — they do NOT belong in this fixture.
     """
     bin_path = test_root / "tests" / "unit" / "lib" / "testtool" / "bin" / "<ToolDir>"
     default_exe = str(bin_path / "<executable>")
@@ -148,8 +155,7 @@ def <package_name>_env(test_root) -> Dict[str, Any]:
     return {
         'executable_path': os.getenv("<TOOL>_EXE_PATH", default_exe),
         'log_dir':         os.getenv("<TOOL>_LOG_DIR",  default_log_dir),
-        'timeout':         int(os.getenv("<TOOL>_TIMEOUT", "120")),
-        # Add tool-specific params here
+        # Add tool-specific environment/path params here (NOT execution params)
     }
 
 
@@ -231,12 +237,27 @@ from lib.testtool.<package_name>.exceptions import <Tool>Error
 # Helper
 # ---------------------------------------------------------------------------
 
-def _make_controller(<package_name>_env, log_dir, **extra) -> <Tool>Controller:
-    """Build a controller pointed at the given log directory."""
+def _make_controller(
+    <package_name>_env: dict,
+    log_dir: Path,
+    timeout_seconds: int = 120,
+    **extra,
+) -> <Tool>Controller:
+    """
+    Build a controller pointed at the given log directory.
+
+    <package_name>_env  — session-scoped env (paths, os info)
+    log_dir             — output directory for this test run
+    timeout_seconds     — hard execution timeout (pass explicitly per test)
+    **extra             — any additional PwrTestController kwargs
+                           (e.g. cycle_count, delay_seconds — execution params
+                           that differ per test should be passed here, NOT read
+                           from <package_name>_env)
+    """
     return <Tool>Controller(
         executable_path=<package_name>_env['executable_path'],
         log_path=str(log_dir),
-        timeout_seconds=<package_name>_env['timeout'],
+        timeout_seconds=timeout_seconds,
         **extra,
     )
 
@@ -256,9 +277,14 @@ class Test<Tool>ControllerIntegration:
         """
         T01 — Run complete workflow: start → wait → check result.
         """
-        ctrl = _make_controller(<package_name>_env, clean_log_dir)
+        ctrl = _make_controller(
+            <package_name>_env, clean_log_dir,
+            timeout_seconds=120,
+            # add any tool-specific execution params here, e.g.:
+            # cycle_count=1, delay_seconds=5,
+        )
         ctrl.start()
-        ctrl.join(timeout=<package_name>_env['timeout'])
+        ctrl.join(timeout=120)
 
         assert ctrl.status is True, f"<Tool> returned status={ctrl.status}"
 
@@ -268,7 +294,12 @@ class Test<Tool>ControllerIntegration:
         T02 — Verify stop() terminates the controller cleanly.
         """
         import threading
-        ctrl = _make_controller(<package_name>_env, clean_log_dir)
+        ctrl = _make_controller(
+            <package_name>_env, clean_log_dir,
+            timeout_seconds=120,
+            # pass any tool-specific long-running params here so process is
+            # still alive when stop() fires, e.g.: wake_after_seconds=120
+        )
         ctrl.start()
         threading.Timer(3.0, ctrl.stop).start()
         ctrl.join(timeout=15)
@@ -283,7 +314,9 @@ class Test<Tool>ControllerIntegration:
 | Rule | Detail |
 |------|--------|
 | **Location** | `tests/integration/lib/testtool/test_<package_name>/` |
-| **Config.json** | Add a `"<package_name>"` section to `tests/integration/Config/Config.json` |
+| **`__init__.py` at every dir** | `tests/integration/lib/`, `tests/integration/lib/testtool/`, and each `test_*/` directory need an empty `__init__.py`; without them VS Code Test Explorer shows the folder but cannot discover tests |
+| **`pytest.ini` marker** | Append `requires_<package_name>: mark test as requiring <executable>` to the `markers` list in `pytest.ini`; the project uses `--strict-markers` so undeclared markers abort collection |
+| **Config.json** | Only env/path params (exe path, log dir, OS version) go here; execution params (`cycle_count`, `timeout_seconds`, etc.) are passed explicitly per test |
 | **Executable path** | Support env-var override (`<TOOL>_EXE_PATH`); default to `tests/unit/lib/testtool/bin/<ToolDir>/` |
 | **`check_environment`** | Use `pytest.skip()` if exe not found — never let the test fail due to missing binary |
 | **Markers** | Always add `@pytest.mark.integration` + `@pytest.mark.requires_<package_name>` |
