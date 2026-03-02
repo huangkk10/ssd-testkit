@@ -4,7 +4,6 @@ Unit tests for BurnIN Controller
 Tests the BurnInController class with mocked dependencies.
 """
 
-import unittest
 from unittest.mock import Mock, MagicMock, patch, call
 import threading
 import time
@@ -20,12 +19,13 @@ from lib.testtool.burnin.exceptions import (
     BurnInUIError,
     BurnInTestFailedError,
 )
+import pytest
 
 
-class TestBurnInController(unittest.TestCase):
+class TestBurnInController:
     """Test cases for BurnInController"""
     
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures"""
         self.test_installer = "C:\\test\\installer.exe"
         self.test_install_path = "C:\\Program Files\\BurnInTest"
@@ -39,7 +39,7 @@ class TestBurnInController(unittest.TestCase):
         self.mock_logger = patch('lib.testtool.burnin.controller.logConfig')
         self.mock_logger.start()
     
-    def tearDown(self):
+    def teardown_method(self):
         """Clean up after tests"""
         self.mock_installer_exists.stop()
         self.mock_logger.stop()
@@ -54,12 +54,12 @@ class TestBurnInController(unittest.TestCase):
             executable_name=self.test_executable
         )
         
-        self.assertEqual(controller.installer_path, self.test_installer)
-        self.assertEqual(controller.install_path, self.test_install_path)
-        self.assertEqual(controller.executable_name, self.test_executable)
-        self.assertTrue(controller.status)
-        self.assertEqual(controller.error_count, 0)
-        self.assertFalse(controller._running)
+        assert controller.installer_path == self.test_installer
+        assert controller.install_path == self.test_install_path
+        assert controller.executable_name == self.test_executable
+        assert controller.status
+        assert controller.error_count == 0
+        assert not controller._running
     
     def test_init_with_custom_config(self):
         """Test initialization with custom configuration"""
@@ -72,20 +72,20 @@ class TestBurnInController(unittest.TestCase):
             timeout_seconds=7200
         )
         
-        self.assertEqual(controller.test_duration_minutes, 120)
-        self.assertEqual(controller.test_drive_letter, "E")
-        self.assertEqual(controller.timeout_seconds, 7200)
+        assert controller.test_duration_minutes == 120
+        assert controller.test_drive_letter == "E"
+        assert controller.timeout_seconds == 7200
     
     @patch('pathlib.Path.exists', return_value=False)
     def test_init_installer_not_found(self, mock_exists):
         """Test initialization with missing installer"""
-        with self.assertRaises(BurnInConfigError) as ctx:
+        with pytest.raises(BurnInConfigError):
             BurnInController(
                 installer_path="nonexistent.exe",
                 install_path=self.test_install_path
             )
         
-        self.assertIn("Installer not found", str(ctx.exception))
+        assert "Installer not found" in str(ctx.exception)
     
     def test_init_default_values(self):
         """Test initialization with default values"""
@@ -93,10 +93,10 @@ class TestBurnInController(unittest.TestCase):
             installer_path=self.test_installer
         )
         
-        self.assertEqual(controller.install_path, "C:\\Program Files\\BurnInTest")
-        self.assertEqual(controller.executable_name, "bit.exe")
-        self.assertEqual(controller.test_duration_minutes, 1440)
-        self.assertEqual(controller.test_drive_letter, "D")
+        assert controller.install_path == "C:\\Program Files\\BurnInTest"
+        assert controller.executable_name == "bit.exe"
+        assert controller.test_duration_minutes == 1440
+        assert controller.test_drive_letter == "D"
     
     # ===== Installation Tests =====
     
@@ -114,7 +114,7 @@ class TestBurnInController(unittest.TestCase):
         
         result = controller.install()
         
-        self.assertTrue(result)
+        assert result
         mock_manager.install.assert_called_once()
     
     @patch('lib.testtool.burnin.controller.BurnInProcessManager')
@@ -131,9 +131,9 @@ class TestBurnInController(unittest.TestCase):
         
         result = controller.install(license_path="C:\\test\\license.key")
         
-        self.assertTrue(result)
+        assert result
         call_args = mock_manager.install.call_args
-        self.assertEqual(call_args[1]['license_path'], "C:\\test\\license.key")
+        assert call_args[1]['license_path'] == "C:\\test\\license.key"
     
     @patch('lib.testtool.burnin.controller.BurnInProcessManager')
     def test_install_failure(self, mock_manager_class):
@@ -147,7 +147,7 @@ class TestBurnInController(unittest.TestCase):
             install_path=self.test_install_path
         )
         
-        with self.assertRaises(BurnInInstallError):
+        with pytest.raises(BurnInInstallError):
             controller.install()
     
     @patch('lib.testtool.burnin.controller.BurnInProcessManager')
@@ -162,10 +162,10 @@ class TestBurnInController(unittest.TestCase):
             install_path=self.test_install_path
         )
         
-        with self.assertRaises(BurnInInstallError) as ctx:
+        with pytest.raises(BurnInInstallError):
             controller.install()
         
-        self.assertIn("Install error", str(ctx.exception))
+        assert "Install error" in str(ctx.exception)
     
     # ===== Uninstallation Tests =====
     
@@ -185,7 +185,7 @@ class TestBurnInController(unittest.TestCase):
         
         result = controller.uninstall()
         
-        self.assertTrue(result)
+        assert result
         mock_manager.uninstall.assert_called_once()
     
     @patch('lib.testtool.burnin.controller.BurnInProcessManager')
@@ -205,7 +205,7 @@ class TestBurnInController(unittest.TestCase):
         
         result = controller.uninstall()
         
-        self.assertTrue(result)
+        assert result
         mock_manager.stop_process.assert_called_once()
         mock_manager.uninstall.assert_called_once()
     
@@ -223,7 +223,7 @@ class TestBurnInController(unittest.TestCase):
         )
         controller._process_manager = mock_manager
         
-        with self.assertRaises(BurnInInstallError):
+        with pytest.raises(BurnInInstallError):
             controller.uninstall()
     
     # ===== Installation Check Tests =====
@@ -242,7 +242,7 @@ class TestBurnInController(unittest.TestCase):
         
         result = controller.is_installed()
         
-        self.assertTrue(result)
+        assert result
     
     @patch('lib.testtool.burnin.controller.BurnInProcessManager')
     def test_is_installed_false(self, mock_manager_class):
@@ -258,7 +258,7 @@ class TestBurnInController(unittest.TestCase):
         
         result = controller.is_installed()
         
-        self.assertFalse(result)
+        assert not result
     
     # ===== Configuration Tests =====
     
@@ -278,9 +278,9 @@ class TestBurnInController(unittest.TestCase):
             timeout_seconds=7200
         )
         
-        self.assertEqual(controller.test_duration_minutes, 120)
-        self.assertEqual(controller.test_drive_letter, "E")
-        self.assertEqual(controller.timeout_seconds, 7200)
+        assert controller.test_duration_minutes == 120
+        assert controller.test_drive_letter == "E"
+        assert controller.timeout_seconds == 7200
     
     @patch('lib.testtool.burnin.controller.BurnInConfig')
     def test_set_config_invalid(self, mock_config):
@@ -292,7 +292,7 @@ class TestBurnInController(unittest.TestCase):
             install_path=self.test_install_path
         )
         
-        with self.assertRaises(BurnInConfigError):
+        with pytest.raises(BurnInConfigError):
             controller.set_config(invalid_param="value")
     
     # ===== Script Generation Tests =====
@@ -326,7 +326,7 @@ class TestBurnInController(unittest.TestCase):
         )
         controller._script_generator = mock_generator
         
-        with self.assertRaises(BurnInConfigError):
+        with pytest.raises(BurnInConfigError):
             controller._generate_script()
     
     # ===== Process Start Tests =====
@@ -361,7 +361,7 @@ class TestBurnInController(unittest.TestCase):
         )
         controller._process_manager = mock_manager
         
-        with self.assertRaises(BurnInProcessError):
+        with pytest.raises(BurnInProcessError):
             controller._start_process()
     
     def test_start_process_no_manager(self):
@@ -371,7 +371,7 @@ class TestBurnInController(unittest.TestCase):
             install_path=self.test_install_path
         )
         
-        with self.assertRaises(BurnInProcessError):
+        with pytest.raises(BurnInProcessError):
             controller._start_process()
     
     # ===== UI Connection Tests =====
@@ -404,7 +404,7 @@ class TestBurnInController(unittest.TestCase):
             install_path=self.test_install_path
         )
         
-        with self.assertRaises(BurnInUIError):
+        with pytest.raises(BurnInUIError):
             controller._connect_ui()
     
     @patch('lib.testtool.burnin.controller.BurnInUIMonitor')
@@ -419,7 +419,7 @@ class TestBurnInController(unittest.TestCase):
             install_path=self.test_install_path
         )
         
-        with self.assertRaises(BurnInUIError):
+        with pytest.raises(BurnInUIError):
             controller._connect_ui()
     
     # ===== Monitoring Loop Tests =====
@@ -443,9 +443,9 @@ class TestBurnInController(unittest.TestCase):
         
         controller._monitor_loop()
         
-        self.assertTrue(controller.status)
-        self.assertEqual(controller._test_result, "PASSED")
-        self.assertEqual(controller.error_count, 0)
+        assert controller.status
+        assert controller._test_result == "PASSED"
+        assert controller.error_count == 0
     
     @patch('lib.testtool.burnin.controller.BurnInUIMonitor')
     def test_monitor_loop_failed(self, mock_monitor_class):
@@ -464,12 +464,12 @@ class TestBurnInController(unittest.TestCase):
         )
         controller._ui_monitor = mock_monitor
         
-        with self.assertRaises(BurnInTestFailedError):
+        with pytest.raises(BurnInTestFailedError):
             controller._monitor_loop()
         
-        self.assertFalse(controller.status)
-        self.assertEqual(controller._test_result, "FAILED")
-        self.assertEqual(controller.error_count, 5)
+        assert not controller.status
+        assert controller._test_result == "FAILED"
+        assert controller.error_count == 5
     
     @patch('lib.testtool.burnin.controller.time')
     @patch('lib.testtool.burnin.controller.BurnInUIMonitor')
@@ -495,10 +495,10 @@ class TestBurnInController(unittest.TestCase):
         )
         controller._ui_monitor = mock_monitor
         
-        with self.assertRaises(BurnInTimeoutError):
+        with pytest.raises(BurnInTimeoutError):
             controller._monitor_loop()
         
-        self.assertFalse(controller.status)
+        assert not controller.status
     
     @patch('lib.testtool.burnin.controller.BurnInUIMonitor')
     def test_monitor_loop_ui_reconnect(self, mock_monitor_class):
@@ -527,7 +527,7 @@ class TestBurnInController(unittest.TestCase):
         
         # Should have reconnected
         mock_monitor.connect.assert_called()
-        self.assertTrue(controller.status)
+        assert controller.status
     
     # ===== Stop Tests =====
     
@@ -586,7 +586,7 @@ class TestBurnInController(unittest.TestCase):
         
         result = controller.is_running()
         
-        self.assertTrue(result)
+        assert result
     
     @patch('lib.testtool.burnin.controller.BurnInProcessManager')
     def test_is_running_false(self, mock_manager_class):
@@ -602,7 +602,7 @@ class TestBurnInController(unittest.TestCase):
         
         result = controller.is_running()
         
-        self.assertFalse(result)
+        assert not result
     
     def test_is_running_no_manager(self):
         """Test is_running without manager"""
@@ -613,7 +613,7 @@ class TestBurnInController(unittest.TestCase):
         
         result = controller.is_running()
         
-        self.assertFalse(result)
+        assert not result
     
     # ===== Status Tests =====
     
@@ -636,12 +636,12 @@ class TestBurnInController(unittest.TestCase):
         
         status = controller.get_status()
         
-        self.assertTrue(status['running'])
-        self.assertTrue(status['status'])
-        self.assertEqual(status['test_result'], "PASSED")
-        self.assertEqual(status['error_count'], 0)
-        self.assertTrue(status['installed'])
-        self.assertTrue(status['process_running'])
+        assert status['running']
+        assert status['status']
+        assert status['test_result'] == "PASSED"
+        assert status['error_count'] == 0
+        assert status['installed']
+        assert status['process_running']
     
     # ===== Screenshot Tests =====
     
@@ -715,8 +715,8 @@ class TestBurnInController(unittest.TestCase):
         
         controller.run()
         
-        self.assertTrue(controller.status)
-        self.assertFalse(controller._running)
+        assert controller.status
+        assert not controller._running
     
     @patch('lib.testtool.burnin.controller.BurnInScriptGenerator')
     def test_run_script_generation_failure(self, mock_generator_class):
@@ -732,7 +732,7 @@ class TestBurnInController(unittest.TestCase):
         
         controller.run()
         
-        self.assertFalse(controller.status)
+        assert not controller.status
     
     # ===== Repr Tests =====
     
@@ -750,11 +750,9 @@ class TestBurnInController(unittest.TestCase):
         
         repr_str = repr(controller)
         
-        self.assertIn("BurnInController", repr_str)
-        self.assertIn("installed=True", repr_str)
-        self.assertIn("running=False", repr_str)
-        self.assertIn("status=True", repr_str)
+        assert "BurnInController" in repr_str
+        assert "installed=True" in repr_str
+        assert "running=False" in repr_str
+        assert "status=True" in repr_str
 
 
-if __name__ == '__main__':
-    unittest.main()

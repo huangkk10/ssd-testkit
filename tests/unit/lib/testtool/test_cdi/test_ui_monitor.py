@@ -3,37 +3,37 @@ Unit tests for CDI UI Monitor.
 All pywinauto calls are mocked — no real UI interaction.
 """
 
-import unittest
 from unittest.mock import MagicMock, Mock, patch
 
 from lib.testtool.cdi.ui_monitor import CDIUIMonitor
 from lib.testtool.cdi.exceptions import CDIUIError
+import pytest
 
 
-class TestCDIUIMonitor(unittest.TestCase):
+class TestCDIUIMonitor:
 
-    def setUp(self):
+    def setup_method(self):
         self.monitor = CDIUIMonitor(save_retry_max=3, save_dialog_timeout=5)
 
     # ----- Construction -----
 
     def test_init_defaults(self):
         m = CDIUIMonitor()
-        self.assertIn('CrystalDiskInfo', m.window_title)
-        self.assertIsNone(m._app)
-        self.assertIsNone(m._window)
+        assert 'CrystalDiskInfo' in m.window_title
+        assert m._app is None
+        assert m._window is None
 
     def test_init_custom_params(self):
         m = CDIUIMonitor(window_title='MyTool', save_retry_max=5)
-        self.assertEqual(m.window_title, 'MyTool')
-        self.assertEqual(m.save_retry_max, 5)
+        assert m.window_title == 'MyTool'
+        assert m.save_retry_max == 5
 
     # ----- open(): pywinauto unavailable -----
 
     def test_open_raises_when_pywinauto_unavailable(self):
         with patch('lib.testtool.cdi.ui_monitor._PYWINAUTO_AVAILABLE', False):
             m = CDIUIMonitor()
-            with self.assertRaises(CDIUIError):
+            with pytest.raises(CDIUIError):
                 m.open('./bin/DiskInfo64.exe')
 
     # ----- open(): success path -----
@@ -58,7 +58,7 @@ class TestCDIUIMonitor(unittest.TestCase):
     def test_connect_raises_when_pywinauto_unavailable(self):
         with patch('lib.testtool.cdi.ui_monitor._PYWINAUTO_AVAILABLE', False):
             m = CDIUIMonitor()
-            with self.assertRaises(CDIUIError):
+            with pytest.raises(CDIUIError):
                 m.connect()
 
     # ----- close -----
@@ -73,8 +73,8 @@ class TestCDIUIMonitor(unittest.TestCase):
             monitor.close()
 
         mock_app.kill.assert_called_once()
-        self.assertIsNone(monitor._app)
-        self.assertIsNone(monitor._window)
+        assert monitor._app is None
+        assert monitor._window is None
 
     def test_close_with_no_app_does_not_raise(self):
         monitor = CDIUIMonitor()
@@ -86,14 +86,14 @@ class TestCDIUIMonitor(unittest.TestCase):
 
     def test_get_text_log_raises_when_not_connected(self):
         m = CDIUIMonitor()
-        with self.assertRaises(CDIUIError):
+        with pytest.raises(CDIUIError):
             m.get_text_log('/tmp/DiskInfo.txt')
 
     # ----- get_screenshot: raises when not connected -----
 
     def test_get_screenshot_raises_when_not_connected(self):
         m = CDIUIMonitor()
-        with self.assertRaises(CDIUIError):
+        with pytest.raises(CDIUIError):
             m.get_screenshot(
                 log_dir='/tmp',
                 prefix='',
@@ -114,7 +114,7 @@ class TestCDIUIMonitor(unittest.TestCase):
             path = f.name
         try:
             result = CDIUIMonitor._get_drive_info_from_json(path, 'C:', 'Model')
-            self.assertEqual(result, 'TestDrive')
+            assert result == 'TestDrive'
         finally:
             os.unlink(path)
 
@@ -128,11 +128,9 @@ class TestCDIUIMonitor(unittest.TestCase):
             json.dump(data, f)
             path = f.name
         try:
-            with self.assertRaises(CDIUIError):
+            with pytest.raises(CDIUIError):
                 CDIUIMonitor._get_drive_info_from_json(path, 'Z:', 'Model')
         finally:
             os.unlink(path)
 
 
-if __name__ == '__main__':
-    unittest.main()

@@ -3,7 +3,6 @@ Unit tests for PythonInstallerController.
 All external dependencies are mocked — no real installers or file system access.
 """
 
-import unittest
 from unittest.mock import Mock, patch, MagicMock
 import threading
 
@@ -15,11 +14,12 @@ from lib.testtool.python_installer.exceptions import (
     PythonInstallerInstallError,
     PythonInstallerTestFailedError,
 )
+import pytest
 
 
-class TestPythonInstallerController(unittest.TestCase):
+class TestPythonInstallerController:
 
-    def setUp(self):
+    def setup_method(self):
         """Minimal valid kwargs for __init__ + patch process manager build."""
         self.valid_kwargs = {
             'version': '3.11',
@@ -35,33 +35,33 @@ class TestPythonInstallerController(unittest.TestCase):
         self.mock_pm_instance.is_installed.return_value = False
         self.mock_pm_instance.get_executable_path.return_value = 'C:/Python311/python.exe'
 
-    def tearDown(self):
+    def teardown_method(self):
         self._pm_patcher.stop()
 
     # ----- Initialization -----
 
     def test_init_sets_version(self):
         ctrl = PythonInstallerController(**self.valid_kwargs)
-        self.assertEqual(ctrl._config['version'], '3.11')
+        assert ctrl._config['version'] == '3.11'
 
     def test_init_status_is_none(self):
         ctrl = PythonInstallerController(**self.valid_kwargs)
-        self.assertIsNone(ctrl.status)
+        assert ctrl.status is None
 
     def test_init_error_count_zero(self):
         ctrl = PythonInstallerController(**self.valid_kwargs)
-        self.assertEqual(ctrl.error_count, 0)
+        assert ctrl.error_count == 0
 
     def test_is_thread(self):
         ctrl = PythonInstallerController(**self.valid_kwargs)
-        self.assertIsInstance(ctrl, threading.Thread)
+        assert isinstance(ctrl, threading.Thread)
 
     def test_is_daemon(self):
         ctrl = PythonInstallerController(**self.valid_kwargs)
-        self.assertTrue(ctrl.daemon)
+        assert ctrl.daemon
 
     def test_init_invalid_config_raises(self):
-        with self.assertRaises(PythonInstallerConfigError):
+        with pytest.raises(PythonInstallerConfigError):
             PythonInstallerController(unknown_param='bad')
 
     # ----- set_config -----
@@ -69,38 +69,38 @@ class TestPythonInstallerController(unittest.TestCase):
     def test_set_config_updates_version(self):
         ctrl = PythonInstallerController(**self.valid_kwargs)
         ctrl.set_config(version='3.12')
-        self.assertEqual(ctrl._config['version'], '3.12')
+        assert ctrl._config['version'] == '3.12'
 
     def test_set_config_invalid_key_raises(self):
         ctrl = PythonInstallerController(**self.valid_kwargs)
-        with self.assertRaises(PythonInstallerConfigError):
+        with pytest.raises(PythonInstallerConfigError):
             ctrl.set_config(bad_key='value')
 
     # ----- status property -----
 
     def test_status_initially_none(self):
         ctrl = PythonInstallerController(**self.valid_kwargs)
-        self.assertIsNone(ctrl.status)
+        assert ctrl.status is None
 
     # ----- is_installed -----
 
     def test_is_installed_delegates_to_pm(self):
         self.mock_pm_instance.is_installed.return_value = True
         ctrl = PythonInstallerController(**self.valid_kwargs)
-        self.assertTrue(ctrl.is_installed())
+        assert ctrl.is_installed()
 
     def test_is_not_installed(self):
         self.mock_pm_instance.is_installed.return_value = False
         ctrl = PythonInstallerController(**self.valid_kwargs)
-        self.assertFalse(ctrl.is_installed())
+        assert not ctrl.is_installed()
 
     # ----- stop -----
 
     def test_stop_sets_event(self):
         ctrl = PythonInstallerController(**self.valid_kwargs)
-        self.assertFalse(ctrl._stop_event.is_set())
+        assert not ctrl._stop_event.is_set()
         ctrl.stop()
-        self.assertTrue(ctrl._stop_event.is_set())
+        assert ctrl._stop_event.is_set()
 
     # ----- run — thread execution tests -----
 
@@ -112,7 +112,7 @@ class TestPythonInstallerController(unittest.TestCase):
         ctrl = PythonInstallerController(**self.valid_kwargs)
         ctrl.start()
         ctrl.join(timeout=5)
-        self.assertTrue(ctrl.status)
+        assert ctrl.status
 
     def test_run_install_error(self):
         """run() sets status=False when install raises PythonInstallerInstallError."""
@@ -121,8 +121,8 @@ class TestPythonInstallerController(unittest.TestCase):
         ctrl = PythonInstallerController(**self.valid_kwargs)
         ctrl.start()
         ctrl.join(timeout=5)
-        self.assertFalse(ctrl.status)
-        self.assertEqual(ctrl.error_count, 1)
+        assert not ctrl.status
+        assert ctrl.error_count == 1
 
     def test_run_timeout_error(self):
         """run() sets status=False on PythonInstallerTimeoutError."""
@@ -131,7 +131,7 @@ class TestPythonInstallerController(unittest.TestCase):
         ctrl = PythonInstallerController(**self.valid_kwargs)
         ctrl.start()
         ctrl.join(timeout=5)
-        self.assertFalse(ctrl.status)
+        assert not ctrl.status
 
     def test_run_verification_fails_when_exe_not_found(self):
         """run() sets status=False when python.exe not found after install."""
@@ -141,7 +141,7 @@ class TestPythonInstallerController(unittest.TestCase):
         ctrl = PythonInstallerController(**self.valid_kwargs)
         ctrl.start()
         ctrl.join(timeout=5)
-        self.assertFalse(ctrl.status)
+        assert not ctrl.status
 
     def test_run_with_uninstall(self):
         """run() calls uninstall when uninstall_after_test=True."""
@@ -156,7 +156,7 @@ class TestPythonInstallerController(unittest.TestCase):
         )
         ctrl.start()
         ctrl.join(timeout=5)
-        self.assertTrue(ctrl.status)
+        assert ctrl.status
         self.mock_pm_instance.uninstall.assert_called_once()
 
     def test_installed_executable_set_after_run(self):
@@ -167,7 +167,7 @@ class TestPythonInstallerController(unittest.TestCase):
         ctrl = PythonInstallerController(**self.valid_kwargs)
         ctrl.start()
         ctrl.join(timeout=5)
-        self.assertEqual(ctrl.installed_executable, 'C:/Python311/python.exe')
+        assert ctrl.installed_executable == 'C:/Python311/python.exe'
 
     def test_stop_before_run_skips_install(self):
         """stop() before run() still completes without error (stop_event set)."""
@@ -176,9 +176,7 @@ class TestPythonInstallerController(unittest.TestCase):
         ctrl.start()
         ctrl.join(timeout=5)
         # stop_event was already set, _execute_operation returns early
-        self.assertTrue(ctrl.status)
+        assert ctrl.status
         self.mock_pm_instance.install.assert_not_called()
 
 
-if __name__ == '__main__':
-    unittest.main()

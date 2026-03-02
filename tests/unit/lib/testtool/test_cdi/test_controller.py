@@ -7,7 +7,6 @@ import json
 import os
 import tempfile
 import threading
-import unittest
 from unittest.mock import MagicMock, Mock, patch
 
 from lib.testtool.cdi.controller import CDIController, CDILogParser
@@ -18,15 +17,16 @@ from lib.testtool.cdi.exceptions import (
     CDITestFailedError,
     CDITimeoutError,
 )
+import pytest
 
 
 # ---------------------------------------------------------------------------
 # CDIController tests
 # ---------------------------------------------------------------------------
 
-class TestCDIController(unittest.TestCase):
+class TestCDIController:
 
-    def setUp(self):
+    def setup_method(self):
         self.valid_kwargs = {
             'executable_path': './bin/CrystalDiskInfo/DiskInfo64.exe',
             'log_path': './testlog',
@@ -37,7 +37,7 @@ class TestCDIController(unittest.TestCase):
         self._patch_exists.start()
         self._patch_mkdir.start()
 
-    def tearDown(self):
+    def teardown_method(self):
         self._patch_exists.stop()
         self._patch_mkdir.stop()
 
@@ -45,20 +45,20 @@ class TestCDIController(unittest.TestCase):
 
     def test_init_sets_defaults(self):
         ctrl = CDIController(**self.valid_kwargs)
-        self.assertEqual(ctrl._config['timeout_seconds'], 60)
-        self.assertIsNone(ctrl.status)
-        self.assertEqual(ctrl.error_count, 0)
+        assert ctrl._config['timeout_seconds'] == 60
+        assert ctrl.status is None
+        assert ctrl.error_count == 0
 
     def test_is_thread(self):
         ctrl = CDIController(**self.valid_kwargs)
-        self.assertIsInstance(ctrl, threading.Thread)
+        assert isinstance(ctrl, threading.Thread)
 
     def test_daemon_thread(self):
         ctrl = CDIController(**self.valid_kwargs)
-        self.assertTrue(ctrl.daemon)
+        assert ctrl.daemon
 
     def test_init_invalid_config_raises(self):
-        with self.assertRaises(CDIConfigError):
+        with pytest.raises(CDIConfigError):
             CDIController(unknown_param='bad')
 
     # ----- set_config -----
@@ -66,32 +66,32 @@ class TestCDIController(unittest.TestCase):
     def test_set_config_updates_value(self):
         ctrl = CDIController(**self.valid_kwargs)
         ctrl.set_config(timeout_seconds=120)
-        self.assertEqual(ctrl._config['timeout_seconds'], 120)
+        assert ctrl._config['timeout_seconds'] == 120
 
     def test_set_config_invalid_key_raises(self):
         ctrl = CDIController(**self.valid_kwargs)
-        with self.assertRaises(CDIConfigError):
+        with pytest.raises(CDIConfigError):
             ctrl.set_config(bad_key='value')
 
     # ----- status property -----
 
     def test_status_initially_none(self):
         ctrl = CDIController(**self.valid_kwargs)
-        self.assertIsNone(ctrl.status)
+        assert ctrl.status is None
 
     # ----- error_count -----
 
     def test_error_count_initially_zero(self):
         ctrl = CDIController(**self.valid_kwargs)
-        self.assertEqual(ctrl.error_count, 0)
+        assert ctrl.error_count == 0
 
     # ----- stop -----
 
     def test_stop_sets_event(self):
         ctrl = CDIController(**self.valid_kwargs)
-        self.assertFalse(ctrl._stop_event.is_set())
+        assert not ctrl._stop_event.is_set()
         ctrl.stop()
-        self.assertTrue(ctrl._stop_event.is_set())
+        assert ctrl._stop_event.is_set()
 
     # ----- run (mocked _execute_workflow) -----
 
@@ -101,7 +101,7 @@ class TestCDIController(unittest.TestCase):
         ctrl = CDIController(**self.valid_kwargs)
         ctrl.start()
         ctrl.join(timeout=5)
-        self.assertTrue(ctrl.status)
+        assert ctrl.status
 
     @patch.object(CDIController, '_execute_workflow')
     def test_run_sets_status_false_on_timeout(self, mock_workflow):
@@ -109,7 +109,7 @@ class TestCDIController(unittest.TestCase):
         ctrl = CDIController(**self.valid_kwargs)
         ctrl.start()
         ctrl.join(timeout=5)
-        self.assertFalse(ctrl.status)
+        assert not ctrl.status
 
     @patch.object(CDIController, '_execute_workflow')
     def test_run_sets_status_false_on_cdi_error(self, mock_workflow):
@@ -117,7 +117,7 @@ class TestCDIController(unittest.TestCase):
         ctrl = CDIController(**self.valid_kwargs)
         ctrl.start()
         ctrl.join(timeout=5)
-        self.assertFalse(ctrl.status)
+        assert not ctrl.status
 
     @patch.object(CDIController, '_execute_workflow')
     def test_run_sets_status_false_on_unexpected_error(self, mock_workflow):
@@ -125,7 +125,7 @@ class TestCDIController(unittest.TestCase):
         ctrl = CDIController(**self.valid_kwargs)
         ctrl.start()
         ctrl.join(timeout=5)
-        self.assertFalse(ctrl.status)
+        assert not ctrl.status
 
     # ----- kill_processes (static) -----
 
@@ -163,7 +163,7 @@ class TestCDIController(unittest.TestCase):
             })
             ctrl._config['diskinfo_json_name'] = 'DiskInfo.json'
             result = ctrl.get_drive_info('C:', '', 'Model')
-            self.assertEqual(result, 'SSD Pro')
+            assert result == 'SSD Pro'
 
     def test_get_drive_info_missing_drive_raises(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -171,7 +171,7 @@ class TestCDIController(unittest.TestCase):
             json_path = os.path.join(tmpdir, 'DiskInfo.json')
             self._write_json(json_path, {'disks': []})
             ctrl._config['diskinfo_json_name'] = 'DiskInfo.json'
-            with self.assertRaises(CDIError):
+            with pytest.raises(CDIError):
                 ctrl.get_drive_info('Z:', '', 'Model')
 
     def test_get_smart_value(self):
@@ -188,7 +188,7 @@ class TestCDIController(unittest.TestCase):
             })
             ctrl._config['diskinfo_json_name'] = 'DiskInfo.json'
             values = ctrl.get_smart_value('C:', '', ['Power Cycles'])
-            self.assertEqual(values[0]['Power Cycles'], 5)
+            assert values[0]['Power Cycles'] == 5
 
     def test_compare_smart_value_pass(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -204,8 +204,8 @@ class TestCDIController(unittest.TestCase):
             })
             ctrl._config['diskinfo_json_name'] = 'DiskInfo.json'
             ok, msg = ctrl.compare_smart_value('C:', '', ['Unsafe Shutdowns'], 0)
-            self.assertTrue(ok)
-            self.assertIn('Passed', msg)
+            assert ok
+            assert 'Passed' in msg
 
     def test_compare_smart_value_fail(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -221,8 +221,8 @@ class TestCDIController(unittest.TestCase):
             })
             ctrl._config['diskinfo_json_name'] = 'DiskInfo.json'
             ok, msg = ctrl.compare_smart_value('C:', '', ['Unsafe Shutdowns'], 0)
-            self.assertFalse(ok)
-            self.assertIn('Failed', msg)
+            assert not ok
+            assert 'Failed' in msg
 
     def test_compare_smart_value_no_increase_pass(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -237,7 +237,7 @@ class TestCDIController(unittest.TestCase):
 
             ctrl._config['diskinfo_json_name'] = 'DiskInfo.json'
             ok, msg = ctrl.compare_smart_value_no_increase('C:', 'Before_', 'After_', ['Power Cycles'])
-            self.assertTrue(ok)
+            assert ok
 
     def test_compare_smart_value_increase_pass(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -256,14 +256,14 @@ class TestCDIController(unittest.TestCase):
 
             ctrl._config['diskinfo_json_name'] = 'DiskInfo.json'
             ok, msg = ctrl.compare_smart_value_increase('C:', 'Before_', 'After_', 13, ['Power Cycles'])
-            self.assertTrue(ok)
+            assert ok
 
 
 # ---------------------------------------------------------------------------
 # CDILogParser tests
 # ---------------------------------------------------------------------------
 
-class TestCDILogParser(unittest.TestCase):
+class TestCDILogParser:
 
     def _write_txt(self, path, content):
         with open(path, 'w', encoding='utf-8') as f:
@@ -291,28 +291,28 @@ class TestCDILogParser(unittest.TestCase):
             self._write_txt(txt, self.SAMPLE_TXT)
             parser = CDILogParser()
             result = parser.parse_file(txt)
-            self.assertIsInstance(result, dict)
+            assert isinstance(result, dict)
 
     def test_parse_cdi_version(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             txt = os.path.join(tmpdir, 'DiskInfo.txt')
             self._write_txt(txt, self.SAMPLE_TXT)
             result = CDILogParser().parse_file(txt)
-            self.assertEqual(result['CDI']['version'], '9.0.0')
+            assert result['CDI']['version'] == '9.0.0'
 
     def test_parse_os_version(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             txt = os.path.join(tmpdir, 'DiskInfo.txt')
             self._write_txt(txt, self.SAMPLE_TXT)
             result = CDILogParser().parse_file(txt)
-            self.assertIn('Windows 11', result['OS']['version'])
+            assert 'Windows 11' in result['OS']['version']
 
     def test_parse_controller_map(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             txt = os.path.join(tmpdir, 'DiskInfo.txt')
             self._write_txt(txt, self.SAMPLE_TXT)
             result = CDILogParser().parse_file(txt)
-            self.assertIn('Standard NVM Express Controller', result['controllers_disks'])
+            assert 'Standard NVM Express Controller' in result['controllers_disks']
 
     def test_parse_disk_list(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -328,7 +328,7 @@ class TestCDILogParser(unittest.TestCase):
             result = CDILogParser().parse_file(txt)
             smart = result['disks'][0].get('S.M.A.R.T.', [])
             attr_names = [s['Attribute Name'] for s in smart]
-            self.assertIn('Power Cycles', attr_names)
+            assert 'Power Cycles' in attr_names
 
     def test_parse_writes_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -336,15 +336,13 @@ class TestCDILogParser(unittest.TestCase):
             json_out = os.path.join(tmpdir, 'DiskInfo.json')
             self._write_txt(txt, self.SAMPLE_TXT)
             CDILogParser().parse_file(txt, json_output_path=json_out)
-            self.assertTrue(os.path.exists(json_out))
+            assert os.path.exists(json_out)
             with open(json_out) as f:
                 data = json.load(f)
-            self.assertIn('CDI', data)
+            assert 'CDI' in data
 
     def test_parse_missing_file_raises(self):
-        with self.assertRaises(FileNotFoundError):
+        with pytest.raises(FileNotFoundError):
             CDILogParser().parse_file('/nonexistent/DiskInfo.txt')
 
 
-if __name__ == '__main__':
-    unittest.main()
