@@ -92,5 +92,18 @@
     "disable_unattended_sleep": true,
     "disable_disk_defrag": true,
     "auto_reboot_on_crash": false
+  },
+
+  "phm": {
+    "installer_path": "./bin/PHM/phm_nda_V4.22.0_B25.02.06.02_H.exe",
+    "install_path": "C:\\Program Files\\PowerhouseMountain",
+    "executable_name": "PowerhouseMountain.exe",
+    "log_path": "./testlog/PHMLog",
+    "screenshot_path": "./testlog/PHMLog/screenshots",
+    "timeout": 3600,
+    "cycle_count": 10,
+    "test_duration_minutes": 60,
+    "enable_modern_standby": true,
+    "check_interval_seconds": 5
   }
 }
