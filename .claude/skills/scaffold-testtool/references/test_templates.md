@@ -234,6 +234,55 @@ class Test<Tool>Config:
 Uses **pytest** style (`@pytest.fixture`, `@pytest.mark.parametrize`).  
 All external dependencies (subprocess, file system, sub-components) must be **mocked**.
 
+### ⚠️ Wait-loop mock pattern
+
+If `controller.py` calls `subprocess.run(...)` (or `Popen`) and then enters a
+`time.sleep` loop waiting for an external event (e.g. waiting for the OS to reboot),
+**do NOT pre-set `_stop_event` before the thread starts.**  Pre-setting it causes
+the controller to short-circuit before calling `subprocess.run`, so assertions like
+`mock_subprocess.assert_called_once()` fail unexpectedly.
+
+**Correct approach** — patch `time.sleep` to trigger the stop event on first call:
+
+```python
+@pytest.fixture
+def fast_wait(ctrl):
+    """
+    Patch time.sleep so the post-subprocess wait loop exits immediately.
+    subprocess.run and state saves still execute before the loop is entered.
+    """
+    def _sleep(_secs):
+        ctrl._stop_event.set()   # fires on first sleep() call inside the loop
+
+    with patch('lib.testtool.<package_name>.controller.time.sleep', side_effect=_sleep):
+        yield ctrl
+```
+
+Use `fast_wait` (instead of `ctrl`) in any test that needs to verify that
+`subprocess.run` was called:
+
+```python
+def test_issues_command(fast_wait, patch_subprocess):
+    fast_wait.start()
+    fast_wait.join(timeout=5)
+    assert patch_subprocess.called
+    assert patch_subprocess.call_args[0][0][0] == '<executable>'
+```
+
+Use `ctrl` (with `ctrl._stop_event.set()` called manually) only in tests that
+verify the **pre-subprocess abort path** (stop fires before the command is issued):
+
+```python
+def test_stop_before_command(ctrl, patch_subprocess):
+    ctrl._stop_event.set()   # stop fires before subprocess.run
+    ctrl.start()
+    ctrl.join(timeout=5)
+    patch_subprocess.assert_not_called()
+    assert ctrl.status is False
+```
+
+---
+
 ```python
 """
 Unit tests for <Tool> Controller.
@@ -526,6 +575,121 @@ class TestLogParserSummarize:
 
 ---
 
+## `test_state_manager.py` Template *(only if `has_state_manager: true`)*
+
+Ground truth: `tests/unit/lib/testtool/test_reboot/test_state_manager.py`
+
+```python
+"""
+Unit tests for <Tool>StateManager.
+Uses tmp_path — no real files persisted to the workspace.
+"""
+
+import json
+import pytest
+
+from lib.testtool.<package_name>.state_manager import <Tool>StateManager
+from lib.testtool.<package_name>.exceptions import <Tool>StateError
+
+
+# ── Fixtures ──────────────────────────────────────────────
+
+@pytest.fixture
+def manager(tmp_path):
+    return <Tool>StateManager(str(tmp_path / 'state.json'))
+
+
+@pytest.fixture
+def recovering_manager(tmp_path):
+    """Manager whose state file already has is_recovering=True."""
+    path = tmp_path / 'state.json'
+    path.write_text(
+        json.dumps({'is_recovering': True, 'current_cycle': 1, 'total_cycles': 3}),
+        encoding='utf-8',
+    )
+    return <Tool>StateManager(str(path))
+
+
+# ── load ────────────────────────────────────────────────
+
+class TestLoad:
+    def test_returns_default_when_no_file(self, manager):
+        state = manager.load()
+        assert state['is_recovering'] is False
+
+    def test_loads_saved_state(self, manager):
+        manager.save({'is_recovering': True, 'current_cycle': 1, 'total_cycles': 2})
+        assert manager.load()['is_recovering'] is True
+
+    def test_raises_on_corrupt_json(self, tmp_path):
+        bad = tmp_path / 'bad.json'
+        bad.write_text('{ not json }')
+        with pytest.raises(<Tool>StateError, match='Failed to load'):
+            <Tool>StateManager(str(bad)).load()
+
+    def test_back_fills_missing_keys(self, tmp_path):
+        path = tmp_path / 'partial.json'
+        path.write_text(json.dumps({'current_cycle': 5}), encoding='utf-8')
+        state = <Tool>StateManager(str(path)).load()
+        assert 'is_recovering' in state
+        assert state['current_cycle'] == 5
+
+
+# ── save ────────────────────────────────────────────────
+
+class TestSave:
+    def test_creates_file(self, manager, tmp_path):
+        manager.save({'is_recovering': False, 'current_cycle': 0, 'total_cycles': 1})
+        assert (tmp_path / 'state.json').exists()
+
+    def test_roundtrip(self, manager):
+        manager.save({'is_recovering': True, 'current_cycle': 2, 'total_cycles': 4})
+        state = manager.load()
+        assert state['is_recovering'] is True
+        assert state['current_cycle'] == 2
+
+    def test_creates_parent_dirs(self, tmp_path):
+        deep = tmp_path / 'a' / 'b' / 'state.json'
+        <Tool>StateManager(str(deep)).save(
+            {'is_recovering': False, 'current_cycle': 0, 'total_cycles': 1}
+        )
+        assert deep.exists()
+
+
+# ── clear ───────────────────────────────────────────────
+
+class TestClear:
+    def test_removes_file(self, manager, tmp_path):
+        manager.save({'is_recovering': False, 'current_cycle': 0, 'total_cycles': 1})
+        manager.clear()
+        assert not (tmp_path / 'state.json').exists()
+
+    def test_no_error_when_no_file(self, manager):
+        manager.clear()   # must not raise
+
+
+# ── is_recovering ───────────────────────────────────────────
+
+class TestIsRecovering:
+    def test_false_when_no_file(self, manager):
+        assert manager.is_recovering() is False
+
+    def test_true_when_flag_set(self, recovering_manager):
+        assert recovering_manager.is_recovering() is True
+
+    def test_false_after_clear(self, recovering_manager):
+        recovering_manager.clear()
+        assert recovering_manager.is_recovering() is False
+
+    def test_false_on_corrupt_file_no_raise(self, tmp_path):
+        bad = tmp_path / 'bad.json'
+        bad.write_text('not json')
+        # is_recovering() must NOT raise — returns False gracefully
+        assert <Tool>StateManager(str(bad)).is_recovering() is False
+```
+
+---
+
 ## Rules Summary
 
 | Rule | Detail |
@@ -535,6 +699,8 @@ class TestLogParserSummarize:
 | **`test_config.py`** | pytest style; cover `get_default_config`, `validate_config`, `merge_config` |
 | **`test_controller.py`** | unittest style; mock ALL external I/O; test init/status/stop/run |
 | **`test_log_parser.py`** | pytest style; fixture HTML strings; test PASS/FAIL/UNKNOWN/errors/batch/summarize — only if `has_log_parser: true` |
+| **`test_state_manager.py`** | pytest style; test load/save/clear/is_recovering with `tmp_path`; verify corrupt-file resilience — only if `has_state_manager: true` |
+| **Wait-loop mock** | When controller has a post-subprocess `time.sleep` loop, patch `time.sleep` to set `_stop_event` on first call (use `fast_wait` fixture); do NOT pre-set `_stop_event` before start() if you need to assert subprocess was called |
 | **Mocking** | Never call real executables or touch the real file system |
 | **`setUp` kwargs** | Always use the minimal valid set of `__init__` params |
 | **`status` checks** | Assert `None` before run, `True`/`False` after `join()` |

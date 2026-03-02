@@ -28,6 +28,7 @@ Optional modules are only created when the tool spec requires them:
 - `script_generator.py` → when `has_script_generator: true`
 - `ui_monitor.py` → when `has_ui: true`
 - `log_parser.py` → when `has_log_parser: true`
+- `state_manager.py` → when `has_state_manager: true` (cross-reboot / cross-process JSON state persistence)
 
 ## Workflow
 
@@ -58,12 +59,13 @@ Generate each file in this order:
 
 1. `exceptions.py` — exception hierarchy
 2. `config.py` — configuration class
-3. `controller.py` — main threading controller
-4. `process_manager.py` — (if `requires_install: true`)
-5. `script_generator.py` — (if `has_script_generator: true`)
-6. `ui_monitor.py` — (if `has_ui: true`)
-7. `log_parser.py` — (if `has_log_parser: true`)
-8. `__init__.py` — exports + usage docstring
+3. `state_manager.py` — (if `has_state_manager: true`) — before controller, controller depends on it
+4. `controller.py` — main threading controller
+5. `process_manager.py` — (if `requires_install: true`)
+6. `script_generator.py` — (if `has_script_generator: true`)
+7. `ui_monitor.py` — (if `has_ui: true`)
+8. `log_parser.py` — (if `has_log_parser: true`)
+9. `__init__.py` — exports + usage docstring
 
 **For module-by-module templates**, see `references/module_templates.md`  
 **For a complete worked example**, see `references/burnin_example.md`
@@ -82,6 +84,7 @@ tests/unit/lib/testtool/test_<package_name>/
 ```
 
 Optional (create only if the corresponding module exists):
+- `test_state_manager.py` — if `has_state_manager: true`
 - `test_process_manager.py` — if `requires_install: true`
 - `test_script_generator.py` — if `has_script_generator: true`
 - `test_ui_monitor.py` — if `has_ui: true`
@@ -128,6 +131,8 @@ Also add a `"<package_name>"` section to `tests/integration/Config/Config.json`:
 - Each test gets an isolated `clean_log_dir` (timestamped sub-directory)
 - **`__init__.py` at every level**: `tests/integration/lib/`, `tests/integration/lib/testtool/`, and `tests/integration/lib/testtool/test_<package_name>/` all require an empty `__init__.py` — otherwise VS Code Test Explorer cannot discover the tests
 - **Register marker in `pytest.ini`**: append `requires_<package_name>: ...` to the `markers` list; the project uses `--strict-markers` so undeclared markers cause collection errors
+- **`check_environment` MUST be a `@pytest.fixture(scope="session")`** — NEVER call `pytest.skip()` at module level in conftest.py; doing so skips the entire conftest at collection time and makes all tests invisible to VS Code Test Explorer. See `references/integration_test_templates.md` for the correct pattern.
+- **Selective guard application**: Only attach `check_environment` as a fixture parameter to tests that actually cause dangerous side effects (e.g., real reboot, real install). Tests that are safe regardless (e.g., recovery-detection via pre-populated state file) should NOT request `check_environment` so they always run.
 
 **For complete templates**, see `references/integration_test_templates.md`
 
@@ -164,6 +169,7 @@ class <Tool>ProcessError(<Tool>Error): ...    # always
 class <Tool>InstallError(<Tool>Error): ...    # only if requires_install: true
 class <Tool>UIError(<Tool>Error): ...         # only if has_ui: true
 class <Tool>LogParseError(<Tool>Error): ...   # only if has_log_parser: true
+class <Tool>StateError(<Tool>Error): ...      # only if has_state_manager: true
 class <Tool>TestFailedError(<Tool>Error): ... # always
 ```
 
@@ -272,6 +278,7 @@ Generate all 7 modules including `ui_monitor.py`.
 
 - **Template Reference**: `lib/testtool/burnin/` — canonical library package (full: install + UI + script)
 - **Secondary Template**: `lib/testtool/cdi/` — simpler example (UI only, no install, no script)
+- **State Manager Template**: `lib/testtool/reboot/state_manager.py` — canonical state_manager with JSON + fsync
 - **Log Parser Template**: `lib/testtool/phm/log_parser.py` — canonical log_parser implementation
 - **Unit Test Reference**: `tests/unit/lib/testtool/test_burnin/` — canonical unit test suite
 - **Log Parser Test Reference**: `tests/unit/lib/testtool/test_phm/test_log_parser.py` — canonical log_parser test

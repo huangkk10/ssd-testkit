@@ -79,6 +79,73 @@ def test_something(testcase_config):
 
 ---
 
+## ⚠️ ANTI-PATTERN: module-level `pytest.skip()` in conftest.py
+
+**NEVER do this:**
+
+```python
+# conftest.py  ← WRONG — breaks VS Code Test Explorer
+def check_environment():
+    if not condition:
+        pytest.skip("...", allow_module_level=True)
+
+check_environment()   # called at module top-level
+```
+
+When `pytest.skip(allow_module_level=True)` is called during **collection**,
+pytest skips the entire conftest.py.  Fixtures defined below the call are never
+registered, and VS Code Test Explorer shows **0 tests** in the folder.
+
+**Always use a session-scoped fixture instead:**
+
+```python
+# conftest.py  ← CORRECT
+@pytest.fixture(scope="session")
+def check_environment(<package_name>_env):
+    """Skip session if the executable is missing."""
+    exe = Path(<package_name>_env['executable_path'])
+    if not exe.exists():
+        pytest.skip(
+            f"<executable> not found at '{exe}'. "
+            f"Set <TOOL>_EXE_PATH to the correct location."
+        )
+    return <package_name>_env
+```
+
+Tests opt-in by listing `check_environment` as a parameter:
+
+```python
+def test_something(check_environment, clean_log_dir):
+    ...
+```
+
+---
+
+## Selective guard application
+
+Not every test in an integration suite needs the safety guard.
+Only attach `check_environment` to tests that cause **dangerous or irreversible
+side effects** (real reboot, real install, real hardware write, etc.).
+
+Tests that are safe regardless — e.g. reading a pre-populated state file,
+verifying a config, checking a log — should **omit** `check_environment`
+so they always run and stay visible in VS Code Test Explorer.
+
+```python
+# Safe test — no check_environment needed, always visible and runnable
+@pytest.mark.integration
+def test_recovery_detection(reboot_state_file):
+    ...
+
+# Dangerous test — guard required
+@pytest.mark.integration
+@pytest.mark.requires_reboot
+def test_full_reboot_cycle(check_environment, reboot_state_file):
+    ...
+```
+
+---
+
 ## `conftest.py` Template
 
 ```python
@@ -318,7 +385,8 @@ class Test<Tool>ControllerIntegration:
 | **`pytest.ini` marker** | Append `requires_<package_name>: mark test as requiring <executable>` to the `markers` list in `pytest.ini`; the project uses `--strict-markers` so undeclared markers abort collection |
 | **Config.json** | Only env/path params (exe path, log dir, OS version) go here; execution params (`cycle_count`, `timeout_seconds`, etc.) are passed explicitly per test |
 | **Executable path** | Support env-var override (`<TOOL>_EXE_PATH`); default to `tests/unit/lib/testtool/bin/<ToolDir>/` |
-| **`check_environment`** | Use `pytest.skip()` if exe not found — never let the test fail due to missing binary |
+| **`check_environment`** | **`@pytest.fixture(scope="session")`** — NEVER call as a module-level function; doing so causes collection-time skip and makes all tests invisible to VS Code Test Explorer. See the anti-pattern section above. |
+| **Selective guard** | Only add `check_environment` as a parameter to tests that cause side effects; safe tests (read-only, pre-populated fixtures) can omit it so they always run |
 | **Markers** | Always add `@pytest.mark.integration` + `@pytest.mark.requires_<package_name>` |
 | **No mocks** | Integration tests run real executables; mocking belongs in unit tests |
 | **`clean_log_dir`** | Each test gets its own timestamped sub-dir under `log_dir` |

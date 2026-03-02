@@ -18,6 +18,7 @@ execution:
   has_ui: false                        # true → generate ui_monitor.py (pywinauto)
   has_script_generator: false          # true → generate script_generator.py
   has_log_parser: false                # true → generate log_parser.py (structured report parsing)
+  has_state_manager: false             # true → generate state_manager.py (cross-reboot/cross-process JSON state)
 
 config_params:
   - name: "executable_path"
@@ -74,6 +75,7 @@ exceptions:
 | `has_ui` | bool | ❌ | `false` | If `true`, generates `ui_monitor.py` using pywinauto for window monitoring |
 | `has_script_generator` | bool | ❌ | `false` | If `true`, generates `script_generator.py` for producing config/script files |
 | `has_log_parser` | bool | ❌ | `false` | If `true`, generates `log_parser.py` for parsing structured HTML/text report files. Also auto-adds `<Tool>LogParseError` to `exceptions.py` |
+| `has_state_manager` | bool | ❌ | `false` | If `true`, generates `state_manager.py` for JSON state persistence across process restarts or OS reboots (uses `fsync`). Also auto-adds `<Tool>StateError` to `exceptions.py`. **Template**: `lib/testtool/reboot/state_manager.py` |
 
 ### `config_params`
 
@@ -120,6 +122,7 @@ List any **additional** exception class names beyond the always-generated set:
 - Auto-added if `requires_install: true`: `<Tool>InstallError`
 - Auto-added if `has_ui: true`: `<Tool>UIError`
 - Auto-added if `has_log_parser: true`: `<Tool>LogParseError`
+- Auto-added if `has_state_manager: true`: `<Tool>StateError`
 
 ---
 
@@ -165,6 +168,42 @@ execution:
   requires_install: true
   has_ui: true
   has_script_generator: true
+```
+
+### Cross-reboot State Manager Tool
+
+```yaml
+tool:
+  name: "OsReboot"
+  package_name: "reboot"
+  description: "OS reboot cycle controller via shutdown.exe"
+  version: "1.0.0"
+execution:
+  type: "cli"
+  executable: "shutdown.exe"
+  requires_install: false
+  has_ui: false
+  has_state_manager: true   # generates state_manager.py
+config_params:
+  - name: "delay_seconds"
+    type: "int"
+    default: 10
+    description: "Seconds passed to shutdown /r /t X"
+  - name: "reboot_count"
+    type: "int"
+    default: 1
+    description: "Total number of reboot cycles"
+  - name: "state_file"
+    type: "str"
+    default: "reboot_state.json"
+    description: "Path to JSON persistence file"
+  - name: "abort_on_fail"
+    type: "bool"
+    default: true
+    description: "Stop sequence if shutdown.exe fails"
+exceptions:
+  - "StateError"  # added automatically when has_state_manager: true
+```
 config_params:
   - name: "installer_path"
     type: "str"
