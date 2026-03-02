@@ -17,6 +17,7 @@ execution:
   requires_install: false              # true → generate process_manager.py with install()
   has_ui: false                        # true → generate ui_monitor.py (pywinauto)
   has_script_generator: false          # true → generate script_generator.py
+  has_log_parser: false                # true → generate log_parser.py (structured report parsing)
 
 config_params:
   - name: "executable_path"
@@ -72,6 +73,7 @@ exceptions:
 | `requires_install` | bool | ❌ | `false` | If `true`, generates `process_manager.py` with `install()`, `is_installed()`, `uninstall()` methods |
 | `has_ui` | bool | ❌ | `false` | If `true`, generates `ui_monitor.py` using pywinauto for window monitoring |
 | `has_script_generator` | bool | ❌ | `false` | If `true`, generates `script_generator.py` for producing config/script files |
+| `has_log_parser` | bool | ❌ | `false` | If `true`, generates `log_parser.py` for parsing structured HTML/text report files. Also auto-adds `<Tool>LogParseError` to `exceptions.py` |
 
 ### `config_params`
 
@@ -117,6 +119,7 @@ List any **additional** exception class names beyond the always-generated set:
 - Always generated: `<Tool>Error`, `<Tool>ConfigError`, `<Tool>TimeoutError`, `<Tool>ProcessError`, `<Tool>TestFailedError`
 - Auto-added if `requires_install: true`: `<Tool>InstallError`
 - Auto-added if `has_ui: true`: `<Tool>UIError`
+- Auto-added if `has_log_parser: true`: `<Tool>LogParseError`
 
 ---
 

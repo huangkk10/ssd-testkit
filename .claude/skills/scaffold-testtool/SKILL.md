@@ -19,13 +19,15 @@ lib/testtool/<toolname>/
 ├── exceptions.py        # Exception hierarchy (Base → sub-classes)
 ├── process_manager.py   # Install/Start/Stop/Kill lifecycle  [optional]
 ├── script_generator.py  # Script/config file generation      [optional]
-└── ui_monitor.py        # pywinauto UI automation            [optional]
+├── ui_monitor.py        # pywinauto UI automation            [optional]
+└── log_parser.py        # Structured log/report file parser  [optional]
 ```
 
 Optional modules are only created when the tool spec requires them:
 - `process_manager.py` → when `requires_install: true`
 - `script_generator.py` → when `has_script_generator: true`
 - `ui_monitor.py` → when `has_ui: true`
+- `log_parser.py` → when `has_log_parser: true`
 
 ## Workflow
 
@@ -60,7 +62,8 @@ Generate each file in this order:
 4. `process_manager.py` — (if `requires_install: true`)
 5. `script_generator.py` — (if `has_script_generator: true`)
 6. `ui_monitor.py` — (if `has_ui: true`)
-7. `__init__.py` — exports + usage docstring
+7. `log_parser.py` — (if `has_log_parser: true`)
+8. `__init__.py` — exports + usage docstring
 
 **For module-by-module templates**, see `references/module_templates.md`  
 **For a complete worked example**, see `references/burnin_example.md`
@@ -82,6 +85,7 @@ Optional (create only if the corresponding module exists):
 - `test_process_manager.py` — if `requires_install: true`
 - `test_script_generator.py` — if `has_script_generator: true`
 - `test_ui_monitor.py` — if `has_ui: true`
+- `test_log_parser.py` — if `has_log_parser: true`
 
 **Key rules:**
 - `test_exceptions.py` / `test_config.py` → use **pytest** class style
@@ -148,12 +152,13 @@ python -m pytest tests/ -m "not integration"
 Always generate these base exceptions. Add tool-specific ones based on the spec:
 
 ```python
-class <Tool>Error(Exception): ...          # always
-class <Tool>ConfigError(<Tool>Error): ...  # always
-class <Tool>TimeoutError(<Tool>Error): ... # always
-class <Tool>ProcessError(<Tool>Error): ... # always
-class <Tool>InstallError(<Tool>Error): ... # only if requires_install: true
-class <Tool>UIError(<Tool>Error): ...      # only if has_ui: true
+class <Tool>Error(Exception): ...             # always
+class <Tool>ConfigError(<Tool>Error): ...     # always
+class <Tool>TimeoutError(<Tool>Error): ...    # always
+class <Tool>ProcessError(<Tool>Error): ...    # always
+class <Tool>InstallError(<Tool>Error): ...    # only if requires_install: true
+class <Tool>UIError(<Tool>Error): ...         # only if has_ui: true
+class <Tool>LogParseError(<Tool>Error): ...   # only if has_log_parser: true
 class <Tool>TestFailedError(<Tool>Error): ... # always
 ```
 
@@ -260,9 +265,11 @@ Generate all 7 modules including `ui_monitor.py`.
 
 ## Related Files
 
-- **Template Reference**: `lib/testtool/burnin/` — canonical library package
-- **Secondary Template**: `lib/testtool/smartcheck/` — simpler example (no UI, no install)
+- **Template Reference**: `lib/testtool/burnin/` — canonical library package (full: install + UI + script)
+- **Secondary Template**: `lib/testtool/cdi/` — simpler example (UI only, no install, no script)
+- **Log Parser Template**: `lib/testtool/phm/log_parser.py` — canonical log_parser implementation
 - **Unit Test Reference**: `tests/unit/lib/testtool/test_burnin/` — canonical unit test suite
+- **Log Parser Test Reference**: `tests/unit/lib/testtool/test_phm/test_log_parser.py` — canonical log_parser test
 - **Integration Test Reference**: `tests/integration/lib/testtool/test_cdi/` — canonical integration test
 - **Shared Integration Config**: `tests/integration/Config/Config.json` — per-tool path config
 - **Shared Integration conftest**: `tests/integration/conftest.py` — `TestCaseConfiguration` class

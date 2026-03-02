@@ -558,6 +558,258 @@ class <Tool>UIMonitor:
 
 ---
 
+## `log_parser.py` Template *(only if `has_log_parser: true`)*
+
+```python
+"""
+<Tool> Log Parser
+
+Parses the structured report files (HTML or text) produced by <Tool> after a test run.
+Extracts pass/fail verdict, cycle counts, timestamps, and error messages.
+"""
+
+import re
+import os
+from dataclasses import dataclass, field
+from typing import List, Optional
+from pathlib import Path
+
+from .exceptions import <Tool>LogParseError
+from lib.logger import get_module_logger
+
+logger = get_module_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Result data class
+# ---------------------------------------------------------------------------
+
+@dataclass
+class <Tool>TestResult:
+    """
+    Parsed result from a single <Tool> report file.
+
+    Attributes:
+        status:            Overall verdict: ``"PASS"``, ``"FAIL"``, or ``"UNKNOWN"``.
+        total_cycles:      Number of cycles configured.
+        completed_cycles:  Number of cycles that actually completed.
+        errors:            List of error messages found in the report.
+        start_time:        Test start timestamp string (as printed in the report).
+        end_time:          Test end timestamp string (as printed in the report).
+        raw_report_path:   Absolute path to the source report file.
+        test_name:         Test name/title extracted from the report.
+    """
+    status: str = 'UNKNOWN'
+    total_cycles: int = 0
+    completed_cycles: int = 0
+    errors: List[str] = field(default_factory=list)
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    raw_report_path: str = ''
+    test_name: str = ''
+
+
+# ---------------------------------------------------------------------------
+# Parser
+# ---------------------------------------------------------------------------
+
+class <Tool>LogParser:
+    """
+    Parser for <Tool> report files.
+
+    <Tool> generates a report after each test session. This class reads that
+    file and returns a :class:`<Tool>TestResult` with key fields filled.
+
+    Example:
+        >>> parser = <Tool>LogParser()
+        >>> result = parser.parse_report('./testlog/<Tool>Log/report.html')
+        >>> print(result.status)
+        PASS
+    """
+
+    _PATTERNS = {
+        'status':           re.compile(
+            r'(?:test|overall)\s+result\s*[:\-]\s*(PASS|FAIL)',
+            re.IGNORECASE
+        ),
+        'total_cycles':     re.compile(
+            r'(?:total\s+)?cycles\s*[:\-]\s*(\d+)',
+            re.IGNORECASE
+        ),
+        'completed_cycles': re.compile(
+            r'completed\s+cycles\s*[:\-]\s*(\d+)',
+            re.IGNORECASE
+        ),
+        'start_time':       re.compile(
+            r'start\s+(?:time|date)\s*[:\-]\s*([^\n<]+)',
+            re.IGNORECASE
+        ),
+        'end_time':         re.compile(
+            r'(?:end|stop|finish)\s+(?:time|date)\s*[:\-]\s*([^\n<]+)',
+            re.IGNORECASE
+        ),
+        'error_line':       re.compile(
+            r'(?:error|failure)\s*[:\-]\s*([^\n<]{5,})',
+            re.IGNORECASE
+        ),
+    }
+
+    def parse_report(self, report_path: str) -> '<Tool>TestResult':
+        """
+        Parse a single <Tool> report file.
+
+        Args:
+            report_path: Path to the report file (HTML or text).
+
+        Returns:
+            :class:`<Tool>TestResult` populated from the report contents.
+
+        Raises:
+            <Tool>LogParseError: If the file cannot be read or has unexpected structure.
+        """
+        path = Path(report_path)
+        if not path.exists():
+            raise <Tool>LogParseError(f"Report not found: {report_path}")
+        if path.stat().st_size == 0:
+            raise <Tool>LogParseError(f"Report is empty: {report_path}")
+
+        try:
+            content = path.read_text(encoding='utf-8', errors='replace')
+        except OSError as exc:
+            raise <Tool>LogParseError(f"Cannot read report: {report_path}") from exc
+
+        result = <Tool>TestResult(raw_report_path=str(path.resolve()))
+        plain = self._strip_html_tags(content)
+
+        result.status           = self._parse_status(plain)
+        result.total_cycles     = self._parse_cycles(plain, 'total_cycles')
+        result.completed_cycles = self._parse_cycles(plain, 'completed_cycles')
+        result.start_time       = self._parse_timestamp(plain, 'start_time')
+        result.end_time         = self._parse_timestamp(plain, 'end_time')
+        result.test_name        = self._parse_test_name(content)
+        result.errors           = self._parse_errors(plain)
+
+        logger.info(
+            f"Parsed <Tool> report: status={result.status} "
+            f"completed={result.completed_cycles}/{result.total_cycles} "
+            f"errors={len(result.errors)}"
+        )
+        return result
+
+    def parse_reports_batch(self, log_dir: str) -> 'List[<Tool>TestResult]':
+        """
+        Parse all report files found inside *log_dir*.
+
+        Args:
+            log_dir: Directory containing report files.
+
+        Returns:
+            List of :class:`<Tool>TestResult`, sorted by filename.
+
+        Raises:
+            <Tool>LogParseError: If *log_dir* does not exist.
+        """
+        log_path = Path(log_dir)
+        if not log_path.exists():
+            raise <Tool>LogParseError(f"Log directory not found: {log_dir}")
+
+        # TODO: adjust glob pattern to match actual report file extension
+        report_files = sorted(log_path.glob('*.html'))
+        if not report_files:
+            logger.warning(f"No report files found in: {log_dir}")
+            return []
+
+        results = []
+        for report_file in report_files:
+            try:
+                results.append(self.parse_report(str(report_file)))
+            except <Tool>LogParseError as exc:
+                logger.error(f"Failed to parse {report_file.name}: {exc}")
+        return results
+
+    @staticmethod
+    def summarize(results: 'List[<Tool>TestResult]') -> dict:
+        """
+        Generate a summary dictionary from a list of results.
+
+        Returns:
+            ``{'total': int, 'pass': int, 'fail': int, 'unknown': int,
+               'error_summary': List[str]}``
+        """
+        pass_count    = sum(1 for r in results if r.status == 'PASS')
+        fail_count    = sum(1 for r in results if r.status == 'FAIL')
+        unknown_count = sum(1 for r in results if r.status == 'UNKNOWN')
+        all_errors: List[str] = []
+        for r in results:
+            all_errors.extend(r.errors)
+        return {
+            'total':         len(results),
+            'pass':          pass_count,
+            'fail':          fail_count,
+            'unknown':       unknown_count,
+            'error_summary': list(dict.fromkeys(all_errors)),
+        }
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _strip_html_tags(html: str) -> str:
+        text = re.sub(r'<[^>]+>', ' ', html)
+        for entity, char in [('&nbsp;', ' '), ('&amp;', '&'),
+                              ('&lt;', '<'), ('&gt;', '>'), ('&quot;', '"')]:
+            text = text.replace(entity, char)
+        text = re.sub(r'[ \t]+', ' ', text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return text
+
+    def _parse_status(self, plain: str) -> str:
+        m = self._PATTERNS['status'].search(plain)
+        if m:
+            return m.group(1).upper()
+        if re.search(r'\bFAIL\b', plain, re.IGNORECASE):
+            return 'FAIL'
+        if re.search(r'\bPASS\b', plain, re.IGNORECASE):
+            return 'PASS'
+        return 'UNKNOWN'
+
+    def _parse_cycles(self, plain: str, key: str) -> int:
+        m = self._PATTERNS[key].search(plain)
+        return int(m.group(1)) if m else 0
+
+    def _parse_timestamp(self, plain: str, key: str) -> Optional[str]:
+        m = self._PATTERNS[key].search(plain)
+        return m.group(1).strip() if m else None
+
+    def _parse_test_name(self, html: str) -> str:
+        m = re.search(r'<(?:h1|title)[^>]*>\s*([^<]+?)\s*</(?:h1|title)>', html, re.IGNORECASE)
+        return m.group(1).strip() if m else ''
+
+    def _parse_errors(self, plain: str) -> List[str]:
+        errors = []
+        for m in self._PATTERNS['error_line'].finditer(plain):
+            msg = m.group(1).strip()
+            if msg and msg not in errors:
+                errors.append(msg)
+        return errors
+```
+
+Also add `<Tool>LogParseError` to `exceptions.py` when `has_log_parser: true`:
+
+```python
+# --- Conditional: only when has_log_parser: true ---
+class <Tool>LogParseError(<Tool>Error):
+    """
+    Log parsing error.
+    Raised when a <Tool> report file cannot be read or has unexpected structure.
+    """
+    pass
+# --- End conditional ---
+```
+
+---
+
 ## `script_generator.py` Template *(only if `has_script_generator: true`)*
 
 ```python

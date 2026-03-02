@@ -20,7 +20,8 @@ Optional (only if the module exists):
 ```
 ├── test_process_manager.py   # if process_manager.py exists
 ├── test_script_generator.py  # if script_generator.py exists
-└── test_ui_monitor.py        # if ui_monitor.py exists
+├── test_ui_monitor.py        # if ui_monitor.py exists
+└── test_log_parser.py        # if log_parser.py exists
 ```
 
 ---
@@ -349,6 +350,196 @@ if __name__ == '__main__':
 
 ---
 
+## `test_log_parser.py` Template *(only if `has_log_parser: true`)*
+
+Use **pytest** class style (same as `test_exceptions.py` / `test_config.py`).
+All tests use fixture HTML strings written to `temp_dir` — no hard-coded paths.
+
+```python
+"""
+Unit tests for <Tool>LogParser and <Tool>TestResult.
+Uses fixture report strings — no real executables or network access.
+"""
+
+import os
+import pytest
+from lib.testtool.<toolname>.log_parser import <Tool>LogParser, <Tool>TestResult
+from lib.testtool.<toolname>.exceptions import <Tool>LogParseError
+
+
+# ---------------------------------------------------------------------------
+# Fixtures (can also live in conftest.py)
+# ---------------------------------------------------------------------------
+
+_PASS_HTML = """
+<html><head><title><Tool> Test Report</title></head><body>
+<h1>Test Results</h1>
+<p>Test Result: PASS</p>
+<p>Total Cycles: 10</p>
+<p>Completed Cycles: 10</p>
+<p>Start Time: 2026-01-01 10:00:00</p>
+<p>End Time: 2026-01-01 11:00:00</p>
+</body></html>
+"""
+
+_FAIL_HTML = """
+<html><head><title><Tool> Test Report</title></head><body>
+<h1>Test Results</h1>
+<p>Test Result: FAIL</p>
+<p>Total Cycles: 10</p>
+<p>Completed Cycles: 7</p>
+<p>Error: Disk read failure on sector 4096</p>
+</body></html>
+"""
+
+
+@pytest.fixture
+def html_pass_file(tmp_path):
+    p = tmp_path / 'pass_report.html'
+    p.write_text(_PASS_HTML, encoding='utf-8')
+    return str(p)
+
+
+@pytest.fixture
+def html_fail_file(tmp_path):
+    p = tmp_path / 'fail_report.html'
+    p.write_text(_FAIL_HTML, encoding='utf-8')
+    return str(p)
+
+
+# ---------------------------------------------------------------------------
+# <Tool>TestResult dataclass tests
+# ---------------------------------------------------------------------------
+
+class TestResult:
+    def test_default_status_unknown(self):
+        r = <Tool>TestResult()
+        assert r.status == 'UNKNOWN'
+
+    def test_default_errors_empty_list(self):
+        r = <Tool>TestResult()
+        assert r.errors == []
+
+    def test_default_cycles_zero(self):
+        r = <Tool>TestResult()
+        assert r.total_cycles == 0
+        assert r.completed_cycles == 0
+
+
+# ---------------------------------------------------------------------------
+# <Tool>LogParser — PASS report
+# ---------------------------------------------------------------------------
+
+class TestLogParserPass:
+    def test_parse_status_pass(self, html_pass_file):
+        result = <Tool>LogParser().parse_report(html_pass_file)
+        assert result.status == 'PASS'
+
+    def test_parse_pass_no_errors(self, html_pass_file):
+        result = <Tool>LogParser().parse_report(html_pass_file)
+        assert result.errors == []
+
+    def test_parse_pass_cycles(self, html_pass_file):
+        result = <Tool>LogParser().parse_report(html_pass_file)
+        assert result.total_cycles == 10
+        assert result.completed_cycles == 10
+
+    def test_parse_pass_timestamps(self, html_pass_file):
+        result = <Tool>LogParser().parse_report(html_pass_file)
+        assert result.start_time is not None
+        assert result.end_time is not None
+
+    def test_parse_pass_raw_path_set(self, html_pass_file):
+        result = <Tool>LogParser().parse_report(html_pass_file)
+        assert result.raw_report_path != ''
+
+
+# ---------------------------------------------------------------------------
+# <Tool>LogParser — FAIL report
+# ---------------------------------------------------------------------------
+
+class TestLogParserFail:
+    def test_parse_status_fail(self, html_fail_file):
+        result = <Tool>LogParser().parse_report(html_fail_file)
+        assert result.status == 'FAIL'
+
+    def test_parse_fail_has_errors(self, html_fail_file):
+        result = <Tool>LogParser().parse_report(html_fail_file)
+        assert len(result.errors) > 0
+
+    def test_parse_fail_partial_cycles(self, html_fail_file):
+        result = <Tool>LogParser().parse_report(html_fail_file)
+        assert result.completed_cycles < result.total_cycles
+
+
+# ---------------------------------------------------------------------------
+# <Tool>LogParser — error handling
+# ---------------------------------------------------------------------------
+
+class TestLogParserErrors:
+    def test_missing_file_raises(self, tmp_path):
+        with pytest.raises(<Tool>LogParseError, match='not found'):
+            <Tool>LogParser().parse_report(str(tmp_path / 'missing.html'))
+
+    def test_empty_file_raises(self, tmp_path):
+        p = tmp_path / 'empty.html'
+        p.write_text('', encoding='utf-8')
+        with pytest.raises(<Tool>LogParseError, match='empty'):
+            <Tool>LogParser().parse_report(str(p))
+
+    def test_unknown_status_no_pass_fail_keyword(self, tmp_path):
+        p = tmp_path / 'unknown.html'
+        p.write_text('<html><body>No verdict here</body></html>', encoding='utf-8')
+        result = <Tool>LogParser().parse_report(str(p))
+        assert result.status == 'UNKNOWN'
+
+
+# ---------------------------------------------------------------------------
+# parse_reports_batch
+# ---------------------------------------------------------------------------
+
+class TestLogParserBatch:
+    def test_batch_missing_dir_raises(self, tmp_path):
+        with pytest.raises(<Tool>LogParseError):
+            <Tool>LogParser().parse_reports_batch(str(tmp_path / 'no_such_dir'))
+
+    def test_batch_empty_dir_returns_empty_list(self, tmp_path):
+        results = <Tool>LogParser().parse_reports_batch(str(tmp_path))
+        assert results == []
+
+    def test_batch_multiple_reports(self, tmp_path):
+        for i in range(3):
+            (tmp_path / f'report_{i}.html').write_text(_PASS_HTML, encoding='utf-8')
+        results = <Tool>LogParser().parse_reports_batch(str(tmp_path))
+        assert len(results) == 3
+
+
+# ---------------------------------------------------------------------------
+# summarize
+# ---------------------------------------------------------------------------
+
+class TestLogParserSummarize:
+    def test_summarize_counts(self):
+        results = [
+            <Tool>TestResult(status='PASS'),
+            <Tool>TestResult(status='PASS'),
+            <Tool>TestResult(status='FAIL'),
+            <Tool>TestResult(status='UNKNOWN'),
+        ]
+        summary = <Tool>LogParser.summarize(results)
+        assert summary['total']   == 4
+        assert summary['pass']    == 2
+        assert summary['fail']    == 1
+        assert summary['unknown'] == 1
+
+    def test_summarize_empty(self):
+        summary = <Tool>LogParser.summarize([])
+        assert summary['total'] == 0
+        assert summary['error_summary'] == []
+```
+
+---
+
 ## Rules Summary
 
 | Rule | Detail |
@@ -357,6 +548,7 @@ if __name__ == '__main__':
 | **`test_exceptions.py`** | pytest style; test raise + inheritance for every exception class |
 | **`test_config.py`** | pytest style; cover `get_default_config`, `validate_config`, `merge_config` |
 | **`test_controller.py`** | unittest style; mock ALL external I/O; test init/status/stop/run |
+| **`test_log_parser.py`** | pytest style; fixture HTML strings; test PASS/FAIL/UNKNOWN/errors/batch/summarize — only if `has_log_parser: true` |
 | **Mocking** | Never call real executables or touch the real file system |
 | **`setUp` kwargs** | Always use the minimal valid set of `__init__` params |
 | **`status` checks** | Assert `None` before run, `True`/`False` after `join()` |
