@@ -65,8 +65,11 @@ from .registry_helper import (
     REG_BINARY,
 )
 from .actions import AbstractOsAction
+from .config import OsConfigProfile
+from .state_manager import OsConfigStateManager
+from .controller import OsConfigController
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # Exceptions
@@ -100,4 +103,8 @@ __all__ = [
     "REG_BINARY",
     # Abstract base
     "AbstractOsAction",
+    # Phase 5 – Controller layer
+    "OsConfigProfile",
+    "OsConfigStateManager",
+    "OsConfigController",
 ]
