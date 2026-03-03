@@ -70,8 +70,10 @@ def svc_start_type(svc_name: str) -> str:
         for line in result.stdout.splitlines():
             if "START_TYPE" in line:
                 parts = line.split()
-                if len(parts) >= 2:
-                    code = parts[1]
+                # sc qc output: "START_TYPE  :  4   DISABLED"
+                # parts = ['START_TYPE', ':', '4', 'DISABLED']
+                if len(parts) >= 3:
+                    code = parts[2]
                     return {
                         "2": "auto",
                         "3": "demand",
