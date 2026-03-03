@@ -24,6 +24,8 @@ import configparser
 import glob
 import shutil
 
+pytestmark = [pytest.mark.real_bat, pytest.mark.real, pytest.mark.hardware]
+
 
 class TestDirectSmartCheckBat:
     """Directly test the real behavior of SmartCheck.bat."""
