@@ -1,6 +1,6 @@
 ---
 name: scaffold-testtool
-description: Scaffold a new testtool library sub-package under lib/testtool/ using the burnin package as the standard template. Use when user asks to create a new testtool, add a library for a tool, migrate a legacy single-file testtool, scaffold a testtool package, or mentions 建 testtool, 新增工具 library, 遷移, or wrapping a CLI/GUI/BAT tool. Also answers questions about known tools (PHM, burnin, CDI, smartcheck) — check the Known Tools Reference section and read the corresponding reference file.
+description: Scaffold a new testtool library sub-package under lib/testtool/ using the burnin package as the standard template. Use when user asks to create a new testtool, add a library for a tool, migrate a legacy single-file testtool, scaffold a testtool package, or mentions 建 testtool, 新增工具 library, 遷移, or wrapping a CLI/GUI/BAT tool. Also answers questions about known tools (PHM, burnin, CDI, smartcheck, PwrTest, OsReboot, OsConfig) — check the Known Tools Reference section and read the corresponding reference file.
 ---
 
 # Scaffold Testtool Library Skill
@@ -283,6 +283,10 @@ When a user asks about a known tool, read the corresponding reference file first
 | Tool | Reference | Special Notes |
 |------|-----------|---------------|
 | **PHM** (Powerhouse Mountain) | `.claude/skills/scaffold-testtool/references/phm.md` | Web App (Node.js + browser); Playwright instead of pywinauto; non-standard `log_parser.py` module; installed at `C:\Program Files\PowerhouseMountain\PowerhouseMountain.exe`; Web UI `http://localhost:1337` |
+| **PwrTest** | `.claude/skills/scaffold-testtool/references/pwrtest.md` | WDK CLI tool; already bundled in SmiWinTools (no install needed); exe path resolved from `os_name`+`os_version`; non-standard `log_parser.py` for `pwrtestlog.log`/`.xml`; no `process_manager.py` or `ui_monitor.py` |
+| **OsReboot** | `.claude/skills/scaffold-testtool/references/reboot.md` | Wraps `shutdown.exe /r /t`; non-standard `state_manager.py` for cross-reboot cycle tracking; no install/UI/log parser; integration tests require isolated machine (`ENABLE_REBOOT_INTEGRATION_TEST=1`) |
+| **CDI** (CrystalDiskInfo) | `.claude/skills/scaffold-testtool/references/cdi.md` | GUI tool (pywinauto win32 backend); `CDILogParser` lives in `controller.py` (not a separate `log_parser.py`); `compare_smart_value_no_increase()` for before/after SMART comparison; legacy `CDI.py` deprecated |
+| **OsConfig** | `.claude/skills/scaffold-testtool/references/osconfig.md` | Pure Python API (no exe); 34 OS settings via winreg + PowerShell; non-standard `os_compat.py` + `registry_helper.py` + `state_manager.py` + `actions/` sub-directory; fail-soft + idempotent + snapshot/revert; all 6 phases complete |
 
 ---
 
