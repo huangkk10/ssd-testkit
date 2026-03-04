@@ -1,6 +1,6 @@
 ---
 name: scaffold-testtool
-description: Scaffold a new testtool library sub-package under lib/testtool/ using the burnin package as the standard template. Use when user asks to create a new testtool, add a library for a tool, migrate a legacy single-file testtool, scaffold a testtool package, or mentions 建 testtool, 新增工具 library, 遷移, or wrapping a CLI/GUI/BAT tool.
+description: Scaffold a new testtool library sub-package under lib/testtool/ using the burnin package as the standard template. Use when user asks to create a new testtool, add a library for a tool, migrate a legacy single-file testtool, scaffold a testtool package, or mentions 建 testtool, 新增工具 library, 遷移, or wrapping a CLI/GUI/BAT tool. Also answers questions about known tools (PHM, burnin, CDI, smartcheck) — check the Known Tools Reference section and read the corresponding reference file.
 ---
 
 # Scaffold Testtool Library Skill
@@ -274,6 +274,18 @@ Generate all 7 modules including `ui_monitor.py`.
 
 ---
 
+## Known Tools Reference
+
+For tools that have already been researched and scaffolded, detailed tool-specific specs
+(installation paths, ports, unique modules, config params, action items) are documented here.
+When a user asks about a known tool, read the corresponding reference file first.
+
+| Tool | Reference | Special Notes |
+|------|-----------|---------------|
+| **PHM** (Powerhouse Mountain) | `.claude/skills/scaffold-testtool/references/phm.md` | Web App (Node.js + browser); Playwright instead of pywinauto; non-standard `log_parser.py` module; installed at `C:\Program Files\PowerhouseMountain\PowerhouseMountain.exe`; Web UI `http://localhost:1337` |
+
+---
+
 ## Related Files
 
 - **Template Reference**: `lib/testtool/burnin/` — canonical library package (full: install + UI + script)
@@ -289,8 +301,8 @@ Generate all 7 modules including `ui_monitor.py`.
 - **Full Schema**: `.claude/skills/scaffold-testtool/references/tool_spec_schema.md`
 - **Burnin Example**: `.claude/skills/scaffold-testtool/references/burnin_example.md`
 - **Module Templates**: `.claude/skills/scaffold-testtool/references/module_templates.md`
-- **Unit Test Templates**: `.claude/skills/scaffold-testtool/references/test_templates.md`
-- **Integration Test Templates**: `.claude/skills/scaffold-testtool/references/integration_test_templates.md`
+- **Test Templates**: `.claude/skills/scaffold-testtool/references/test_templates.md`
+- **PHM Tool Reference**: `.claude/skills/scaffold-testtool/references/phm.md`
 
 ## Important Notes
 
