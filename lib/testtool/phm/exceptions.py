@@ -144,3 +144,19 @@ class PHMSleepReportParseError(PHMLogParseError):
         ... )
     """
     pass
+
+
+class PHMPEPCheckerError(PHMError):
+    """
+    PEPChecker execution or output validation error.
+
+    Raised when:
+    - PEPChecker.exe is not found at the configured path
+    - PEPChecker.exe returns a non-zero exit code
+    - PEPChecker.exe times out
+    - One or more expected output files are missing after execution
+
+    Example:
+        >>> raise PHMPEPCheckerError("Missing output files: PBC-Errors.txt")
+    """
+    pass

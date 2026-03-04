@@ -116,5 +116,12 @@
     "log_path": "./testlog/PwrTestLog",
     "log_prefix": "",
     "check_interval_seconds": 2.0
+  },
+
+  "pep_checker": {
+    "_comment": "PEPChecker.exe — Powerhouse Mountain NDA power/battery collector. Generates 4 HTML/txt reports in its own directory.",
+    "exe_path": "C:\\Program Files\\PowerhouseMountain\\NDA\\collectors\\windows\\PBC\\PEPChecker.exe",
+    "log_dir": "./testlog/PEPChecker_Log",
+    "timeout": 120
   }
 }

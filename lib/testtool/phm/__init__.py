@@ -57,6 +57,7 @@ from .config import PHMConfig
 from .log_parser import PHMLogParser, PHMTestResult
 from .process_manager import PHMProcessManager
 from .sleep_report_parser import SleepReportParser, SleepSession
+from .pep_checker import PEPChecker, PEPCheckerResult
 from .exceptions import (
     PHMError,
     PHMConfigError,
@@ -67,6 +68,7 @@ from .exceptions import (
     PHMLogParseError,
     PHMTestFailedError,
     PHMSleepReportParseError,
+    PHMPEPCheckerError,
 )
 
 __version__ = '1.0.0'
@@ -82,6 +84,9 @@ __all__ = [
     # Sleep study report parsing
     'SleepReportParser',
     'SleepSession',
+    # PEPChecker collector
+    'PEPChecker',
+    'PEPCheckerResult',
     # Process management
     'PHMProcessManager',
     # Exceptions
@@ -94,4 +99,5 @@ __all__ = [
     'PHMLogParseError',
     'PHMTestFailedError',
     'PHMSleepReportParseError',
+    'PHMPEPCheckerError',
 ]
