@@ -56,6 +56,7 @@ from .controller import PHMController
 from .config import PHMConfig
 from .log_parser import PHMLogParser, PHMTestResult
 from .process_manager import PHMProcessManager
+from .sleep_report_parser import SleepReportParser, SleepSession
 from .exceptions import (
     PHMError,
     PHMConfigError,
@@ -65,6 +66,7 @@ from .exceptions import (
     PHMUIError,
     PHMLogParseError,
     PHMTestFailedError,
+    PHMSleepReportParseError,
 )
 
 __version__ = '1.0.0'
@@ -77,6 +79,9 @@ __all__ = [
     # Log parsing
     'PHMLogParser',
     'PHMTestResult',
+    # Sleep study report parsing
+    'SleepReportParser',
+    'SleepSession',
     # Process management
     'PHMProcessManager',
     # Exceptions
@@ -88,4 +93,5 @@ __all__ = [
     'PHMUIError',
     'PHMLogParseError',
     'PHMTestFailedError',
+    'PHMSleepReportParseError',
 ]

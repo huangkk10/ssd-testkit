@@ -55,11 +55,13 @@ lib/testtool/phm/
 ├── controller.py          # 主控制器（繼承 threading.Thread）
 ├── exceptions.py          # 例外階層
 ├── process_manager.py     # 安裝 / 移除 / 啟動 / 停止生命週期
-├── log_parser.py          # HTML 報告解析（PHM 特有，非標準模組）
+├── log_parser.py          # PHM HTML 測試報告解析
+├── sleep_report_parser.py # Windows Sleep Study HTML 報告解析（powercfg /sleepstudy）
 └── ui_monitor.py          # Playwright Web UI 自動化
 ```
 
-> ⚠️ `log_parser.py` 是 PHM **專屬非標準模組**（PHM 輸出 HTML 格式 log），scaffold 不預設建立，需手工新增。  
+> ⚠️ `log_parser.py` 解析 PHM 自身的測試結果 HTML。
+> ⚠️ `sleep_report_parser.py` 解析 Windows Sleep Study 報告，與 PHM 無直接關係，但歸屬 phm 套件管理。
 > ⚠️ `ui_monitor.py` 使用 **Playwright**，不是 pywinauto。
 
 ---
@@ -75,6 +77,7 @@ class PHMInstallError(PHMError)         # 安裝 / 移除失敗
 class PHMUIError(PHMError)              # Playwright 互動失敗
 class PHMLogParseError(PHMError)        # HTML log 解析失敗
 class PHMTestFailedError(PHMError)      # 測試結果 FAIL
+class PHMSleepReportParseError(PHMLogParseError)  # Sleep Study 報告解析失敗（PHMLogParseError 子類）
 ```
 
 ---
@@ -109,10 +112,106 @@ class PHMTestFailedError(PHMError)      # 測試結果 FAIL
 - `launch()` — 啟動 `PowerhouseMountain.exe`（需設 WorkingDirectory）
 - `terminate()` — 強制結束 PHM 程序
 
-### `log_parser.py`（PHM 專屬）
+### `log_parser.py`（PHM 測試報告）
 - `parse_html_report(html_path: str) -> PHMTestResult`
 - `PHMTestResult` dataclass：`status`, `total_cycles`, `completed_cycles`, `errors`, `start_time`, `end_time`, `raw_html_path`
 - 解析失敗拋出 `PHMLogParseError`
+
+### `sleep_report_parser.py`（Windows Sleep Study 報告）
+
+Windows `powercfg /sleepstudy` 產生的 HTML 報告解析模組。報告內嵌 `LocalSprData` JSON 物件，包含所有 Session 資料。
+
+**解析策略：**
+1. **Regex（主路徑）**：`LocalSprData` 是靜態 JSON literal，regex 快速提取，零延遲。
+2. **Playwright fallback**：若 regex 找不到，改用 Playwright Chromium headless 執行頁面 JS 後 `page.evaluate("() => LocalSprData")`。
+
+**主要 Class：**
+
+```python
+from lib.testtool.phm.sleep_report_parser import SleepReportParser, SleepSession
+# 或從頂層 import
+from lib.testtool.phm import SleepReportParser, SleepSession
+```
+
+**`SleepSession` dataclass 欄位：**
+
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| `session_id` | `int` | 報告中的 SESSION ID |
+| `entry_time_local` | `datetime` | 進入時間（local time，timezone-naive）|
+| `exit_time_local` | `datetime` | 離開時間 |
+| `duration_seconds` | `float` | 睡眠持續秒數 |
+| `sw_pct` | `int\|None` | Software DRIPS %（無資料時為 `None`）|
+| `hw_pct` | `int\|None` | Hardware DRIPS %（無資料時為 `None`）|
+| `on_ac` | `bool` | `True`=充電，`False`=放電 |
+| `duration_hms` | property `str` | 格式化字串如 `"24:13:06"` |
+
+**`SleepReportParser` API：**
+
+```python
+# 建立 parser（檔案不存在立即拋 PHMLogParseError）
+parser = SleepReportParser(r"C:\tmp\sleepstudy-report.html")
+
+# 取得所有 Sleep sessions（無過濾）
+all_sessions = parser.get_sleep_sessions()
+
+# 依日期過濾（string 或 datetime 均可）
+sessions = parser.get_sleep_sessions(
+    start_dt="2026-03-04",        # date-only → 00:00:00
+    end_dt="2026-03-04",          # date-only end → 23:59:59（自動補）
+)
+
+# 精確時間範圍（string）
+sessions = parser.get_sleep_sessions(
+    start_dt="2026-03-04T11:00:00",
+    end_dt="2026-03-04T11:30:00",
+)
+
+# datetime 物件（推薦用於程式計算）
+from datetime import datetime, timedelta
+sessions = parser.get_sleep_sessions(
+    start_dt=datetime(2026, 3, 4, 11, 0),
+    end_dt=datetime(2026, 3, 4, 11, 30),
+)
+
+# 搭配系統時間（最近 24 小時）
+sessions = parser.get_sleep_sessions(
+    start_dt=datetime.now() - timedelta(hours=24),
+    end_dt=datetime.now(),
+)
+
+# 今天整天
+from datetime import date
+today = date.today()
+sessions = parser.get_sleep_sessions(
+    start_dt=datetime.combine(today, datetime.min.time()),
+    end_dt=datetime.now(),
+)
+```
+
+**回傳結果使用：**
+```python
+for s in sessions:
+    print(f"SID={s.session_id}  {s.entry_time_local}  "
+          f"Duration={s.duration_hms}  SW={s.sw_pct}%  HW={s.hw_pct}%")
+
+# 判斷 SW% 是否符合標準
+for s in sessions:
+    if s.sw_pct is not None and s.sw_pct < 90:
+        print(f"Session {s.session_id} 低 SW DRIPS: {s.sw_pct}%")
+```
+
+**參數型別規則：**
+- `start_dt` / `end_dt` 接受 `str`（ISO-8601）或 `datetime` 物件
+- date-only string（`"2026-03-04"`）作為 `start_dt` → `00:00:00`；作為 `end_dt` → `23:59:59`
+- `datetime` 物件原樣使用（不做任何轉換）
+- 無效格式字串拋出 `PHMLogParseError`
+
+**資料取自 HTML 內嵌 JSON `LocalSprData.ScenarioInstances`：**
+- Session `Type == 2` = Sleep（只回傳這類）
+- `Duration` 單位：100-nanosecond ticks（除以 `1e7` = 秒）
+- SW/HW %公式：`round(100 * sw_ticks / dur_ticks / 10)`
+- `_raw_data` 快取：第二次呼叫 `get_sleep_sessions()` 不重新解析
 
 ### `ui_monitor.py`（Playwright）
 ```python
@@ -177,10 +276,20 @@ assert controller.status is True, f"PHM test failed: {controller.error_count} er
 - **完全 Mock**，不執行安裝，不存取真實檔案系統
 - `subprocess.run/Popen` → mock；`winreg.OpenKey` → mock；`playwright.sync_playwright` → mock
 - `test_log_parser.py`：使用 fixture HTML 字串（在 `conftest.py` 定義），不依賴真實 HTML
+- `test_sleep_report_parser.py`：透過 `parser._raw_data = ...` 直接注入 fixture JSON（跳過解析），或 mock `_extract_json_via_playwright`
 
 ### Integration Tests（`tests/integration/lib/testtool/test_phm/`）
-- 需要真實安裝（安裝檔 382 MB，已加入 `.gitignore`）
-- 六個 Phase：Installation → Launch → UIConfig → Run → LogParser → FullWorkflow
+- `test_phm_workflow.py`：需要真實 PHM 安裝（安裝檔 382 MB，已加入 `.gitignore`）
+- `test_sleep_report_parser_integration.py`：使用 `tmp/sleepstudy-report.html`（已有真實樣本）；啟動真實 Playwright Chromium；標記 `@pytest.mark.integration` + `@pytest.mark.slow`
+
+**Sleep Report integration test 注意事項：**
+- `playwright install chromium` 需先執行（否則 `BrowserType.launch` 拋錯）
+- Playwright 為 fallback 路徑（regex 是主路徑）；integration test 的 `TestDataCaching` 驗證快取行為
+- 樣本檔 `tmp/sleepstudy-report.html` 含 7 個 Sleep sessions，key sessions：
+  - SID=6：2026-03-02，~24h，SW=100%，HW=100%（Drain）
+  - SID=21：2026-03-04 11:06，~91s，SW=98%，HW=98%（Charge）
+  - SID=27：2026-03-04 11:59，~62s，SW=0%（Charge）
+  - SID=10/15/18/24：短 sleep，無 SW/HW metadata（`sw_pct=None`）
 
 ---
 
@@ -201,6 +310,10 @@ assert controller.status is True, f"PHM test failed: {controller.error_count} er
 |------|------|
 | 開發計畫（詳細） | `PHM_PLAN.md` |
 | 套件程式碼 | `lib/testtool/phm/` |
+| Sleep Study 解析模組 | `lib/testtool/phm/sleep_report_parser.py` |
+| Sleep Study 樣本 HTML | `tmp/sleepstudy-report.html` |
+| Sleep Report Unit Tests | `tests/unit/lib/testtool/test_phm/test_sleep_report_parser.py` |
+| Sleep Report Integration Tests | `tests/integration/lib/testtool/test_phm/test_sleep_report_parser_integration.py` |
 | Integration 安裝檔 | `tests/integration/bin/PHM/phm_nda_V4.22.0_B25.02.06.02_H.exe` |
 | Integration Config | `tests/integration/Config/Config.json` → `"phm"` 區塊 |
 | Playwright 文件 | https://playwright.dev/python/docs/intro |
