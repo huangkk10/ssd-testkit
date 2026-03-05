@@ -96,3 +96,22 @@ class SleepStudyTestFailedError(SleepStudyError):
         >>> raise SleepStudyTestFailedError("SW DRIPS 45% below threshold 85%")
     """
     pass
+
+
+class SleepStudyClearError(SleepStudyError):
+    """
+    History-clear error.
+
+    Raised when deleting files under the Sleep Study system directories fails.
+
+    Common causes:
+    - ``PermissionError`` — process is not running as Administrator
+    - ``OSError`` — file is locked or otherwise inaccessible
+
+    Example:
+        >>> raise SleepStudyClearError(
+        ...     "Permission denied deleting SleepStudy\\user-454-powersession.etl. "
+        ...     "Ensure the process is running as Administrator."
+        ... )
+    """
+    pass

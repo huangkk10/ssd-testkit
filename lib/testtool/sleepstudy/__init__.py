@@ -51,6 +51,7 @@ Parse an already-existing report::
 from .controller import SleepStudyController
 from .config import SleepStudyConfig
 from .sleep_report_parser import SleepReportParser, SleepSession
+from .history_cleaner import SleepHistoryCleaner
 from .exceptions import (
     SleepStudyError,
     SleepStudyConfigError,
@@ -58,6 +59,7 @@ from .exceptions import (
     SleepStudyProcessError,
     SleepStudyLogParseError,
     SleepStudyTestFailedError,
+    SleepStudyClearError,
 )
 
 __version__ = "1.0.0"
@@ -70,6 +72,8 @@ __all__ = [
     # Report parsing
     "SleepReportParser",
     "SleepSession",
+    # History cleaner
+    "SleepHistoryCleaner",
     # Exceptions
     "SleepStudyError",
     "SleepStudyConfigError",
@@ -77,4 +81,5 @@ __all__ = [
     "SleepStudyProcessError",
     "SleepStudyLogParseError",
     "SleepStudyTestFailedError",
+    "SleepStudyClearError",
 ]

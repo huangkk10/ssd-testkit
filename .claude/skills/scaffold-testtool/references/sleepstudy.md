@@ -28,6 +28,7 @@ lib/testtool/sleepstudy/
 ├── config.py                # DEFAULT_CONFIG、SleepStudyConfig、merge_config()
 ├── controller.py            # 主控制器（繼承 threading.Thread）
 ├── exceptions.py            # 例外階層
+├── history_cleaner.py       # 清除系統 SleepStudy 歷史記錄（SleepHistoryCleaner）
 └── sleep_report_parser.py   # HTML 報告解析（SleepReportParser、SleepSession）
 ```
 
@@ -45,6 +46,7 @@ class SleepStudyTimeoutError(SleepStudyError) # 超時
 class SleepStudyProcessError(SleepStudyError) # powercfg 執行失敗
 class SleepStudyLogParseError(SleepStudyError)# HTML 報告解析失敗
 class SleepStudyTestFailedError(SleepStudyError)# 測試結果 FAIL
+class SleepStudyClearError(SleepStudyError)   # 歷史記錄清除失敗（PermissionError / OSError）
 ```
 
 **Backward-compat alias（`lib.testtool.phm.exceptions`）：**
@@ -105,7 +107,86 @@ SleepStudyController.run()
 
 ---
 
-## 6. 解析器 API（`sleep_report_parser.py`）
+## 6. History Cleaner API（`history_cleaner.py`）
+
+在執行 `powercfg /sleepstudy` 前，先清除系統積累的歷史記錄，確保報告只包含本次測試週期資料。
+
+**目標路徑（清除直接子檔案，不刪除目錄本身）：**
+
+| 常數 | 路徑 |
+|------|------|
+| `SLEEP_STUDY_DIR` | `C:\Windows\System32\SleepStudy\` |
+| `SLEEP_STUDY_SCREENON_DIR` | `C:\Windows\System32\SleepStudy\ScreenOn\` |
+
+> ⚠️ 需要 Administrator 權限。
+
+### import
+
+```python
+from lib.testtool.sleepstudy import SleepHistoryCleaner, SleepStudyClearError
+```
+
+### 基本用法
+
+```python
+cleaner = SleepHistoryCleaner()
+del_count = cleaner.clear()          # raise_on_error=True（預設，遇錯立即拋）
+print(f"Deleted {del_count} files")
+print(f"Skipped (not found): {cleaner.skipped_dirs}")
+```
+
+### 容錯模式
+
+```python
+cleaner = SleepHistoryCleaner()
+cleaner.clear(raise_on_error=False)  # 收集錯誤，不中止
+if cleaner.errors:
+    for file_path, exc in cleaner.errors:
+        print(f"  FAILED: {file_path}: {exc}")
+```
+
+### 自訂目標路徑（測試用）
+
+```python
+cleaner = SleepHistoryCleaner(target_dirs=["C:/tmp/FakeSleepStudy"])
+cleaner.clear()
+```
+
+### `SleepHistoryCleaner` 屬性
+
+| 屬性 | 型別 | 說明 |
+|------|------|------|
+| `deleted_files` | `list[Path]` | 本次 `clear()` 成功刪除的檔案 |
+| `skipped_dirs` | `list[Path]` | 目錄不存在而跳過的路徑 |
+| `errors` | `list[tuple[Path, Exception]]` | `raise_on_error=False` 時收集的 `(file, exc)` |
+
+### 典型測試流程（搭配 Controller）
+
+```python
+from lib.testtool.sleepstudy import SleepHistoryCleaner, SleepStudyController
+
+# Step 1: 清除舊記錄
+SleepHistoryCleaner().clear()
+
+# Step 2: 執行測試（讓 DUT 進入 Sleep）
+# ... 測試邏輯 ...
+
+# Step 3: 產生報告並解析
+ctrl = SleepStudyController(output_path="./testlog/sleepstudy.html")
+ctrl.start()
+ctrl.join()
+parser = ctrl.get_parser()
+sessions = parser.get_sleep_sessions(start_dt="2026-03-05")
+```
+
+### 行為細節
+- 掃描每個目錄的**直接子檔案**（`Path.is_file()`），不遞迴
+- 掃描 `SleepStudy\` 時遇到 `ScreenOn` 子目錄，自動跳過（`is_file()` 過濾）
+- 每次呼叫 `clear()` 都重置 `deleted_files` / `skipped_dirs` / `errors`
+
+---
+
+## 7. 解析器 API（`sleep_report_parser.py`）
 
 Windows `powercfg /sleepstudy` 產生的 HTML 報告解析模組。  
 報告內嵌 `LocalSprData` JSON，包含所有 Session 資料。
@@ -199,13 +280,14 @@ for s in sessions:
 
 ---
 
-## 7. 測試架構
+## 8. 測試架構
 
 ### Unit Tests（`tests/unit/lib/testtool/test_sleepstudy/`）
 - `test_exceptions.py` — 例外層級、繼承關係
 - `test_config.py` — DEFAULT_CONFIG、驗證、merge_config
 - `test_controller.py` — subprocess mock、output_path、get_parser、timeout
 - `test_sleep_report_parser.py` — 使用 `parser._raw_data = ...` 直接注入 fixture JSON（跳過解析）；或 mock `_extract_json_via_playwright`
+- `test_history_cleaner.py` — 全部使用 `tmp_path` fixture（不觸及 System32）；`PermissionError`/`OSError` 以 `patch(Path.unlink)` 模擬；29 個測試
 
 ### Integration Tests（`tests/integration/lib/testtool/test_sleepstudy/`）
 - `test_sleep_report_parser_integration.py` — 使用 `tmp/sleepstudy-report.html`（真實樣本）；標記 `@pytest.mark.integration` + `@pytest.mark.slow` + `@pytest.mark.requires_sleepstudy`
@@ -221,7 +303,7 @@ for s in sessions:
 
 ---
 
-## 8. PHM 整合說明
+## 9. PHM 整合說明
 
 PHM (`lib.testtool.phm`) 的 `pep_checker.py` 使用 `SleepReportParser` 驗證 Sleep Session SW DRIPS%。  
 自遷移後，`pep_checker.py` 改為直接 import `lib.testtool.sleepstudy`：
@@ -241,14 +323,16 @@ from lib.testtool.sleepstudy.sleep_report_parser import (
 
 ---
 
-## 9. 相關路徑
+## 10. 相關路徑
 
 | 資源 | 路徑 |
 |------|------|
 | 套件程式碼 | `lib/testtool/sleepstudy/` |
+| History Cleaner | `lib/testtool/sleepstudy/history_cleaner.py` |
 | PHM shim（向下相容） | `lib/testtool/phm/sleep_report_parser.py` |
 | Sleep Study 樣本 HTML | `tmp/sleepstudy-report.html` |
 | Unit Tests | `tests/unit/lib/testtool/test_sleepstudy/` |
+| History Cleaner Unit Tests | `tests/unit/lib/testtool/test_sleepstudy/test_history_cleaner.py` |
 | Integration Tests | `tests/integration/lib/testtool/test_sleepstudy/` |
 | PHM backward-compat Tests | `tests/unit/lib/testtool/test_phm/test_sleep_report_parser.py` |
 | pytest marker | `requires_sleepstudy` |
