@@ -218,13 +218,20 @@ class TestPHMUIMonitorParams:
         self.m._page = MagicMock()
 
     def test_set_cycle_count_fills_input(self):
-        from lib.testtool.phm.ui_monitor import _SEL_CYCLE_INPUT
+        loc = MagicMock()
+        self.m._page.locator.return_value = loc
         self.m.set_cycle_count(20)
-        self.m._page.fill.assert_called_once_with(_SEL_CYCLE_INPUT, '20')
+        # verify locator built with MS_Cycling cycle count selector
+        call_sel = self.m._page.locator.call_args[0][0]
+        assert 'MS_Cycling' in call_sel
+        assert 'Cycle Count' in call_sel
+        loc.fill.assert_called_once_with('20')
 
     def test_set_cycle_count_raises_on_error(self):
         from lib.testtool.phm.exceptions import PHMUIError
-        self.m._page.fill.side_effect = Exception("not found")
+        loc = MagicMock()
+        loc.fill.side_effect = Exception("not found")
+        self.m._page.locator.return_value = loc
         with pytest.raises(PHMUIError):
             self.m.set_cycle_count(5)
 
@@ -319,32 +326,48 @@ class TestPHMUIMonitorWaitForCompletion:
         self.m._connected = True
         self.m._page = MagicMock()
 
-    def test_returns_true_on_pass_status(self):
-        mock_elem = MagicMock()
-        mock_elem.inner_text.return_value = 'Pass'
-        self.m._page.locator.return_value.first = mock_elem
-        with patch('lib.testtool.phm.ui_monitor.time.sleep'):
+    def test_returns_true_when_log_has_completion_marker(self):
+        """wait_for_completion returns True when 'Data analysis finished.' appears in log."""
+        log_text = (
+            "Thu Mar 05 2026 13:59:01 Generating sleep study report\n"
+            "Thu Mar 05 2026 13:59:04 Data analysis finished.\n"
+        )
+        with patch.object(self.m, 'get_log_text', return_value=log_text), \
+             patch('lib.testtool.phm.ui_monitor.time.sleep'):
             result = self.m.wait_for_completion(timeout=10)
-        assert result
+        assert result is True
+
+    def test_returns_true_on_pass_status(self):
+        """Alias: same as completion-marker test (status label no longer used)."""
+        log_text = "Data analysis finished.\n"
+        with patch.object(self.m, 'get_log_text', return_value=log_text), \
+             patch('lib.testtool.phm.ui_monitor.time.sleep'):
+            result = self.m.wait_for_completion(timeout=10)
+        assert result is True
 
     def test_returns_true_on_fail_status(self):
-        mock_elem = MagicMock()
-        mock_elem.inner_text.return_value = 'Fail'
-        self.m._page.locator.return_value.first = mock_elem
-        with patch('lib.testtool.phm.ui_monitor.time.sleep'):
+        """Alias: completion is detected via log marker regardless of pass/fail."""
+        log_text = "Data analysis finished.\n"
+        with patch.object(self.m, 'get_log_text', return_value=log_text), \
+             patch('lib.testtool.phm.ui_monitor.time.sleep'):
             result = self.m.wait_for_completion(timeout=10)
-        assert result
+        assert result is True
 
     def test_raises_timeout_error(self):
         from lib.testtool.phm.exceptions import PHMTimeoutError
-        mock_elem = MagicMock()
-        mock_elem.inner_text.return_value = 'Running'
-        self.m._page.locator.return_value.first = mock_elem
-        with patch('lib.testtool.phm.ui_monitor.time.sleep'):
-            with patch('lib.testtool.phm.ui_monitor.time.time',
-                       side_effect=[0, 0, 0, 100]):
-                with pytest.raises(PHMTimeoutError):
-                    self.m.wait_for_completion(timeout=1)
+        # logger.info() also calls time.time() for timestamps, so a fixed
+        # side_effect list is fragile.  Use a callable instead: return 0 for
+        # the first N calls (stays within timeout=1), then 9999 to expire it.
+        call_count = [0]
+        def _fake_time():
+            call_count[0] += 1
+            return 0 if call_count[0] <= 20 else 9999
+
+        with patch.object(self.m, 'get_log_text', return_value='Still running...\n'), \
+             patch('lib.testtool.phm.ui_monitor.time.sleep'), \
+             patch('lib.testtool.phm.ui_monitor.time.time', side_effect=_fake_time):
+            with pytest.raises(PHMTimeoutError):
+                self.m.wait_for_completion(timeout=1)
 
 
 

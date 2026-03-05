@@ -57,6 +57,12 @@ class PHMConfig:
         'check_interval_seconds': 5,
         'ui_retry_max': 60,
         'ui_retry_interval_seconds': 3,
+
+        # Collector Preset Scenario
+        # scenario_type must match a key in scenarios._SCENARIO_REGISTRY
+        'scenario_type': 'modern_standby_cycling',
+        'delayed_start_seconds': 10,
+        'scenario_duration_minutes': 1,
     }
 
     # Valid parameter names
@@ -83,6 +89,9 @@ class PHMConfig:
         'check_interval_seconds': (int, float),
         'ui_retry_max': int,
         'ui_retry_interval_seconds': (int, float),
+        'scenario_type': str,
+        'delayed_start_seconds': int,
+        'scenario_duration_minutes': int,
     }
 
     @classmethod

@@ -34,6 +34,8 @@ from .exceptions import (
 from .process_manager import PHMProcessManager
 from .log_parser import PHMLogParser, PHMTestResult
 from .ui_monitor import PHMUIMonitor
+from .collector_session import CollectorSession
+from .scenarios import build_scenario_params
 
 logger = get_module_logger(__name__)
 
@@ -246,24 +248,20 @@ class PHMController(threading.Thread):
         ui = self._get_ui_monitor()
         ui.wait_for_window(timeout=60)
 
-        # --- Step 4: Configure parameters ---
-        ui.set_cycle_count(cfg['cycle_count'])
-        ui.set_test_duration(cfg['test_duration_minutes'])
-        ui.set_modern_standby_mode(cfg['enable_modern_standby'])
-
-        # --- Step 5: Take baseline screenshot ---
-        if cfg.get('enable_screenshot'):
-            self._take_screenshot('before_start')
-
-        # --- Step 6: Start test ---
-        ui.start_test()
+        # --- Step 4: Build scenario params & run Collector session ---
+        params = build_scenario_params(cfg)
+        session = CollectorSession(ui)
+        session.run(params)   # navigates, selects scenario, fills fields, clicks Start
         logger.info(
-            f"PHM test started — cycles={cfg['cycle_count']}, "
-            f"duration={cfg['test_duration_minutes']}min, "
-            f"modern_standby={cfg['enable_modern_standby']}"
+            f"PHM Collector session started — scenario='{params.scenario_name}' "
+            f"params={params.to_dict()}"
         )
 
-        # --- Step 7: Monitor until done or stop/timeout ---
+        # --- Step 5: Screenshot immediately after start ---
+        if cfg.get('enable_screenshot'):
+            self._take_screenshot('after_start')
+
+        # --- Step 6: Monitor until done or stop/timeout ---
         timeout    = float(cfg['timeout'])
         interval   = float(cfg['check_interval_seconds'])
         elapsed    = 0.0
@@ -288,11 +286,11 @@ class PHMController(threading.Thread):
                     f"PHM test did not complete in {timeout} seconds"
                 )
 
-        # --- Step 8: Screenshot on completion ---
+        # --- Step 7: Screenshot on completion ---
         if cfg.get('enable_screenshot'):
             self._take_screenshot('after_completion')
 
-        # --- Step 9: Parse HTML log ---
+        # --- Step 8: Parse HTML log ---
         log_dir = cfg.get('log_path', './testlog/PHMLog')
         report_path = self._find_latest_html_report(log_dir)
 
