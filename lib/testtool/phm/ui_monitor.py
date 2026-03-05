@@ -143,6 +143,10 @@ def _sel_preset_scenario_radio(name: str) -> str:
 # Text values that indicate the test has finished (legacy status-label approach)
 _COMPLETION_STATUSES = {'pass', 'fail', 'completed', 'done', 'error'}
 
+# PHM status / banner label — confirmed from DOM (id="lbl_coll_statusMsg")
+# After a run it shows:  [ MS_Cycle 1 of 1 ] Traces saved to C:\...
+_SEL_STATUS_MSG = '[id="lbl_coll_statusMsg"]'
+
 # PHM log panel — confirmed from DOM (id="textArea_daq_logSummary")
 _SEL_LOG_TEXTAREA = '[id="textArea_daq_logSummary"]'
 
@@ -756,6 +760,45 @@ class PHMUIMonitor:
             raise PHMUIError(
                 f"Failed to read status (selector: {_SEL_STATUS_LABEL!r}): {exc}"
             ) from exc
+
+    def get_traces_path(self) -> str:
+        """
+        Read the trace output directory from the PHM status banner.
+
+        After a collection cycle completes, PHM updates the banner label
+        (``#lbl_coll_statusMsg``) to something like::
+
+            [ MS_Cycle 1 of 1 ] Traces saved to C:\\Program Files\\PowerhouseMountain\\traces\\Scenario2026-03-05-13-56-16
+
+        This method extracts the path that follows ``"Traces saved to "``.
+
+        Returns:
+            Absolute path string of the trace folder.
+
+        Raises:
+            PHMUIError: If the status label is missing or does not contain the
+                expected ``"Traces saved to"`` text.
+        """
+        self._require_connected()
+        try:
+            loc = self._page.locator(_SEL_STATUS_MSG)
+            loc.wait_for(state="visible", timeout=10_000)
+            full_text = loc.inner_text().strip()
+        except Exception as exc:
+            raise PHMUIError(
+                f"Failed to read status banner (selector: {_SEL_STATUS_MSG!r}): {exc}"
+            ) from exc
+
+        marker = "Traces saved to "
+        idx = full_text.find(marker)
+        if idx == -1:
+            raise PHMUIError(
+                f"Status banner does not contain 'Traces saved to'. "
+                f"Actual text: {full_text!r}"
+            )
+        traces_path = full_text[idx + len(marker):].strip()
+        logger.info(f"Traces path: {traces_path}")
+        return traces_path
 
     def take_screenshot(self, path: str) -> str:
         """

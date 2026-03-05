@@ -190,3 +190,6 @@ tests/unit/lib/testtool/test_smartcheck/smartcheck_custom_output
 packaging/release
 
 !requirements.txt
+
+# Ignore PHM trace folders created by smoke test runs
+/tests/verification/phm/Scenario*/

@@ -33,6 +33,7 @@ PHM Collector — Step-by-Step Smoke Test
     PAUSE_BETWEEN_STEPS   每個步驟之間暫停幾秒（方便肉眼觀察）
 """
 
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -54,8 +55,8 @@ HOST                  = "localhost"
 PORT                  = 1337
 HEADLESS              = False       # False = 顯示瀏覽器，方便觀察
 DELAYED_START_SEC     = 10
-SCENARIO_DURATION_MIN = 1
-CYCLE_COUNT           = 3
+SCENARIO_DURATION_MIN = 15
+CYCLE_COUNT           = 1
 WAIT_FOR_SERVER_SEC   = 30
 PAUSE_BETWEEN_STEPS   = 1.0        # seconds; set 0 to disable
 
@@ -146,6 +147,17 @@ def main() -> None:
             print(f"  ✓ Test completed — 'Data analysis finished.' seen in log")
         except KeyboardInterrupt:
             print("  ⚠ Polling interrupted by user — test may still be running")
+
+        # ── Step 11: Copy traces folder next to this script ───────────
+        step(11, "Get trace path from banner and copy folder here")
+        traces_src = ui.get_traces_path()
+        dest_dir = Path(__file__).parent / Path(traces_src).name
+        if dest_dir.exists():
+            shutil.rmtree(dest_dir)
+        shutil.copytree(traces_src, str(dest_dir))
+        print(f"  ✓ Traces copied:")
+        print(f"      src : {traces_src}")
+        print(f"      dest: {dest_dir}")
 
     except Exception as exc:
         print(f"\n✗ ERROR at step above: {exc}")
