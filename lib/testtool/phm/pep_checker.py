@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 
 from .exceptions import PHMPEPCheckerError
+from lib.testtool.sleepstudy import SleepReportParser  # canonical location  # noqa: F401
 from lib.logger import get_module_logger
 
 logger = get_module_logger(__name__)

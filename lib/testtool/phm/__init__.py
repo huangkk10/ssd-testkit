@@ -56,7 +56,9 @@ from .controller import PHMController
 from .config import PHMConfig
 from .log_parser import PHMLogParser, PHMTestResult
 from .process_manager import PHMProcessManager
-from .sleep_report_parser import SleepReportParser, SleepSession
+# SleepReportParser and SleepSession are now canonical in lib.testtool.sleepstudy;
+# re-exported here for backward compatibility.
+from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser, SleepSession  # noqa: E501
 from .pep_checker import PEPChecker, PEPCheckerResult
 from .exceptions import (
     PHMError,

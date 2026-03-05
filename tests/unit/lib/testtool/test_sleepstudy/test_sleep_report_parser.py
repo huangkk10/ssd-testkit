@@ -15,7 +15,6 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-# Canonical imports -- phm.sleep_report_parser is now a backward-compat shim.
 from lib.testtool.sleepstudy.sleep_report_parser import (
     SleepReportParser,
     SleepSession,
@@ -23,10 +22,6 @@ from lib.testtool.sleepstudy.sleep_report_parser import (
     _TICKS_PER_SECOND,
 )
 from lib.testtool.sleepstudy.exceptions import SleepStudyLogParseError
-# PHMLogParseError kept as alias for the last smoke test below
-from lib.testtool.phm.exceptions import PHMLogParseError, PHMSleepReportParseError
-# SleepStudyLogParseError IS the canonical error; PHMLogParseError alias used in smoke test only
-_ParseError = SleepStudyLogParseError
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +209,7 @@ class TestSleepSession:
 
 
 # ---------------------------------------------------------------------------
-# SleepReportParser — file-not-found
+# SleepReportParser -- file-not-found
 # ---------------------------------------------------------------------------
 
 class TestSleepReportParserInit:
@@ -230,7 +225,7 @@ class TestSleepReportParserInit:
 
 
 # ---------------------------------------------------------------------------
-# SleepReportParser — _extract_json_via_regex (no Playwright)
+# SleepReportParser -- _extract_json_via_regex (no Playwright)
 # ---------------------------------------------------------------------------
 
 class TestExtractJsonViaRegex:
@@ -260,7 +255,7 @@ class TestExtractJsonViaRegex:
 
 
 # ---------------------------------------------------------------------------
-# SleepReportParser — get_sleep_sessions (regex path, no browser)
+# SleepReportParser -- get_sleep_sessions (regex path, no browser)
 # ---------------------------------------------------------------------------
 
 class TestGetSleepSessions:
@@ -368,7 +363,7 @@ class TestGetSleepSessions:
         assert sessions[0].session_id == 21
 
     def test_filter_mixed_str_and_datetime(self, sleep_html_file):
-        """start_dt as datetime, end_dt as string — both should work."""
+        """start_dt as datetime, end_dt as string -- both should work."""
         scenarios = [
             _make_sleep_scenario(session_id=6,  entry_local="2026-03-02T02:59:20"),
             _make_sleep_scenario(session_id=21, entry_local="2026-03-04T11:06:34"),
@@ -376,7 +371,7 @@ class TestGetSleepSessions:
         parser = self._make_parser_with_data(sleep_html_file, scenarios)
         sessions = parser.get_sleep_sessions(
             start_dt=datetime(2026, 3, 4),
-            end_dt="2026-03-04",  # date-only → expands to 23:59:59
+            end_dt="2026-03-04",  # date-only -> expands to 23:59:59
         )
         assert len(sessions) == 1
         assert sessions[0].session_id == 21
@@ -430,7 +425,7 @@ class TestExtractSwHw:
         assert hw is None
 
     def test_missing_hw_only(self):
-        """SW present but HW key absent → hw_pct should be None."""
+        """SW present but HW key absent -> hw_pct should be None."""
         dur_ticks = int(100 * _TICKS_PER_SECOND)
         raw = {
             "Type": SESSION_TYPE_SLEEP,
@@ -586,10 +581,6 @@ class TestGetSleepSessionsViaPlaywright:
     Verify that get_sleep_sessions() uses the Playwright fallback when the
     regex path fails, and that it correctly filters sessions from the
     Playwright-returned data.
-
-    Both tests simulate regex failure so that _load_data() falls through
-    to _extract_json_via_playwright(), which is then mocked to return
-    controlled fixture data (no real browser is launched).
     """
 
     def _regex_fail(self):
@@ -630,12 +621,24 @@ class TestGetSleepSessionsViaPlaywright:
 
 
 # ---------------------------------------------------------------------------
-# Import / export smoke test
+# Import / export smoke tests
 # ---------------------------------------------------------------------------
 
-def test_imports_from_phm_package():
-    """Verify the new classes are re-exported from the top-level phm package."""
-    from lib.testtool.phm import SleepReportParser, SleepSession, PHMSleepReportParseError
+def test_imports_from_sleepstudy_package():
+    """Verify classes are exported from the top-level sleepstudy package."""
+    from lib.testtool.sleepstudy import SleepReportParser, SleepSession, SleepStudyLogParseError
     assert SleepReportParser is not None
     assert SleepSession is not None
+    assert SleepStudyLogParseError is not None
+
+
+def test_backward_compat_imports_from_phm_package():
+    """Backward-compat: phm package still re-exports SleepReportParser."""
+    from lib.testtool.phm import SleepReportParser as PHM_SRP
+    from lib.testtool.phm import SleepSession as PHM_SS
+    from lib.testtool.phm.exceptions import PHMSleepReportParseError
+    # Must be the same classes (re-exported from sleepstudy)
+    from lib.testtool.sleepstudy import SleepReportParser, SleepSession
+    assert PHM_SRP is SleepReportParser
+    assert PHM_SS is SleepSession
     assert PHMSleepReportParseError is not None

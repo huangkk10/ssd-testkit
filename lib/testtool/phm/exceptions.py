@@ -125,25 +125,12 @@ class PHMTestFailedError(PHMError):
     pass
 
 
-class PHMSleepReportParseError(PHMLogParseError):
-    """
-    Sleep Study report parsing error.
-
-    Raised when:
-    - The ``sleepstudy-report.html`` file is missing or unreadable
-    - The ``LocalSprData`` JSON payload is not found in the HTML
-    - The JSON structure does not match the expected Sleep Study format
-    - An invalid date/time filter argument is provided
-
-    This is a sub-class of :class:`PHMLogParseError` so existing callers
-    that catch ``PHMLogParseError`` will also catch this error.
-
-    Example:
-        >>> raise PHMSleepReportParseError(
-        ...     "LocalSprData not found in sleepstudy-report.html"
-        ... )
-    """
-    pass
+# ---------------------------------------------------------------------------
+# Backward-compatible alias — the canonical exception now lives in
+# lib.testtool.sleepstudy.exceptions.  Import it here so existing code
+# that catches ``PHMSleepReportParseError`` continues to work unchanged.
+# ---------------------------------------------------------------------------
+from lib.testtool.sleepstudy.exceptions import SleepStudyLogParseError as PHMSleepReportParseError  # noqa: F401, E501
 
 
 class PHMPEPCheckerError(PHMError):
