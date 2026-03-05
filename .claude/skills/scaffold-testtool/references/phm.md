@@ -56,12 +56,12 @@ lib/testtool/phm/
 ├── exceptions.py          # 例外階層
 ├── process_manager.py     # 安裝 / 移除 / 啟動 / 停止生命週期
 ├── log_parser.py          # PHM HTML 測試報告解析
-├── sleep_report_parser.py # Windows Sleep Study HTML 報告解析（powercfg /sleepstudy）
+├── sleep_report_parser.py # ⚠️ re-export shim（已遷移至 lib.testtool.sleepstudy，向下相容保留）
 └── ui_monitor.py          # Playwright Web UI 自動化
 ```
 
 > ⚠️ `log_parser.py` 解析 PHM 自身的測試結果 HTML。
-> ⚠️ `sleep_report_parser.py` 解析 Windows Sleep Study 報告，與 PHM 無直接關係，但歸屬 phm 套件管理。
+> ⚠️ `sleep_report_parser.py` 已**遷移**至獨立套件 `lib.testtool.sleepstudy`。`phm/sleep_report_parser.py` 現為 re-export shim，向下相容保留。新程式碼請 import `lib.testtool.sleepstudy`，詳見 `references/sleepstudy.md`。
 > ⚠️ `ui_monitor.py` 使用 **Playwright**，不是 pywinauto。
 
 ---
@@ -77,7 +77,7 @@ class PHMInstallError(PHMError)         # 安裝 / 移除失敗
 class PHMUIError(PHMError)              # Playwright 互動失敗
 class PHMLogParseError(PHMError)        # HTML log 解析失敗
 class PHMTestFailedError(PHMError)      # 測試結果 FAIL
-class PHMSleepReportParseError(PHMLogParseError)  # Sleep Study 報告解析失敗（PHMLogParseError 子類）
+PHMSleepReportParseError = SleepStudyLogParseError  # alias（來自 lib.testtool.sleepstudy.exceptions）
 ```
 
 ---
@@ -128,10 +128,17 @@ Windows `powercfg /sleepstudy` 產生的 HTML 報告解析模組。報告內嵌 
 **主要 Class：**
 
 ```python
+# ✅ 新程式碼：使用 sleepstudy 套件（canonical）
+from lib.testtool.sleepstudy import SleepReportParser, SleepSession
+# 或
+from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser, SleepSession
+
+# ⚠️ 舊程式碼（shim，仍可用但不建議）
 from lib.testtool.phm.sleep_report_parser import SleepReportParser, SleepSession
-# 或從頂層 import
 from lib.testtool.phm import SleepReportParser, SleepSession
 ```
+
+> 詳細 API 文件請見 `references/sleepstudy.md`。
 
 **`SleepSession` dataclass 欄位：**
 
@@ -149,7 +156,7 @@ from lib.testtool.phm import SleepReportParser, SleepSession
 **`SleepReportParser` API：**
 
 ```python
-# 建立 parser（檔案不存在立即拋 PHMLogParseError）
+# 建立 parser（檔案不存在立即拋 SleepStudyLogParseError）
 parser = SleepReportParser(r"C:\tmp\sleepstudy-report.html")
 
 # 取得所有 Sleep sessions（無過濾）
@@ -205,7 +212,7 @@ for s in sessions:
 - `start_dt` / `end_dt` 接受 `str`（ISO-8601）或 `datetime` 物件
 - date-only string（`"2026-03-04"`）作為 `start_dt` → `00:00:00`；作為 `end_dt` → `23:59:59`
 - `datetime` 物件原樣使用（不做任何轉換）
-- 無效格式字串拋出 `PHMLogParseError`
+- 無效格式字串拋出 `SleepStudyLogParseError`（`PHMSleepReportParseError` 為 alias，仍可 catch）
 
 **資料取自 HTML 內嵌 JSON `LocalSprData.ScenarioInstances`：**
 - Session `Type == 2` = Sleep（只回傳這類）
@@ -310,10 +317,13 @@ assert controller.status is True, f"PHM test failed: {controller.error_count} er
 |------|------|
 | 開發計畫（詳細） | `PHM_PLAN.md` |
 | 套件程式碼 | `lib/testtool/phm/` |
-| Sleep Study 解析模組 | `lib/testtool/phm/sleep_report_parser.py` |
+| Sleep Study 解析模組（canonical） | `lib/testtool/sleepstudy/` |
+| Sleep Study 解析模組（PHM shim） | `lib/testtool/phm/sleep_report_parser.py`（re-export shim） |
 | Sleep Study 樣本 HTML | `tmp/sleepstudy-report.html` |
-| Sleep Report Unit Tests | `tests/unit/lib/testtool/test_phm/test_sleep_report_parser.py` |
-| Sleep Report Integration Tests | `tests/integration/lib/testtool/test_phm/test_sleep_report_parser_integration.py` |
+| Sleep Report Unit Tests（canonical） | `tests/unit/lib/testtool/test_sleepstudy/test_sleep_report_parser.py` |
+| Sleep Report Integration Tests（canonical） | `tests/integration/lib/testtool/test_sleepstudy/test_sleep_report_parser_integration.py` |
+| Sleep Report PHM backward-compat Tests | `tests/unit/lib/testtool/test_phm/test_sleep_report_parser.py` |
+| SleepStudy Tool Reference | `.claude/skills/scaffold-testtool/references/sleepstudy.md` |
 | Integration 安裝檔 | `tests/integration/bin/PHM/phm_nda_V4.22.0_B25.02.06.02_H.exe` |
 | Integration Config | `tests/integration/Config/Config.json` → `"phm"` 區塊 |
 | Playwright 文件 | https://playwright.dev/python/docs/intro |

@@ -282,7 +282,8 @@ When a user asks about a known tool, read the corresponding reference file first
 
 | Tool | Reference | Special Notes |
 |------|-----------|---------------|
-| **PHM** (Powerhouse Mountain) | `.claude/skills/scaffold-testtool/references/phm.md` | Web App (Node.js + browser); Playwright instead of pywinauto; non-standard `log_parser.py` (PHM test result HTML) + `sleep_report_parser.py` (Windows Sleep Study HTML via `powercfg /sleepstudy`); installed at `C:\Program Files\PowerhouseMountain\PowerhouseMountain.exe`; Web UI `http://localhost:1337` |
+| **PHM** (Powerhouse Mountain) | `.claude/skills/scaffold-testtool/references/phm.md` | Web App (Node.js + browser); Playwright instead of pywinauto; non-standard `log_parser.py` (PHM test result HTML); `sleep_report_parser.py` is now a backward-compat shim → moved to `SleepStudy`; installed at `C:\Program Files\PowerhouseMountain\PowerhouseMountain.exe`; Web UI `http://localhost:1337` |
+| **SleepStudy** | `.claude/skills/scaffold-testtool/references/sleepstudy.md` | Independent `powercfg /sleepstudy` wrapper; migrated from `lib.testtool.phm`; `SleepStudyController(threading.Thread)` + `SleepReportParser` + `SleepStudyConfig`; regex primary / Playwright fallback for HTML parsing; `lib.testtool.phm.sleep_report_parser` is now a re-export shim for backward-compat |
 | **PwrTest** | `.claude/skills/scaffold-testtool/references/pwrtest.md` | WDK CLI tool; already bundled in SmiWinTools (no install needed); exe path resolved from `os_name`+`os_version`; non-standard `log_parser.py` for `pwrtestlog.log`/`.xml`; no `process_manager.py` or `ui_monitor.py` |
 | **OsReboot** | `.claude/skills/scaffold-testtool/references/reboot.md` | Wraps `shutdown.exe /r /t`; non-standard `state_manager.py` for cross-reboot cycle tracking; no install/UI/log parser; integration tests require isolated machine (`ENABLE_REBOOT_INTEGRATION_TEST=1`) |
 | **CDI** (CrystalDiskInfo) | `.claude/skills/scaffold-testtool/references/cdi.md` | GUI tool (pywinauto win32 backend); `CDILogParser` lives in `controller.py` (not a separate `log_parser.py`); `compare_smart_value_no_increase()` for before/after SMART comparison; legacy `CDI.py` deprecated |
@@ -296,8 +297,9 @@ When a user asks about a known tool, read the corresponding reference file first
 - **Secondary Template**: `lib/testtool/cdi/` — simpler example (UI only, no install, no script)
 - **State Manager Template**: `lib/testtool/reboot/state_manager.py` — canonical state_manager with JSON + fsync
 - **Log Parser Template**: `lib/testtool/phm/log_parser.py` — canonical log_parser (PHM test result HTML)
-- **Sleep Report Parser**: `lib/testtool/phm/sleep_report_parser.py` — parse `powercfg /sleepstudy` HTML; `SleepReportParser` + `SleepSession`; `start_dt`/`end_dt` accept `str` or `datetime`; regex primary / Playwright fallback; see `references/phm.md` §6 for full API
-- **Sleep Report Parser Tests**: `tests/unit/lib/testtool/test_phm/test_sleep_report_parser.py` (unit, no browser) + `tests/integration/lib/testtool/test_phm/test_sleep_report_parser_integration.py` (real Chromium, needs `playwright install chromium`)
+- **Sleep Report Parser**: `lib/testtool/sleepstudy/sleep_report_parser.py` — canonical `powercfg /sleepstudy` HTML parser; `SleepReportParser` + `SleepSession`; `start_dt`/`end_dt` accept `str` or `datetime`; regex primary / Playwright fallback; see `references/sleepstudy.md` §6 for full API. (`lib/testtool/phm/sleep_report_parser.py` is now a backward-compat re-export shim.)
+- **Sleep Report Parser Tests**: `tests/unit/lib/testtool/test_sleepstudy/test_sleep_report_parser.py` (unit, no browser) + `tests/integration/lib/testtool/test_sleepstudy/test_sleep_report_parser_integration.py` (real Chromium, needs `playwright install chromium`)
+- **SleepStudy Tool Reference**: `.claude/skills/scaffold-testtool/references/sleepstudy.md`
 - **Unit Test Reference**: `tests/unit/lib/testtool/test_burnin/` — canonical unit test suite
 - **Log Parser Test Reference**: `tests/unit/lib/testtool/test_phm/test_log_parser.py` — canonical log_parser test
 - **Integration Test Reference**: `tests/integration/lib/testtool/test_cdi/` — canonical integration test
