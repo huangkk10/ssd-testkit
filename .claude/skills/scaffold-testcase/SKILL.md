@@ -364,6 +364,130 @@ Always wrap RunCard calls in `try/except`; RunCard failure must not block the te
 
 ---
 
+## Example AI Conversations
+
+以下範例示範如何與 AI 對答，讓它套用此 skill 建立 integration test case。
+
+---
+
+### 範例 A — 最簡短的開場白（讓 AI 主動提問）
+
+**User:**
+> 幫我在 tests/integration 底下建立一個新的 STC 測試案例。
+
+**AI 回應（依 Workflow Step 1 逐一確認）：**
+> 好的！請提供以下資訊：
+> 1. STC 編號？（如 `1720`）
+> 2. 測試簡稱？（snake_case，如 `smart_monitor`）
+> 3. 客戶/平台目錄？（如 `client_pcie_lenovo_storagedv`，或需要新建？）
+> 4. 這個測試做什麼？（一句話說明）
+> 5. 用到哪些 testtool Controller？（BurnIn / CDI / SmartCheck / PwrTest / OsReboot...）
+> 6. 測試步驟有哪些？（依序列出）
+> 7. 是否有並行步驟？是否需要重開機？
+
+---
+
+### 範例 B — 一次提供所有資訊
+
+**User:**
+> 幫我建立 STC-1720 的 integration test case。
+> - 客戶目錄：`client_pcie_lenovo_storagedv`
+> - 簡稱：`power_cycle`
+> - 說明：對 SSD 執行 100 次電源循環，並在前後用 CDI 擷取 SMART 數據比對。
+> - 用到的工具：PwrTest、CDI
+> - 步驟：
+>   1. CDI before（取 SMART baseline）
+>   2. PwrTest 電源循環 100 次
+>   3. CDI after（取 SMART 數據）
+>   4. SMART 比對（Unsafe Shutdowns 不能增加，錯誤計數必須為 0）
+> - 無並行，無需重開機
+
+**AI 行為：** 直接進入 Step 2，依序產生以下檔案：
+
+```
+tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cycle/
+├── __init__.py
+├── Config/Config.json
+├── conftest.py
+├── test_main.py
+└── README.md
+```
+
+---
+
+### 範例 C — 並行測試（BurnIN + SmartCheck 同時跑）
+
+**User:**
+> 建立 STC-1730，客戶是 `client_sata_samsung_flagship`，測試名稱 `burnin_smart_concurrent`。
+> 步驟：
+> 1. CDI before
+> 2. BurnIN + SmartCheck 同時跑 8 小時
+> 3. CDI after + SMART 比對
+> 沒有重開機需求。
+
+**AI 行為：**
+- 在 `test_02_burnin_with_smart` 內套用 **Concurrent Test Pattern**（`burnin.start()` / `smartcheck.start()` + cross-stop 迴圈）
+- 在 `test_03_cdi_after` 套用 **CDI Before/After SMART Comparison Pattern**
+- Config.json 同時包含 `burnin`、`smartcheck`、`cdi` 三個 key
+
+---
+
+### 範例 D — 需要重開機的測試
+
+**User:**
+> STC-1750，`client_pcie_lenovo_storagedv`，`os_reboot_stress`。
+> 測試內容：OS 重開機 50 次，記錄每次開機時間，最後用 CDI 確認無 SMART 錯誤。
+> 工具：OsReboot、CDI。
+
+**AI 行為：**
+- 在 `test_main.py` 加入 `@pytest.mark.reboot` marker
+- 使用 `OsRebootController`（來自 `lib/testtool/reboot/`）
+- 在 `setup_test_class` 加入 `framework.reboot_manager` 必要的 hook 說明
+- Config.json 加入 `reboot` key（cycle count、timeout）
+
+---
+
+### 範例 E — 只想加步驟到現有 test case
+
+**User:**
+> STC-1685（stc1685_burnin）目前最後一步是 `test_05_cdi_after`，
+> 我想在後面加一個 `test_06_validate_log`，用來確認 burnin log 裡沒有 error 字串。
+
+**AI 行為：**
+- 讀取現有 `test_main.py` 結尾
+- 在 `test_05_cdi_after` 之後插入新方法 `test_06_validate_log`
+- 加上 `@pytest.mark.order(6)` 與 `@step(6, "Validate BurnIN log for errors")`
+- 不修改其他步驟或 Config.json
+
+---
+
+### 範例 F — 確認已建立的 test case 可以被 pytest 收集
+
+**User:**
+> 幫我確認剛剛建的 STC-1720 可以正確被 pytest 收集。
+
+**AI 行為（執行 Workflow Step 3）：**
+```powershell
+python -m py_compile tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cycle/test_main.py
+python -m pytest tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cycle/test_main.py --collect-only
+```
+並回報輸出結果，確認所有 test methods 都被正確收集。
+
+---
+
+### 對答技巧摘要
+
+| 你想做的事 | 建議的開場白 |
+|-----------|------------|
+| 從零建立完整 test case | `建立 STC-XXXX 的 integration test case，客戶 <client>，步驟如下：...` |
+| 讓 AI 主動問你 | `幫我建一個新的 integration test case` |
+| 只加一個步驟 | `在 stcXXXX 的 test_main.py 最後加入步驟 test_0N_<name>，做的事是...` |
+| 並行步驟 | 在步驟描述中明確說 `同時跑` 或 `concurrent` |
+| 需要重開機 | 在步驟中說明 `重開機 N 次` 或 `needs_reboot: true` |
+| 確認語法正確 | `幫我 compile 並 collect-only 確認 STC-XXXX` |
+
+---
+
 ## Related Files
 
 - **Canonical test case**: `tests/integration/client_pcie_lenovo_storagedv/stc1685_burnin/`
