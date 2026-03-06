@@ -51,11 +51,15 @@ from lib.testtool.phm import (
     PHMPEPCheckerError,
 )
 from lib.testtool.phm.process_manager import PHMProcessManager
+from lib.testtool.phm.ui_monitor import PHMUIMonitor
+from lib.testtool.phm.collector_session import CollectorSession
+from lib.testtool.phm.scenarios.modern_standby_cycling import ModernStandbyCyclingParams
 from lib.testtool.phm.exceptions import PHMInstallError
 from lib.testtool.pwrtest import PwrTestController
 from lib.testtool.pwrtest.config import PwrTestScenario
 from lib.testtool.sleepstudy import SleepStudyController
 from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser
+from lib.testtool.sleepstudy.history_cleaner import SleepHistoryCleaner
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.config import OsConfigProfile
 from lib.testtool.reboot import OsRebootController, OsRebootStateManager
@@ -596,7 +600,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_07] OsConfig applied successfully")
 
     @pytest.mark.order(8)
-    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
     @step(8, "Reboot device")
     def test_08_reboot(self):
         """
@@ -628,40 +632,97 @@ class TestSTC2562ModernStandby(BaseTestCase):
 
     @pytest.mark.order(9)
     # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
-    @step(9, "Open PHM web UI (post-reboot)")
+    @step(9, "PHM collector — run Modern Standby Cycling scenario")
     def test_09_open_phm_web(self):
         """
-        Launch PHM and verify the Node.js web UI is reachable at
-        http://localhost:1337 within 60 seconds.
+        Post-reboot: launch PHM, open the web UI, configure and run the Modern
+        Standby Cycling collector scenario using parameters from Config.json,
+        wait for completion, then copy the trace folder to testlog/PHMTraces/.
         """
         _skip_if_not_recovering()
-        logger.info("[TEST_09] PHM web launch started")
+        logger.info("[TEST_09] PHM collector session started")
 
-        cfg = self.config['phm']
-        mgr = PHMProcessManager(install_path=cfg['install_path'])
+        # ── Clear accumulated Sleep Study history ─────────────────────
+        try:
+            cleaner = SleepHistoryCleaner()
+            deleted = cleaner.clear()
+            logger.info(f"[TEST_09] SleepHistory cleared: {deleted} file(s) deleted")
+        except Exception as exc:
+            logger.warning(f"[TEST_09] SleepHistory clear failed (non-fatal): {exc}")
 
+        # ── Verify PHM is installed ───────────────────────────────────
+        phm_cfg = self.config['phm']
+        mgr = PHMProcessManager(install_path=phm_cfg['install_path'])
         if not mgr.is_installed():
             pytest.fail(
-                "PHM is not installed — cannot launch web UI. "
+                "PHM is not installed — cannot launch collector. "
                 "Ensure test_03 ran successfully before this reboot."
             )
 
+        # ── Launch PHM process ────────────────────────────────────────
         mgr.launch()
-        logger.info("[TEST_09] PHM process launched — polling http://localhost:1337")
+        logger.info("[TEST_09] PHM process launched")
 
-        # Poll until the web UI responds or timeout
-        deadline = time.time() + 60
-        last_exc = None
-        while time.time() < deadline:
+        # ── Read collector parameters from Config ─────────────────────
+        col_cfg = self.config.get('phm_collector', {})
+        cycle_count               = col_cfg.get('cycle_count', 1)
+        delayed_start_seconds     = col_cfg.get('delayed_start_seconds', 10)
+        scenario_duration_minutes = col_cfg.get('scenario_duration_minutes', 15)
+        wait_for_server_seconds   = col_cfg.get('wait_for_server_seconds', 60)
+        completion_timeout        = col_cfg.get('completion_timeout_seconds', 7200)
+        headless                  = col_cfg.get('headless', True)
+        traces_output_dir         = col_cfg.get('traces_output_dir', './testlog/PHMTraces')
+
+        params = ModernStandbyCyclingParams(
+            delayed_start_seconds=delayed_start_seconds,
+            scenario_duration_minutes=scenario_duration_minutes,
+            cycle_count=cycle_count,
+        )
+        logger.info(
+            f"[TEST_09] Collector params: cycles={cycle_count}, "
+            f"delayed_start={delayed_start_seconds}s, "
+            f"duration={scenario_duration_minutes}min"
+        )
+
+        # ── Open PHM web UI via Playwright ────────────────────────────
+        ui = PHMUIMonitor(host='localhost', port=1337, headless=headless)
+        try:
+            logger.info(f"[TEST_09] Waiting for PHM server (timeout={wait_for_server_seconds}s)")
+            ui.wait_for_ready(timeout=wait_for_server_seconds)
+            logger.info("[TEST_09] PHM server ready — opening browser")
+            # ui.open_browser(headless=headless)
+            ui.open_browser(headless=False)
+
+            # ── Run the collector session (steps 3-9 via CollectorSession) ──
+            session = CollectorSession(ui)
+            session.run(params)
+            logger.info("[TEST_09] CollectorSession.run() finished — test is running")
+
+            # ── Poll for completion ───────────────────────────────────
+            logger.info(f"[TEST_09] Waiting for completion (timeout={completion_timeout}s)")
+            completed = ui.wait_for_completion(timeout=completion_timeout)
+            if not completed:
+                pytest.fail("PHM collector did not complete within the configured timeout")
+            logger.info("[TEST_09] PHM collector completed")
+
+            # ── Collect traces ────────────────────────────────────────
             try:
-                urllib.request.urlopen('http://localhost:1337', timeout=5)
-                logger.info("[TEST_09] PHM web UI is responsive")
-                return
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                time.sleep(3)
+                traces_src = ui.get_traces_path()
+                dest_dir = Path(traces_output_dir)
+                if dest_dir.exists():
+                    shutil.rmtree(str(dest_dir))
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(traces_src, str(dest_dir), dirs_exist_ok=True)
+                logger.info(f"[TEST_09] Traces copied: {traces_src} -> {dest_dir}")
+            except Exception as exc:
+                logger.warning(f"[TEST_09] Trace collection failed (non-fatal): {exc}")
 
-        pytest.fail(f"PHM web UI did not become available within 60 s: {last_exc}")
+        finally:
+            try:
+                ui.close_browser()
+                logger.info("[TEST_09] Browser closed")
+            except Exception as exc:
+                logger.warning(f"[TEST_09] close_browser error (non-fatal): {exc}")
 
     @pytest.mark.order(10)
     @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")

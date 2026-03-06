@@ -42,6 +42,28 @@ def pytest_collection_finish(session):
     if has_test01:
         return  # full run — let test_01 manage the state file
 
+    # Post-reboot tests (09–11) require the state file to be present so that
+    # _is_recovering() returns True.  If the collected set contains only
+    # post-reboot tests, ensure the state file exists (create a synthetic one
+    # if missing) so developers can run these tests standalone without rebooting.
+    _POST_REBOOT_TESTS = {'test_09_open_phm_web', 'test_10_cdi_after', 'test_11_smart_compare'}
+    collected_names = {item.name for item in stc2562_items}
+    if collected_names.issubset(_POST_REBOOT_TESTS):
+        if not _STATE_FILE.exists():
+            import json as _json
+            _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _STATE_FILE.write_text(
+                _json.dumps({
+                    "is_recovering": True,
+                    "current_cycle": 1,
+                    "total_cycles": 1,
+                    "last_reboot_timestamp": "synthetic",
+                }, indent=2),
+                encoding='utf-8',
+            )
+            print(f"\n[STC-2562 conftest] Created synthetic reboot state for post-reboot partial run: {_STATE_FILE}")
+        return  # post-reboot partial run — keep state file
+
     if _STATE_FILE.exists():
         _STATE_FILE.unlink()
         print(f"\n[STC-2562 conftest] Removed reboot state for partial run: {_STATE_FILE}")
