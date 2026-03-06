@@ -1,0 +1,72 @@
+{
+  "test_name": "STC-2562",
+  "description": "Modern Standby Test with PHM (Lenovo StorageDV PCIe)",
+  "log_path": "./log/STC-2562",
+
+  "DUT_info": {
+    "DiskType": 0,
+    "_comment": "DiskType: 0 = PRIMARY (C: drive), 1 = SECONDARY"
+  },
+
+  "cdi": {
+    "ExePath": "./bin/CrystalDiskInfo/DiskInfo64.exe",
+    "LogPath": "./testlog/CDILog",
+    "LogPrefix": "",
+    "ScreenShotDriveLetter": "C:"
+  },
+
+  "phm": {
+    "installer": "./bin/PHM/phm_nda_V4.22.0_B25.02.06.02_H.exe",
+    "install_path": "C:\\Program Files\\PowerhouseMountain",
+    "timeout": 120
+  },
+
+  "pep_checker": {
+    "exe_path": "C:\\Program Files\\PowerhouseMountain\\NDA\\collectors\\windows\\PBC\\PEPChecker.exe",
+    "log_dir": "./testlog/PEPChecker_Log",
+    "timeout": 120
+  },
+
+  "pwrtest": {
+    "pwrtest_base_dir": "./bin/SmiWinTools/bin/x64/pwrtest",
+    "os_name": "win11",
+    "os_version": "24H2",
+    "cycle_count": 1,
+    "delay_seconds": 10,
+    "wake_after_seconds": 60,
+    "log_path": "./testlog/PwrTestLog",
+    "timeout": 300
+  },
+
+  "sleepstudy": {
+    "output_path": "./testlog/sleepstudy-report.html",
+    "timeout": 60,
+    "sw_hw_threshold_pct": 90
+  },
+
+  "osconfig": {
+    "disable_search_index": true,
+    "disable_onedrive": true,
+    "disable_defender": true
+  },
+
+  "reboot": {
+    "delay_seconds": 10,
+    "reboot_count": 1,
+    "state_file": "./testlog/reboot_state.json"
+  },
+
+  "smart_check": {
+    "drive_letter": "C:",
+    "no_increase_attributes": ["Unsafe Shutdowns"],
+    "must_be_zero_attributes": [
+      "Reallocated Sectors Count",
+      "Current Pending Sector Count",
+      "Uncorrectable Sector Count"
+    ]
+  },
+
+  "smicli": {
+    "config_path": "./Config/SmiCli.json"
+  }
+}

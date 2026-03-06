@@ -16,12 +16,63 @@ from lib.logger import get_module_logger
 
 logger = get_module_logger(__name__)
 
-# Registry key where PHM registers its uninstaller
-# Confirmed from real installation: DisplayName == "Powerhouse Mountain"
-_PHM_REGISTRY_KEYS = [
-    r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Powerhouse Mountain',
-    r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Powerhouse Mountain',
+# Parent registry paths that contain per-application uninstall entries.
+# PHM registers under a GUID subkey (not a fixed name), so we scan by
+# DisplayName instead of using a hardcoded key path.
+_UNINSTALL_PARENT_KEYS = [
+    r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    r'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
 ]
+_PHM_DISPLAY_NAME = 'Powerhouse Mountain'
+
+
+def _find_phm_uninstall_entry():
+    """
+    Scan HKLM (and HKCU) uninstall hives for subkeys whose DisplayName
+    matches *Powerhouse Mountain*.
+
+    PHM may register multiple entries (e.g. a WiX Burn bundle **and** an
+    MSI sub-component).  We return ALL of them, sorted so that entries with
+    a ``QuietUninstallString`` (the actual bundle uninstaller) come first —
+    this avoids running only the MSI sub-component and leaving the bundle.
+
+    Returns:
+        List of ``(hive, full_subkey_path)`` tuples, best entry first.
+        Empty list if nothing is found.
+    """
+    matches = []  # list of (hive, subkey, has_quiet)
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        for parent in _UNINSTALL_PARENT_KEYS:
+            try:
+                with winreg.OpenKey(hive, parent) as pk:
+                    index = 0
+                    while True:
+                        try:
+                            subname = winreg.EnumKey(pk, index)
+                            index += 1
+                        except OSError:
+                            break  # no more subkeys
+                        child_path = parent + '\\' + subname
+                        try:
+                            with winreg.OpenKey(hive, child_path) as ck:
+                                try:
+                                    display, _ = winreg.QueryValueEx(ck, 'DisplayName')
+                                    if display == _PHM_DISPLAY_NAME:
+                                        try:
+                                            winreg.QueryValueEx(ck, 'QuietUninstallString')
+                                            has_quiet = True
+                                        except OSError:
+                                            has_quiet = False
+                                        matches.append((hive, child_path, has_quiet))
+                                except OSError:
+                                    pass
+                        except OSError:
+                            pass
+            except OSError:
+                continue
+    # Sort: entries with QuietUninstallString first
+    matches.sort(key=lambda x: (0 if x[2] else 1))
+    return [(h, s) for h, s, _ in matches]
 
 
 class PHMProcessManager:
@@ -89,14 +140,10 @@ class PHMProcessManager:
         if self.executable_path.exists() and self.executable_path.is_file():
             return True
 
-        # Fallback: scan registry uninstall keys
-        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
-            for subkey in _PHM_REGISTRY_KEYS:
-                try:
-                    with winreg.OpenKey(hive, subkey):
-                        return True
-                except OSError:
-                    continue
+        # Fallback: scan registry for a matching DisplayName entry
+        entries = _find_phm_uninstall_entry()
+        if entries:
+            return True
 
         return False
 
@@ -197,13 +244,14 @@ class PHMProcessManager:
                 logger.info("PHM uninstalled successfully")
                 return True
 
-        # Strategy 2: registry QuietUninstallString / UninstallString
-        # PHM uses WiX bundler; QuietUninstallString = "phm_setup_nda.exe" /uninstall /quiet
-        for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
-            for subkey in _PHM_REGISTRY_KEYS:
+        # Strategy 2: scan registry for ALL matching DisplayName entries and
+        # run every uninstaller found (WiX bundle + MSI sub-component may
+        # coexist).  Entries with QuietUninstallString are sorted first.
+        entries = _find_phm_uninstall_entry()
+        if entries:
+            for hive, subkey in entries:
                 try:
                     with winreg.OpenKey(hive, subkey) as key:
-                        # Prefer QuietUninstallString (has /quiet flag already)
                         try:
                             uninstall_cmd, _ = winreg.QueryValueEx(key, 'QuietUninstallString')
                         except OSError:
@@ -216,10 +264,10 @@ class PHMProcessManager:
                         capture_output=True,
                         timeout=timeout,
                     )
-                    logger.info("PHM uninstalled successfully")
-                    return True
                 except OSError:
-                    continue
+                    pass
+            logger.info("PHM uninstalled successfully")
+            return True
 
         raise PHMInstallError(
             "No PHM uninstaller found. "
