@@ -101,7 +101,7 @@ class PHMProcessManager:
     def __init__(
         self,
         install_path: str,
-        executable_name: str = 'PHM.exe',
+        executable_name: str = 'PowerhouseMountain.exe',
     ):
         """
         Initialize PHM process manager.
@@ -335,7 +335,7 @@ class PHMProcessManager:
         self._pid = None
         logger.info("PHM process terminated")
 
-    def kill_by_name(self, process_name: str = 'PHM.exe') -> None:
+    def kill_by_name(self, process_name: str = 'PowerhouseMountain.exe') -> None:
         """
         Force-kill any running PHM.exe processes by name (taskkill).
 

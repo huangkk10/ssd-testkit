@@ -150,7 +150,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
                 "force-killing PHM processes and removing install directory"
             )
             mgr = PHMProcessManager(install_path=phm_cfg['install_path'])
-            mgr.kill_by_name('PHM.exe')
             mgr.kill_by_name('PowerhouseMountain.exe')
             install_dir = Path(phm_cfg['install_path'])
             if install_dir.exists():
@@ -169,6 +168,51 @@ class TestSTC2562ModernStandby(BaseTestCase):
         except Exception as exc:
             logger.error(f"[_remove_existing_phm] Uninstall failed: {exc}")
             return False
+
+    # ------------------------------------------------------------------
+    # Reboot auto-run helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _autorun_bat_path() -> Path:
+        """Path to the Windows Startup folder BAT used for post-reboot recovery."""
+        import getpass
+        user = getpass.getuser()
+        return Path(
+            rf"C:\Users\{user}\AppData\Roaming\Microsoft\Windows"
+            r"\Start Menu\Programs\Startup\stc2562_recovery.bat"
+        )
+
+    @classmethod
+    def _setup_autorun(cls, test_file: str) -> None:
+        """
+        Write a BAT script to the Windows Startup folder so that pytest
+        re-runs *test_file* automatically after the system reboots.
+
+        The script changes directory to the project root and invokes
+        the same Python interpreter that is currently active.
+        """
+        import getpass
+        bat_path = cls._autorun_bat_path()
+        python_exe = sys.executable
+        bat_content = (
+            f'@echo off\r\n'
+            f'cd /d "{_PROJECT_ROOT}"\r\n'
+            f'"{python_exe}" -m pytest --tb=short -q "{test_file}"\r\n'
+        )
+        bat_path.parent.mkdir(parents=True, exist_ok=True)
+        bat_path.write_text(bat_content, encoding='utf-8')
+        logger.info(f"[REBOOT] Auto-run script created: {bat_path}")
+
+    @classmethod
+    def _remove_autorun(cls) -> None:
+        """Remove the Startup BAT created by :meth:`_setup_autorun`, if present."""
+        bat_path = cls._autorun_bat_path()
+        if bat_path.exists():
+            bat_path.unlink()
+            logger.info(f"[REBOOT] Auto-run script removed: {bat_path}")
+        else:
+            logger.debug("[REBOOT] No auto-run script to remove")
 
     def _cleanup_test_logs(self) -> None:
         """
@@ -294,6 +338,9 @@ class TestSTC2562ModernStandby(BaseTestCase):
                 logger.info("[TEARDOWN] OsConfig reverted successfully")
             except Exception as exc:
                 logger.warning(f"[TEARDOWN] OsConfig revert failed — {exc} (continuing)")
+
+        # Remove the post-reboot auto-run BAT (best-effort)
+        TestSTC2562ModernStandby._remove_autorun()
 
         logger.info("STC-2562 session complete")
         os.chdir(cls.original_cwd)
@@ -521,6 +568,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_06] All sleep sessions passed SW/HW check")
 
     @pytest.mark.order(7)
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
     @step(7, "OsConfig — apply OS settings")
     def test_07_apply_osconfig(self):
         """
@@ -548,7 +596,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_07] OsConfig applied successfully")
 
     @pytest.mark.order(8)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
     @step(8, "Reboot device")
     def test_08_reboot(self):
         """
@@ -558,6 +606,10 @@ class TestSTC2562ModernStandby(BaseTestCase):
         """
         _skip_if_recovering()
         logger.info("[TEST_08] Scheduling reboot")
+
+        # Register auto-run BAT *before* issuing the shutdown command so that
+        # pytest is relaunched automatically when the OS comes back up.
+        TestSTC2562ModernStandby._setup_autorun(__file__)
 
         cfg = self.config['reboot']
         ctrl = OsRebootController(
@@ -575,7 +627,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
     # ------------------------------------------------------------------
 
     @pytest.mark.order(9)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(9, "Open PHM web UI (post-reboot)")
     def test_09_open_phm_web(self):
         """
@@ -635,6 +687,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_10] CDI After complete")
 
     @pytest.mark.order(11)
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
     @step(11, "SMART compare — verify drive health")
     def test_11_smart_compare(self):
         """
