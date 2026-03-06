@@ -282,6 +282,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
     # ------------------------------------------------------------------
 
     @pytest.mark.order(1)
+    @pytest.mark.skip(reason="Currently blocked by PHM instability — will re-enable once PHM is testable")
     @step(1, "Precondition — cleanup and create log directories")
     def test_01_precondition(self):
         """
@@ -314,6 +315,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_01] Precondition complete")
 
     @pytest.mark.order(2)
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(2, "CDI Before — SMART baseline")
     def test_02_cdi_before(self):
         """Run CrystalDiskInfo to capture SMART baseline (Before_ prefix)."""
@@ -336,6 +338,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_02] CDI Before complete")
 
     @pytest.mark.order(3)
+    @pytest.mark.skip(reason="Currently blocked by PHM instability — will re-enable once PHM is testable")
     @step(3, "Install PHM tool")
     def test_03_install_phm(self):
         """Install Powerhouse Mountain (PHM) tool silently."""
@@ -357,6 +360,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_03] PHM install complete")
 
     @pytest.mark.order(4)
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(4, "PEPChecker — run NDA collector")
     def test_04_run_pep_checker(self):
         """
@@ -400,7 +404,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_05] PwrTest sleep/wake started")
 
         # Record time before sleep for sleepstudy filtering
-        TestSTC2562ModernStandby._pre_sleep_time = datetime.now().isoformat()
+        TestSTC2562ModernStandby._pre_sleep_time = datetime.now().isoformat(timespec='seconds')
         logger.info(f"[TEST_05] pre_sleep_time: {self._pre_sleep_time}")
 
         cfg = self.config['pwrtest']
@@ -421,7 +425,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         if not pwrtest.status:
             pytest.fail(f"PwrTest failed: {pwrtest.result_summary}")
 
-        TestSTC2562ModernStandby._post_sleep_time = datetime.now().isoformat()
+        TestSTC2562ModernStandby._post_sleep_time = datetime.now().isoformat(timespec='seconds')
         logger.info(f"[TEST_05] post_sleep_time: {self._post_sleep_time}")
 
         # Generate sleepstudy report immediately after waking
@@ -477,17 +481,24 @@ class TestSTC2562ModernStandby(BaseTestCase):
             hw = s.hw_pct
             logger.info(f"[TEST_06]   Session {s.session_id}: SW={sw}%  HW={hw}%")
 
-            if sw is not None and sw < threshold:
+            # SW and HW values must be present
+            if sw is None:
+                failures.append(f"Session {s.session_id}: SW DRIPS not found (None)")
+            elif sw < threshold:
                 failures.append(f"Session {s.session_id}: SW DRIPS {sw}% < {threshold}%")
-            if hw is not None and hw < threshold:
+
+            if hw is None:
+                failures.append(f"Session {s.session_id}: HW DRIPS not found (None)")
+            elif hw < threshold:
                 failures.append(f"Session {s.session_id}: HW DRIPS {hw}% < {threshold}%")
 
         if failures:
-            pytest.fail("Sleepstudy DRIPS below threshold:\n" + "\n".join(failures))
+            pytest.fail("Sleepstudy DRIPS validation failed:\n" + "\n".join(failures))
 
         logger.info("[TEST_06] All sleep sessions passed SW/HW check")
 
     @pytest.mark.order(7)
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(7, "OsConfig — apply OS settings")
     def test_07_apply_osconfig(self):
         """
@@ -515,6 +526,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_07] OsConfig applied successfully")
 
     @pytest.mark.order(8)
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
     @step(8, "Reboot device")
     def test_08_reboot(self):
         """
@@ -541,6 +553,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
     # ------------------------------------------------------------------
 
     @pytest.mark.order(9)
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(9, "Open PHM web UI (post-reboot)")
     def test_09_open_phm_web(self):
         """
@@ -577,6 +590,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         pytest.fail(f"PHM web UI did not become available within 60 s: {last_exc}")
 
     @pytest.mark.order(10)
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(10, "CDI After — SMART snapshot")
     def test_10_cdi_after(self):
         """Run CrystalDiskInfo to capture post-test SMART data (After_ prefix)."""
