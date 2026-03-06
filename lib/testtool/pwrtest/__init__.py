@@ -36,7 +36,7 @@ Usage::
 """
 
 from .controller import PwrTestController
-from .config import PwrTestConfig, KNOWN_OS_VERSIONS
+from .config import PwrTestConfig, PwrTestScenario, KNOWN_OS_VERSIONS
 from .log_parser import PwrTestLogParser, PwrTestTestResult, PwrTestTransitionResult
 from .exceptions import (
     PwrTestError,
@@ -52,6 +52,7 @@ __version__ = '1.0.0'
 __all__ = [
     'PwrTestController',
     'PwrTestConfig',
+    'PwrTestScenario',
     'KNOWN_OS_VERSIONS',
     'PwrTestLogParser',
     'PwrTestTestResult',

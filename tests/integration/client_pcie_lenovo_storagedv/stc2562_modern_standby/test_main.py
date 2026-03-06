@@ -53,6 +53,7 @@ from lib.testtool.phm import (
 from lib.testtool.phm.process_manager import PHMProcessManager
 from lib.testtool.phm.exceptions import PHMInstallError
 from lib.testtool.pwrtest import PwrTestController
+from lib.testtool.pwrtest.config import PwrTestScenario
 from lib.testtool.sleepstudy import SleepStudyController
 from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser
 from lib.testtool.osconfig import OsConfigController
@@ -184,6 +185,13 @@ class TestSTC2562ModernStandby(BaseTestCase):
 
         # Ensure base testlog dir exists before any cleanup attempts
         Path('./testlog').mkdir(parents=True, exist_ok=True)
+
+        # 0. Reboot state file — must be removed so the next full run
+        #    starts in PRE-REBOOT phase rather than POST-REBOOT (recovery).
+        state_file = Path(_STATE_FILE_REL)
+        if state_file.exists():
+            state_file.unlink()
+            logger.info(f"[_cleanup_test_logs] Removed reboot state file: {state_file}")
 
         # 1. CDI logs
         cleanup_directory('./testlog/CDILog', 'CDI log directory', logger)
@@ -400,9 +408,11 @@ class TestSTC2562ModernStandby(BaseTestCase):
             pwrtest_base_dir=cfg['pwrtest_base_dir'],
             os_name=cfg.get('os_name', 'win11'),
             os_version=cfg.get('os_version', '24H2'),
-            cycle_count=cfg.get('cycle_count', 1),
-            delay_seconds=cfg.get('delay_seconds', 10),
-            wake_after_seconds=cfg.get('wake_after_seconds', 60),
+            scenario=PwrTestScenario.CS,  # Connected Standby (S0ix / Modern Standby)
+            cycle_count=1,
+            delay_seconds=10,
+            wake_after_seconds=60,
+            timeout_seconds=300,
             log_path=cfg['log_path'],
         )
         pwrtest.start()

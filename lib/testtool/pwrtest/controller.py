@@ -22,6 +22,7 @@ Typical usage::
 """
 
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -32,7 +33,7 @@ from typing import Optional, Dict, Any, List
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from lib.logger import get_module_logger
-from .config import PwrTestConfig
+from .config import PwrTestConfig, PwrTestScenario
 from .exceptions import (
     PwrTestError,
     PwrTestConfigError,
@@ -175,7 +176,7 @@ class PwrTestController(threading.Thread):
         """Core execution logic (runs inside the thread)."""
         exe_path   = self._resolve_executable()
         log_dir    = self._prepare_log_dir()
-        cmd        = self._build_command(exe_path)
+        cmd        = self._build_command(exe_path, log_dir)
         timeout    = self._config['timeout_seconds']
         interval   = float(self._config['check_interval_seconds'])
 
@@ -183,10 +184,16 @@ class PwrTestController(threading.Thread):
         logger.info(f"PwrTestController: cmd={' '.join(cmd)}")
         logger.info(f"PwrTestController: log_dir={log_dir}")
 
+        # Run pwrtest from its own directory so it can load companion DLLs.
+        # Pwrtest writes pwrtestlog.log/.xml into its cwd; we move them to
+        # log_dir afterwards.
+        exe_dir = exe_path.parent.resolve()
+        log_dir_abs = log_dir.resolve()
+
         try:
             self._process = subprocess.Popen(
                 cmd,
-                cwd=str(log_dir),
+                cwd=str(exe_dir),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
@@ -204,7 +211,18 @@ class PwrTestController(threading.Thread):
             if ret is not None:
                 logger.info(
                     f"PwrTestController: process exited with return code {ret}"
+                    f" (0x{ret & 0xFFFFFFFF:08X})"
                 )
+                # Log stdout/stderr for diagnostics (especially on failure)
+                try:
+                    stdout_data = self._process.stdout.read().decode(errors='replace').strip()
+                    stderr_data = self._process.stderr.read().decode(errors='replace').strip()
+                    if stdout_data:
+                        logger.info(f"PwrTestController stdout:\n{stdout_data}")
+                    if stderr_data:
+                        logger.warning(f"PwrTestController stderr:\n{stderr_data}")
+                except Exception:
+                    pass
                 break
             if elapsed >= timeout:
                 self._terminate_process()
@@ -252,19 +270,23 @@ class PwrTestController(threading.Thread):
             ) from exc
         return log_dir
 
-    def _build_command(self, exe_path: Path) -> List[str]:
+    def _build_command(self, exe_path: Path, log_dir: Path) -> List[str]:
         """Compose the pwrtest.exe CLI argument list."""
         cfg = self._config
+        # Accept both PwrTestScenario enum and raw string
+        scenario = cfg.get('scenario', PwrTestScenario.CS)
+        scenario_val = scenario.value if isinstance(scenario, PwrTestScenario) else scenario
         prefix = cfg.get('log_prefix', '')
         cmd = [
             str(exe_path),
-            '/sleep',
+            f'/{scenario_val}',
             f"/c:{cfg['cycle_count']}",
             f"/d:{cfg['delay_seconds']}",
             f"/p:{cfg['wake_after_seconds']}",
+            f"/lf:{log_dir.resolve()}",  # write logs directly to log_dir
         ]
         if prefix:
-            cmd.append(f"/l:{prefix}")
+            cmd.append(f"/ln:{prefix}pwrtestlog")
         return cmd
 
     def _terminate_process(self) -> None:

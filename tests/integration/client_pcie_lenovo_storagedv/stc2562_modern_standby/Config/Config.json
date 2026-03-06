@@ -31,11 +31,7 @@
     "pwrtest_base_dir": "./bin/SmiWinTools/bin/x64/pwrtest",
     "os_name": "win11",
     "os_version": "24H2",
-    "cycle_count": 1,
-    "delay_seconds": 10,
-    "wake_after_seconds": 60,
-    "log_path": "./testlog/PwrTestLog",
-    "timeout": 300
+    "log_path": "./testlog/PwrTestLog"
   },
 
   "sleepstudy": {

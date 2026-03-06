@@ -8,6 +8,7 @@ the correct pwrtest.exe is selected automatically based on the running OS.
 
 import copy
 import warnings
+from enum import Enum
 from typing import Dict, Any, List
 from pathlib import Path
 
@@ -24,6 +25,28 @@ KNOWN_OS_VERSIONS: Dict[str, List[str]] = {
 }
 
 _VALID_OS_NAMES = set(KNOWN_OS_VERSIONS.keys())
+
+
+class PwrTestScenario(Enum):
+    """
+    pwrtest.exe sleep scenario selection.
+
+    Attributes:
+        CS:    Connected Standby / Modern Standby (S0ix) — for AoAc systems
+               (most modern laptops / tablets with ``AoAc=1``).
+        SLEEP: Traditional S3 sleep — for legacy systems that expose S3.
+
+    Example::
+
+        from lib.testtool.pwrtest import PwrTestController, PwrTestScenario
+
+        ctrl = PwrTestController(
+            scenario=PwrTestScenario.CS,
+            ...
+        )
+    """
+    CS    = 'cs'
+    SLEEP = 'sleep'
 
 
 class PwrTestConfig:
@@ -59,6 +82,11 @@ class PwrTestConfig:
         'os_name':    'win11',   # win7 | win10 | win11
         'os_version': '25H2',    # directory under os_name; e.g. 25H2, 2004, 22H2
 
+        # --- Scenario ---
+        # PwrTestScenario.CS    — Connected Standby / Modern Standby (S0ix)
+        # PwrTestScenario.SLEEP — Traditional S3 (legacy systems)
+        'scenario': PwrTestScenario.CS,
+
         # --- Sleep test parameters ---
         'cycle_count':        1,    # /c — number of sleep cycles
         'delay_seconds':      10,   # /d — seconds before entering sleep
@@ -80,6 +108,7 @@ class PwrTestConfig:
         'pwrtest_base_dir':       str,
         'os_name':                str,
         'os_version':             str,
+        'scenario':               (str, PwrTestScenario),
         'cycle_count':            int,
         'delay_seconds':          int,
         'wake_after_seconds':     int,
