@@ -66,18 +66,83 @@ Generate each file in this order:
 **For a complete worked example**, see `references/stc1685_example.md`
 **For structure rules**, see `references/testcase_structure.md`
 
+### Step 2.5 — Copy Test Tools to bin/
+
+**Important**: For each tool used in the test case, copy its executable files to the test case's `/bin` directory:
+
+| Tool Controller | Source Path | Dest Path (in test case bin/) | Notes |
+|---|---|---|---|
+| BurnIN | `./bin/SmiWinTools/bin/x64/burnin/` | `./bin/SmiWinTools/bin/x64/burnin/` | Full directory with DLLs, INI configs |
+| CDI | `./bin/SmiWinTools/bin/x64/DiskInfo/` | `./bin/SmiWinTools/bin/x64/DiskInfo/` | Executable + companion DLLs |
+| SleepStudy | System path or embedded | `./bin/sleepstudy/` | Analyze tool; may use system source |
+| PwrTest | `./bin/SmiWinTools/bin/x64/pwrtest/` | `./bin/SmiWinTools/bin/x64/pwrtest/` | OS-specific subdirs (win11, win10) |
+| SmiCli2 | `./bin/SmiWinTools/bin/x64/` | `./bin/SmiWinTools/bin/x64/` | CLI front-end for SSD queries |
+| SmartCheck | `./bin/SmiWinTools/bin/x64/smartcheck/` | `./bin/SmiWinTools/bin/x64/smartcheck/` | SMART health validator |
+| OsReboot | Framework built-in | (no copy needed) | Uses Windows API |
+| OsConfig | Framework built-in | (no copy needed) | Uses Windows Registry |
+| PHM Installer | Provide via `Config.json` installer path | Copy to `./bin/phm_installer/` | Extract installer MSI if needed |
+
+**Workflow:**
+```
+For each tool_used in test_tools:
+  1. Identify source dir from workspace (e.g., ./bin/SmiWinTools/...)
+  2. Create target dir in test case: {test_case_dir}/bin/SmiWinTools/... (same structure)
+  3. Copy files recursively (shutil.copytree or PowerShell Copy-Item)
+  4. Update Config.json paths to use relative ./bin/ paths
+```
+
+**Example: STC-2562 (Modern Standby test)**
+```powershell
+# Test uses: PwrTest + SleepStudy + CDI + SmiCli2
+Source:     C:\automation\ssd-testkit\bin\SmiWinTools\bin\x64\
+Dest:       C:\automation\ssd-testkit\tests\integration\client_pcie_lenovo_storagedv\stc2562_modern_standby\bin\SmiWinTools\bin\x64\
+
+# Copy pwrtest, sleepstudy, DiskInfo, SmiCli2.exe, plus any supporting DLLs
+Copy-Item -Path "C:\automation\ssd-testkit\bin\SmiWinTools\bin\x64\pwrtest" `
+          -Destination ".\stc2562_modern_standby\bin\SmiWinTools\bin\x64\" -Recurse -Force
+Copy-Item -Path "C:\automation\ssd-testkit\bin\SmiWinTools\bin\x64\DiskInfo" `
+          -Destination ".\stc2562_modern_standby\bin\SmiWinTools\bin\x64\" -Recurse -Force
+Copy-Item -Path "C:\automation\ssd-testkit\bin\SmiWinTools\bin\x64\SmiCli2.exe" `
+          -Destination ".\stc2562_modern_standby\bin\SmiWinTools\bin\x64\" -Force
+
+# Config.json then uses
+{
+  "pwrtest": {
+    "pwrtest_base_dir": "./bin/SmiWinTools/bin/x64/pwrtest",
+    ...
+  },
+  "cdi": {
+    "ExePath": "./bin/SmiWinTools/bin/x64/DiskInfo/DiskInfo.exe",
+    ...
+  },
+  "smicli_executable": "./bin/SmiWinTools/bin/x64/SmiCli2.exe"
+}
+```
+
 ### Step 3 — Verify
 
 ```powershell
-# Check for syntax errors
+# 1. Check for syntax errors
 python -m py_compile tests/integration/<client>/<stcXXXX_name>/test_main.py
 
-# Run (development, no real tools needed for collection test)
+# 2. Verify bin/ directory contents (all required tools present)
+Test-Path tests/integration/<client>/<stcXXXX_name>/bin/SmiWinTools/bin/x64/pwrtest
+Test-Path tests/integration/<client>/<stcXXXX_name>/bin/SmiWinTools/bin/x64/DiskInfo
+# ... etc for other tools
+
+# 3. Run collection test (discovers test methods without executing them)
 python -m pytest tests/integration/<client>/<stcXXXX_name>/test_main.py --collect-only
 
-# Full run (requires real executables in bin/)
+# Full run (requires real executables in bin/ and CONFIG)
 python -m pytest tests/integration/<client>/<stcXXXX_name>/test_main.py -v -s
 ```
+
+**Verification checklist:**
+- [ ] `test_main.py` syntax is valid (py_compile succeeds)
+- [ ] All test methods (test_01, test_02, ...) are collected
+- [ ] `/bin` directory contains all tools referenced in Config.json
+- [ ] Config.json paths (e.g., `"./bin/SmiWinTools/..."`) match actual file locations
+- [ ] No missing imports or fixtures
 
 ---
 
@@ -177,6 +242,54 @@ Apply markers on the test class level. Use `@pytest.mark.<marker>` for:
 | Speed | `@pytest.mark.slow` (for tests > 30 min) |
 
 Register new markers in `pytest.ini` under `markers =`. The project uses `--strict-markers`.
+
+---
+
+## `_cleanup_test_logs` Pattern
+
+Every test case must implement `_cleanup_test_logs()` in its test class and call it from `test_01_precondition`. The method must clean **all** log/output files so each full run starts clean.
+
+### Mandatory cleanup items
+
+| 類型 | 清除對象 | 範例 |
+|------|---------|------|
+| **工具 log 目錄** | 每個 Controller 的 log output dir | `cleanup_directory('./testlog/CDILog', ...)` |
+| **單一輸出檔** | HTML 報告、結果 JSON 等 | `sleepstudy-report.html` |
+| **測試 log 檔** | `log.txt`、`log.err` (由 logger 產生) | 每次執行都會累加，必須明確刪除 |
+| **Reboot state** | `./testlog/reboot_state.json` | 僅需要重開機的測試案例 |
+
+### 必須明確刪除 `log.txt` / `log.err`
+
+這兩個檔案由 `logConfig()` 在 `setup_test_class` 中建立，**不會被 `cleanup_directory` 自動刪除**（因 cleanup 在 test_01 執行，此時 logger 已啟動並持有 file handle）。
+
+```python
+def _cleanup_test_logs(self) -> None:
+    log_path = self.config.get('log_path', './log/STC-XXXX')
+
+    # 1. Reboot state (if applicable)
+    # state_file = Path('./testlog/reboot_state.json')
+    # if state_file.exists(): state_file.unlink()
+
+    # 2. Tool log dirs
+    cleanup_directory('./testlog/CDILog', 'CDI log directory', logger)
+    # cleanup_directory('./testlog/PwrTestLog', 'PwrTest log directory', logger)
+    # ...add one line per tool used...
+
+    # 3. Single file outputs
+    # ss_report = Path('./testlog/sleepstudy-report.html')
+    # if ss_report.exists(): ss_report.unlink()
+
+    # 4. Main test log directory + log.txt / log.err
+    cleanup_directory(log_path, 'test log directory', logger)
+    log_dir = Path(log_path)
+    for log_file in ['log.txt', 'log.err']:
+        p = log_dir / log_file
+        if p.exists():
+            try:
+                p.unlink()
+            except Exception as exc:
+                logger.warning(f"Could not remove {p}: {exc}")
+```
 
 ---
 
@@ -413,6 +526,29 @@ tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cycle/
 └── README.md
 ```
 
+**AI 行為（Step 2.5 — 工具複製）：** 自動複製所有使用的工具到 test case 的 `/bin` 目錄：
+```powershell
+# 複製 PwrTest
+Copy-Item -Path ".\bin\SmiWinTools\bin\x64\pwrtest" `
+          -Destination ".\tests\integration\client_pcie_lenovo_storagedv\stc1720_power_cycle\bin\SmiWinTools\bin\x64\" `
+          -Recurse -Force
+
+# 複製 CDI (DiskInfo)
+Copy-Item -Path ".\bin\SmiWinTools\bin\x64\DiskInfo" `
+          -Destination ".\tests\integration\client_pcie_lenovo_storagedv\stc1720_power_cycle\bin\SmiWinTools\bin\x64\" `
+          -Recurse -Force
+
+# 複製 SmiCli2.exe
+Copy-Item -Path ".\bin\SmiWinTools\bin\x64\SmiCli2.exe" `
+          -Destination ".\tests\integration\client_pcie_lenovo_storagedv\stc1720_power_cycle\bin\SmiWinTools\bin\x64\" `
+          -Force
+```
+
+**AI 行為（Step 3 — 驗證）：** 檢查所有工具都正確複製到位
+```powershell
+python -m pytest tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cycle/ --collect-only -q
+```
+
 ---
 
 ### 範例 C — 並行測試（BurnIN + SmartCheck 同時跑）
@@ -484,7 +620,15 @@ python -m pytest tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cy
 | 只加一個步驟 | `在 stcXXXX 的 test_main.py 最後加入步驟 test_0N_<name>，做的事是...` |
 | 並行步驟 | 在步驟描述中明確說 `同時跑` 或 `concurrent` |
 | 需要重開機 | 在步驟中說明 `重開機 N 次` 或 `needs_reboot: true` |
+| 複製工具到 bin/ | `建立完 test case 後，把用到的工具複製到 bin/ 目錄裡` 或 `包括工具複製` |
 | 確認語法正確 | `幫我 compile 並 collect-only 確認 STC-XXXX` |
+
+**自動工具複製說明：**
+當 AI 建立新 test case 時，應自動執行以下步驟：
+1. 解析 Config.json 找出所有工具路徑（如 `./bin/SmiWinTools/bin/x64/pwrtest`）
+2. 找到工作區中對應的來源工具目錄
+3. 複製到 test case 的 `/bin` 目錄（保持相同的目錄結構）
+4. 確認所有工具都成功複製（file check）
 
 ---
 

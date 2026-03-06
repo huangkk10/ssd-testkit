@@ -177,13 +177,52 @@ class TestSTC<XXXX><Name>(BaseTestCase):
     # Private helpers
     # ─────────────────────────────────────────────────────────
 
-    def _cleanup_test_logs(self):
-        """Clean up all test logs from previous test runs."""
-        logger.info("Cleaning test logs...")
+    def _cleanup_test_logs(self) -> None:
+        """
+        Remove leftover logs from previous test runs.
+
+        Cleans all tool-specific output directories and log files so each
+        full test run starts from a clean state.
+        """
+        logger.info("[_cleanup_test_logs] Starting test log cleanup")
+
+        # Ensure base testlog dir exists before any cleanup attempts
         Path('./testlog').mkdir(parents=True, exist_ok=True)
+
+        # 0. Reboot state file — remove so next full run starts in PRE-REBOOT phase
+        #    (only relevant for tests that use OsRebootController)
+        # state_file = Path('./testlog/reboot_state.json')
+        # if state_file.exists():
+        #     state_file.unlink()
+        #     logger.info(f"[_cleanup_test_logs] Removed reboot state file")
+
+        # 1. Tool-specific log directories — add one line per tool used:
+        cleanup_directory('./testlog/CDILog', 'CDI log directory', logger)
+        # cleanup_directory('./testlog/PwrTestLog', 'PwrTest log directory', logger)
+        # cleanup_directory('./testlog/PEPChecker_Log', 'PEPChecker log directory', logger)
+
+        # 2. Single-file outputs — add one block per output file:
+        # ss_report = Path(self.config.get('sleepstudy', {}).get('output_path', './testlog/sleepstudy-report.html'))
+        # if ss_report.exists():
+        #     ss_report.unlink()
+        #     logger.info(f"[_cleanup_test_logs] Removed sleepstudy report")
+
+        # 3. Test-specific log directory (log.txt, log.err, etc.)
         log_path = self.config.get('log_path', './log/STC-XXXX')
         cleanup_directory(log_path, 'test log directory', logger)
-        logger.info("Test log cleanup completed")
+
+        # Explicitly remove log.txt and log.err (accumulated across runs)
+        log_dir = Path(log_path)
+        for log_file in ['log.txt', 'log.err']:
+            p = log_dir / log_file
+            if p.exists():
+                try:
+                    p.unlink()
+                    logger.info(f"[_cleanup_test_logs] Removed {p}")
+                except Exception as exc:
+                    logger.warning(f"[_cleanup_test_logs] Could not remove {p}: {exc}")
+
+        logger.info("[_cleanup_test_logs] Cleanup complete")
 
     # ─────────────────────────────────────────────────────────
     # Test steps
