@@ -64,6 +64,7 @@ _SERVICES_KEY = r"SYSTEM\CurrentControlSet\Services"
 # Snapshot keys
 _SNAP_START_TYPE = "start_type"
 _SNAP_WAS_RUNNING = "was_running"
+_SNAP_SKIPPED    = "skipped"      # set to True when apply() was a no-op
 
 
 def _get_service_start_type(service_name: str) -> Optional[int]:
@@ -133,6 +134,7 @@ class BaseServiceAction(AbstractOsAction):
 
         if self.check():
             self._log_apply_skip()
+            self._save_snapshot(_SNAP_SKIPPED, True)
             return
 
         # Snapshot current state before making changes
@@ -173,7 +175,14 @@ class BaseServiceAction(AbstractOsAction):
         was_running = self._load_snapshot(_SNAP_WAS_RUNNING, default=None)
 
         if original_start_type is None:
-            self._log_revert_skip()
+            was_skipped = self._load_snapshot(_SNAP_SKIPPED, default=False)
+            if was_skipped:
+                logger.info(
+                    f"[{self.name}] apply was skipped (already in target state) "
+                    "– nothing to revert."
+                )
+            else:
+                self._log_revert_skip()
             return
 
         sc_type_arg = _sc_start_type_arg(original_start_type)

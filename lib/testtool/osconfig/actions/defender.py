@@ -117,7 +117,7 @@ class DefenderAction(AbstractOsAction):
 
         # ── Tier 1: PowerShell ──────────────────────────────────────────
         ps_cmd = "Set-MpPreference -DisableRealtimeMonitoring $true"
-        ps_rc = run_powershell(ps_cmd)
+        ps_rc, _ps_out, _ps_err = run_powershell(ps_cmd)
         ps_ok = (ps_rc == 0)
         self._save_snapshot(_SNAP_PS_OK, ps_ok)
 
@@ -150,7 +150,7 @@ class DefenderAction(AbstractOsAction):
 
         # Restore PowerShell state if it was successfully disabled via PS
         if ps_ok:
-            ps_rc = run_powershell("Set-MpPreference -DisableRealtimeMonitoring $false")
+            ps_rc, _ps_out, _ps_err = run_powershell("Set-MpPreference -DisableRealtimeMonitoring $false")
             if ps_rc != 0:
                 logger.warning(
                     f"[{self.name}] PowerShell revert returned rc={ps_rc}"

@@ -179,7 +179,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         2. SleepStudy report  (testlog/sleepstudy-report.html)
         3. PEPChecker logs  (testlog/PEPChecker_Log/)
         4. PwrTest logs  (testlog/PwrTestLog/)
-        5. Test-specific log directory  (log/STC-2562/)
+        5. Test-specific log files  (log/STC-2562/log.txt, log.err, ...)
         """
         logger.info("[_cleanup_test_logs] Starting test log cleanup")
 
@@ -214,6 +214,18 @@ class TestSTC2562ModernStandby(BaseTestCase):
         # 5. Test-specific log directory
         log_path = self.config.get('log_path', './log/STC-2562')
         cleanup_directory(log_path, 'test log directory', logger)
+
+        # 5a. Explicitly remove log.txt and log.err from test log directory
+        #     (in case cleanup_directory left them behind)
+        log_dir = Path(log_path)
+        for log_file in ['log.txt', 'log.err']:
+            log_file_path = log_dir / log_file
+            if log_file_path.exists():
+                try:
+                    log_file_path.unlink()
+                    logger.info(f"[_cleanup_test_logs] Removed log file: {log_file_path}")
+                except Exception as exc:
+                    logger.warning(f"[_cleanup_test_logs] Could not remove {log_file_path}: {exc}")
 
         logger.info("[_cleanup_test_logs] Cleanup complete")
 
@@ -273,6 +285,15 @@ class TestSTC2562ModernStandby(BaseTestCase):
                     )
             except Exception as exc:
                 logger.error(f"[RunCard] end_test failed — {exc}")
+
+        # Revert OS configuration changes applied in test_07 (best-effort)
+        if cls._osconfig_controller is not None:
+            try:
+                logger.info("[TEARDOWN] Reverting OsConfig changes...")
+                cls._osconfig_controller.revert_all()
+                logger.info("[TEARDOWN] OsConfig reverted successfully")
+            except Exception as exc:
+                logger.warning(f"[TEARDOWN] OsConfig revert failed — {exc} (continuing)")
 
         logger.info("STC-2562 session complete")
         os.chdir(cls.original_cwd)
@@ -394,6 +415,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_04] PEPChecker complete")
 
     @pytest.mark.order(5)
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(5, "PwrTest — sleep/wake cycle + collect sleepstudy")
     def test_05_pwrtest_sleep_wake(self):
         """
@@ -445,6 +467,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_05] PwrTest + sleepstudy complete")
 
     @pytest.mark.order(6)
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(6, "Verify sleepstudy SW/HW DRIPS ≥ 90%")
     def test_06_verify_sleepstudy(self):
         """
@@ -498,7 +521,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_06] All sleep sessions passed SW/HW check")
 
     @pytest.mark.order(7)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(7, "OsConfig — apply OS settings")
     def test_07_apply_osconfig(self):
         """
