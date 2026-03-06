@@ -415,7 +415,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
             scenario=PwrTestScenario.CS,  # Connected Standby (S0ix / Modern Standby)
             cycle_count=1,
             delay_seconds=10,
-            wake_after_seconds=60,
+            wake_after_seconds=60*15,  # 15 minutes — long enough to trigger deep S0ix states
             timeout_seconds=300,
             log_path=cfg['log_path'],
         )
