@@ -16,9 +16,10 @@ Test Flow:
     8. Reboot        — schedule reboot, terminate session
 
     Phase B — Post-Reboot:
-    9.  PHM web      — launch PHM and verify web UI is responsive
-    10. CDI After    — SMART snapshot
-    11. SMART check  — Unsafe Shutdowns unchanged; error counters == 0
+    9.  PHM collector — run Modern Standby Cycling scenario
+    10. Verify DRIPS  — generate sleepstudy report; SW/HW DRIPS > 80%
+    11. CDI After    — SMART snapshot
+    12. SMART check  — Unsafe Shutdowns unchanged; error counters == 0
 """
 
 import sys
@@ -109,6 +110,8 @@ class TestSTC2562ModernStandby(BaseTestCase):
     # Class-level state shared between steps
     _pre_sleep_time: str = ""
     _post_sleep_time: str = ""
+    _phm_start_time: str = ""
+    _phm_end_time: str = ""
     _osconfig_controller: "OsConfigController | None" = None
 
     # ------------------------------------------------------------------
@@ -632,8 +635,8 @@ class TestSTC2562ModernStandby(BaseTestCase):
 
     @pytest.mark.order(9)
     # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
-    @step(9, "PHM collector — run Modern Standby Cycling scenario")
-    def test_09_open_phm_web(self):
+    @step(9, "PHM collector — run Modern Standby")
+    def test_09_run_modern_standby(self):
         """
         Post-reboot: launch PHM, open the web UI, configure and run the Modern
         Standby Cycling collector scenario using parameters from Config.json,
@@ -643,12 +646,12 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_09] PHM collector session started")
 
         # ── Clear accumulated Sleep Study history ─────────────────────
-        try:
-            cleaner = SleepHistoryCleaner()
-            deleted = cleaner.clear()
-            logger.info(f"[TEST_09] SleepHistory cleared: {deleted} file(s) deleted")
-        except Exception as exc:
-            logger.warning(f"[TEST_09] SleepHistory clear failed (non-fatal): {exc}")
+        # try:
+        #     cleaner = SleepHistoryCleaner()
+        #     deleted = cleaner.clear()
+        #     logger.info(f"[TEST_09] SleepHistory cleared: {deleted} file(s) deleted")
+        # except Exception as exc:
+        #     logger.warning(f"[TEST_09] SleepHistory clear failed (non-fatal): {exc}")
 
         # ── Verify PHM is installed ───────────────────────────────────
         phm_cfg = self.config['phm']
@@ -694,6 +697,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
             ui.open_browser(headless=False)
 
             # ── Run the collector session (steps 3-9 via CollectorSession) ──
+            TestSTC2562ModernStandby._phm_start_time = datetime.now().isoformat(timespec='seconds')
             session = CollectorSession(ui)
             session.run(params)
             logger.info("[TEST_09] CollectorSession.run() finished — test is running")
@@ -703,6 +707,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
             completed = ui.wait_for_completion(timeout=completion_timeout)
             if not completed:
                 pytest.fail("PHM collector did not complete within the configured timeout")
+            TestSTC2562ModernStandby._phm_end_time = datetime.now().isoformat(timespec='seconds')
             logger.info("[TEST_09] PHM collector completed")
 
             # ── Collect traces ────────────────────────────────────────
@@ -725,12 +730,78 @@ class TestSTC2562ModernStandby(BaseTestCase):
                 logger.warning(f"[TEST_09] close_browser error (non-fatal): {exc}")
 
     @pytest.mark.order(10)
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    @step(10, "Verify DRIPS — SW/HW > 80%")
+    def test_10_verify_drips(self):
+        """
+        Generate a Sleep Study report covering the PHM collection window
+        (phm_start_time … phm_end_time captured in test_09), then verify
+        that every session's SW DRIPS and HW DRIPS are both > 80%.
+        """
+        _skip_if_not_recovering()
+        logger.info("[TEST_10] Sleep Study DRIPS verification started")
+
+        # Require that test_09 actually ran and captured timestamps
+        if not self._phm_start_time or not self._phm_end_time:
+            pytest.fail(
+                "PHM timestamps not set — test_09 must complete successfully "
+                "before this step can run"
+            )
+
+        # ── Generate Sleep Study report ───────────────────────────────
+        ss_cfg = self.config['sleepstudy']
+        ss_ctrl = SleepStudyController(
+            output_path=ss_cfg['output_path'],
+            timeout=ss_cfg.get('timeout', 60),
+        )
+        ss_ctrl.start()
+        ss_ctrl.join()
+        if not ss_ctrl.status:
+            pytest.fail(f"SleepStudy report generation failed: {ss_ctrl.error_message}")
+        logger.info(f"[TEST_10] Sleep Study report generated: {ss_cfg['output_path']}")
+
+        # ── Parse SW/HW DRIPS and verify ─────────────────────────────
+        col_cfg = self.config.get('phm_collector', {})
+        drips_threshold = col_cfg.get('drips_threshold_pct', 80)
+        report_path = ss_cfg['output_path']
+        assert Path(report_path).exists(), f"Sleep Study report not found: {report_path}"
+
+        parser = SleepReportParser(report_path)
+        sessions = parser.get_sleep_sessions(
+            start_dt=self._phm_start_time,
+            end_dt=self._phm_end_time,
+        )
+        if not sessions:
+            pytest.fail(
+                f"No sleep sessions found in report between "
+                f"{self._phm_start_time} and {self._phm_end_time}"
+            )
+        logger.info(f"[TEST_10] Found {len(sessions)} sleep session(s)")
+
+        failures = []
+        for s in sessions:
+            sw, hw = s.sw_pct, s.hw_pct
+            logger.info(f"[TEST_10]   Session {s.session_id}: SW={sw}%  HW={hw}%")
+            if sw is None:
+                failures.append(f"Session {s.session_id}: SW DRIPS not found")
+            elif sw <= drips_threshold:
+                failures.append(f"Session {s.session_id}: SW DRIPS {sw}% ≤ {drips_threshold}%")
+            if hw is None:
+                failures.append(f"Session {s.session_id}: HW DRIPS not found")
+            elif hw <= drips_threshold:
+                failures.append(f"Session {s.session_id}: HW DRIPS {hw}% ≤ {drips_threshold}%")
+
+        if failures:
+            pytest.fail("Sleep Study DRIPS check failed:\n" + "\n".join(failures))
+        logger.info("[TEST_10] Sleep Study DRIPS check passed")
+
+    @pytest.mark.order(11)
     @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
-    @step(10, "CDI After — SMART snapshot")
-    def test_10_cdi_after(self):
+    @step(11, "CDI After — SMART snapshot")
+    def test_11_cdi_after(self):
         """Run CrystalDiskInfo to capture post-test SMART data (After_ prefix)."""
         _skip_if_not_recovering()
-        logger.info("[TEST_10] CDI After started")
+        logger.info("[TEST_11] CDI After started")
 
         cfg = self.config['cdi']
         ctrl = CDIController(
@@ -745,12 +816,12 @@ class TestSTC2562ModernStandby(BaseTestCase):
         if not ctrl.status:
             pytest.fail(f"CDI After failed (status={ctrl.status})")
 
-        logger.info("[TEST_10] CDI After complete")
+        logger.info("[TEST_11] CDI After complete")
 
-    @pytest.mark.order(11)
+    @pytest.mark.order(12)
     @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
-    @step(11, "SMART compare — verify drive health")
-    def test_11_smart_compare(self):
+    @step(12, "SMART compare — verify drive health")
+    def test_12_smart_compare(self):
         """
         Compare Before_ and After_ SMART snapshots:
         - Unsafe Shutdowns must NOT increase (indicates clean shutdown path)
@@ -758,7 +829,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
           Uncorrectable Sector Count must all be 0
         """
         _skip_if_not_recovering()
-        logger.info("[TEST_11] SMART comparison started")
+        logger.info("[TEST_12] SMART comparison started")
 
         cdi_cfg = self.config['cdi']
         smart_cfg = self.config['smart_check']
@@ -779,7 +850,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         )
         if not ok:
             pytest.fail(f"SMART no-increase check failed: {msg}")
-        logger.info(f"[TEST_11] No-increase check passed: {no_increase_attrs}")
+        logger.info(f"[TEST_12] No-increase check passed: {no_increase_attrs}")
 
         # ── Check: error counters must be 0 ───────────────────────────
         zero_attrs = smart_cfg.get('must_be_zero_attributes', [])
@@ -792,6 +863,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
             )
             if not ok:
                 pytest.fail(f"SMART zero-check failed: {msg}")
-            logger.info(f"[TEST_11] Zero-check passed: {attr}")
+            logger.info(f"[TEST_12] Zero-check passed: {attr}")
 
-        logger.info("[TEST_11] All SMART checks passed")
+        logger.info("[TEST_12] All SMART checks passed")

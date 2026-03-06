@@ -46,7 +46,7 @@ def pytest_collection_finish(session):
     # _is_recovering() returns True.  If the collected set contains only
     # post-reboot tests, ensure the state file exists (create a synthetic one
     # if missing) so developers can run these tests standalone without rebooting.
-    _POST_REBOOT_TESTS = {'test_09_open_phm_web', 'test_10_cdi_after', 'test_11_smart_compare'}
+    _POST_REBOOT_TESTS = {'test_09_run_modern_standby', 'test_10_verify_drips'}
     collected_names = {item.name for item in stc2562_items}
     if collected_names.issubset(_POST_REBOOT_TESTS):
         if not _STATE_FILE.exists():
