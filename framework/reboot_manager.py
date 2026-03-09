@@ -61,6 +61,28 @@ class RebootManager:
         self.state["is_recovering"] = False
         self._save_state()
 
+    def require_rebooted(self, min_count: int = 1) -> None:
+        """
+        Assert that at least *min_count* reboots have been performed.
+
+        Calls pytest.fail() if the condition is not met, making the test
+        a hard failure rather than a silent skip.
+
+        Usage (in any test body):
+            self.reboot_mgr.require_rebooted()         # reboot_count >= 1
+            self.reboot_mgr.require_rebooted(2)        # reboot_count >= 2
+
+        Args:
+            min_count: Minimum number of reboots required (default 1).
+        """
+        actual = self.state.get("reboot_count", 0)
+        if actual < min_count:
+            pytest.fail(
+                f"Reboot prerequisite not met: expected reboot_count >= {min_count}, "
+                f"got {actual}. Ensure the reboot step completed successfully before "
+                "this step runs."
+            )
+
     def pre_mark_completed(self, test_name: str) -> None:
         """
         Mark a test as completed without resetting is_recovering.
@@ -157,21 +179,19 @@ cd /d {current_dir}
     
     def cleanup(self):
         """清理狀態和自啟動腳本"""
-        # 如果正在恢复中，不清理（因为还在重启流程中）
-        if self.state.get("is_recovering", False):
-            print("[RebootManager] Skipping cleanup - reboot in progress")
-            return
-        
+        import logging
+        _log = logging.getLogger(__name__)
+
         # 刪除狀態文件
         if Path(self.state_file).exists():
             os.remove(self.state_file)
-            print("[RebootManager] State file removed")
+            _log.info("[RebootManager] State file removed: %s", self.state_file)
         
         # 刪除自啟動腳本
         user = getpass.getuser()
         bat_path = self.STARTUP_PATH.format(user)
         if os.path.exists(bat_path):
             os.remove(bat_path)
-            print("[RebootManager] Auto-start script removed")
+            _log.info("[RebootManager] Auto-start script removed: %s", bat_path)
         
-        print("[RebootManager] Cleanup completed")
+        _log.info("[RebootManager] Cleanup completed")

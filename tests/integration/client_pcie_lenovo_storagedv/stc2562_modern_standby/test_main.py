@@ -151,10 +151,10 @@ class TestSTC2562ModernStandby(BaseTestCase):
             logger.error(f"[_remove_existing_phm] Uninstall failed: {exc}")
             return False
 
-    def _skip_if_not_rebooted(self) -> None:
-        """pytest.skip when no reboot has occurred yet (Phase A guard for Phase B tests)."""
-        if self.reboot_mgr.state.get("reboot_count", 0) < 1:
-            pytest.skip("Post-reboot step — reboot has not occurred yet")
+    def _skip_if_not_rebooted(self, min_count: int = 1) -> None:
+        """pytest.skip when the required number of reboots has not occurred yet."""
+        if self.reboot_mgr.state.get("reboot_count", 0) < min_count:
+            pytest.skip(f"Post-reboot step — reboot_count < {min_count}")
 
     def _cleanup_test_logs(self) -> None:
         """
@@ -548,15 +548,13 @@ class TestSTC2562ModernStandby(BaseTestCase):
         """
         logger.info("[TEST_08] Scheduling reboot")
 
-        cfg = self.config['reboot']
-
         # Pre-mark this test as completed BEFORE setup_reboot() calls os._exit(0).
         # Without this, test_08 would not be in completed_tests after reboot
         # and would execute again → infinite reboot loop.
         self.reboot_mgr.pre_mark_completed(request.node.name)
 
         self.reboot_mgr.setup_reboot(
-            delay=cfg.get('delay_seconds', 10),
+            delay=10,
             reason="STC-2562 Phase A complete — rebooting for Modern Standby test",
             test_file=__file__,
         )
@@ -575,7 +573,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         Standby Cycling collector scenario using parameters from Config.json,
         wait for completion, then copy the trace folder to testlog/PHMTraces/.
         """
-        self._skip_if_not_rebooted()
+        self.reboot_mgr.require_rebooted()
         logger.info("[TEST_09] PHM collector session started")
 
         # ── Clear accumulated Sleep Study history ─────────────────────
