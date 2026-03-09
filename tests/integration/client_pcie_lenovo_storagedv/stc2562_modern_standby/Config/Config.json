@@ -56,6 +56,7 @@
     "drive_letter": "C:",
     "no_increase_attributes": ["Unsafe Shutdowns"],
     "must_be_zero_attributes": [
+      "Media and Data Integrity Errors",
       "Reallocated Sectors Count",
       "Current Pending Sector Count",
       "Uncorrectable Sector Count"

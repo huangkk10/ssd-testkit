@@ -333,7 +333,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_01] Precondition complete")
 
     @pytest.mark.order(2)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(2, "CDI Before — SMART baseline")
     def test_02_cdi_before(self):
         """Run CrystalDiskInfo to capture SMART baseline (Before_ prefix)."""
@@ -409,7 +409,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_04] PEPChecker complete")
 
     @pytest.mark.order(5)
-    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(5, "Clear Sleep Study history & Reboot device")
     def test_05_clear_sleep_history(self, request):
         """
@@ -438,7 +438,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         # os._exit(0) is called inside setup_reboot — code below never executes
 
     @pytest.mark.order(6)
-    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(6, "PwrTest — sleep/wake cycle + collect sleepstudy")
     def test_06_pwrtest_sleep_wake(self):
         """
@@ -447,6 +447,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         """
         logger.info("[TEST_06] PwrTest sleep/wake started")
 
+        wake_after_min = 30
         # Record time before sleep for sleepstudy filtering
         TestSTC2562ModernStandby._pre_sleep_time = datetime.now().isoformat(timespec='seconds')
         logger.info(f"[TEST_06] pre_sleep_time: {self._pre_sleep_time}")
@@ -459,7 +460,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
             scenario=PwrTestScenario.CS,  # Connected Standby (S0ix / Modern Standby)
             cycle_count=1,
             delay_seconds=10,
-            wake_after_seconds=60*15,  # 15 minutes — long enough to trigger deep S0ix states
+            wake_after_seconds=60*wake_after_min,  # 30 minutes — long enough to trigger deep S0ix states
             timeout_seconds=300,
             log_path=cfg['log_path'],
         )
@@ -489,7 +490,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_06] PwrTest + sleepstudy complete")
 
     @pytest.mark.order(7)
-    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(7, "Verify sleepstudy SW/HW DRIPS >= 90%")
     def test_07_verify_sleepstudy(self):
         """
@@ -760,11 +761,11 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_11] Sleep Study DRIPS check passed")
 
     @pytest.mark.order(12)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(12, "CDI After — SMART snapshot")
     def test_12_cdi_after(self):
         """Run CrystalDiskInfo to capture post-test SMART data (After_ prefix)."""
-        self._skip_if_not_rebooted()
+        # self._skip_if_not_rebooted()
         logger.info("[TEST_12] CDI After started")
 
         cfg = self.config['cdi']
@@ -783,7 +784,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_12] CDI After complete")
 
     @pytest.mark.order(13)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
     @step(13, "SMART compare — verify drive health")
     def test_13_smart_compare(self):
         """
@@ -792,7 +793,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         - Reallocated Sectors Count, Current Pending Sector Count,
           Uncorrectable Sector Count must all be 0
         """
-        self._skip_if_not_rebooted()
+        # self._skip_if_not_rebooted()
         logger.info("[TEST_13] SMART comparison started")
 
         cdi_cfg = self.config['cdi']
