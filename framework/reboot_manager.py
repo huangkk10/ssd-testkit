@@ -74,6 +74,11 @@ class RebootManager:
 
         Args:
             min_count: Minimum number of reboots required (default 1).
+
+        Note:
+            Prefer require_after() when possible — it expresses the dependency
+            by predecessor test name rather than a raw counter, which is more
+            robust when the test flow changes.
         """
         actual = self.state.get("reboot_count", 0)
         if actual < min_count:
@@ -81,6 +86,31 @@ class RebootManager:
                 f"Reboot prerequisite not met: expected reboot_count >= {min_count}, "
                 f"got {actual}. Ensure the reboot step completed successfully before "
                 "this step runs."
+            )
+
+    def require_after(self, predecessor: str) -> None:
+        """
+        Assert that *predecessor* test has already been completed.
+
+        Preferred over require_rebooted(min_count=N) because it expresses the
+        dependency by name rather than a magic number.  If the reboot sequence
+        is refactored (steps added/removed), only the predecessor name needs
+        updating rather than hunting for every hardcoded count.
+
+        Calls pytest.fail() (not skip) so a missing predecessor is reported as
+        a test-flow error, not silently hidden.
+
+        Usage:
+            # test_10 must only run after the second reboot step (test_09)
+            self.reboot_mgr.require_after("test_09_clear_sleepstudy_and_reboot")
+
+        Args:
+            predecessor: Exact pytest node name of the required predecessor step.
+        """
+        if not self.is_completed(predecessor):
+            pytest.fail(
+                f"Prerequisite step not completed: '{predecessor}' must run "
+                "before this step. Ensure the reboot sequence ran in order."
             )
 
     def pre_mark_completed(self, test_name: str) -> None:

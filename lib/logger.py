@@ -382,5 +382,59 @@ def LogResult(passed, message):
         logger.error(f"✗ [FAIL] {message}")
 
 
+def clear_log_files() -> None:
+    """
+    Delete the logger's own log files (log.txt and log.err) so that the next
+    test run starts with a clean log.
+
+    On Windows, FileHandler keeps the file open as long as the handler exists,
+    so this function first closes and removes all FileHandlers that point to
+    these files, deletes the files, then re-initializes logging so that fresh
+    handlers (and fresh files) are created for subsequent log calls.
+
+    Usage:
+        from lib.logger import clear_log_files
+        clear_log_files()
+
+    Raises:
+        Nothing — failures are printed as warnings so test execution continues.
+    """
+    log_dir = _get_log_dir()
+    target_names = {'log.txt', 'log.err'}
+
+    # ── Step 1: close and detach FileHandlers that own these files ────────────
+    root_logger = logging.getLogger()
+    handlers_to_remove = []
+    for handler in root_logger.handlers[:]:
+        if isinstance(handler, logging.FileHandler):
+            try:
+                if Path(handler.baseFilename).name in target_names:
+                    handlers_to_remove.append(handler)
+            except Exception:
+                pass
+
+    for handler in handlers_to_remove:
+        try:
+            handler.close()
+            root_logger.removeHandler(handler)
+        except Exception:
+            pass
+
+    # Also reset Logger._initialized so init_logging() will recreate handlers
+    Logger._initialized = False
+
+    # ── Step 2: delete the files (handles are now released) ───────────────────
+    for filename in target_names:
+        log_file = log_dir / filename
+        if log_file.exists():
+            try:
+                log_file.unlink()
+            except Exception as exc:
+                print(f'[Logger] WARNING: Could not remove {log_file}: {exc}')
+
+    # ── Step 3: re-initialize so subsequent log calls work normally ───────────
+    Logger.init_logging()
+
+
 # Note: Logger initialization happens automatically when getting a logger
 # Legacy code can still call logConfig() explicitly for backward compatibility

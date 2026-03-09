@@ -66,7 +66,7 @@ from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser
 from lib.testtool.sleepstudy.history_cleaner import SleepHistoryCleaner
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.config import OsConfigProfile
-from lib.logger import get_module_logger, logConfig
+from lib.logger import get_module_logger, logConfig, clear_log_files
 from framework.reboot_manager import RebootManager
 
 logger = get_module_logger(__name__)
@@ -204,17 +204,10 @@ class TestSTC2562ModernStandby(BaseTestCase):
         log_path = self.config.get('log_path', './log/STC-2562')
         cleanup_directory(log_path, 'test log directory', logger)
 
-        # 5a. Explicitly remove log.txt and log.err from test log directory
-        #     (in case cleanup_directory left them behind)
-        log_dir = Path(log_path)
-        for log_file in ['log.txt', 'log.err']:
-            log_file_path = log_dir / log_file
-            if log_file_path.exists():
-                try:
-                    log_file_path.unlink()
-                    logger.info(f"[_cleanup_test_logs] Removed log file: {log_file_path}")
-                except Exception as exc:
-                    logger.warning(f"[_cleanup_test_logs] Could not remove {log_file_path}: {exc}")
+        # 5a. Clear the logger's own log files (lib/logger.py writes to ./log/log.txt
+        #     and ./log/log.err, separate from the test-specific log_path above).
+        clear_log_files()
+        logger.info("[_cleanup_test_logs] Logger log files cleared")
 
         logger.info("[_cleanup_test_logs] Cleanup complete")
 
@@ -306,18 +299,18 @@ class TestSTC2562ModernStandby(BaseTestCase):
     def test_01_precondition(self):
         """
         Precondition setup:
-        1. Remove existing PHM installation (clean slate)
-        2. Clean up leftover logs from previous runs
+        1. Clean up leftover logs from previous runs
+        2. Remove existing PHM installation (clean slate)
         3. Create fresh log directory structure
         """
         logger.info("[TEST_01] Precondition setup started")
 
-        # Step 1: Remove existing PHM installation
+        # Step 1: Clean up logs from previous runs
+        self._cleanup_test_logs()
+
+        # Step 2: Remove existing PHM installation
         if not self._remove_existing_phm():
             pytest.fail("Failed to remove existing PHM installation")
-
-        # Step 2: Clean up logs from previous runs
-        self._cleanup_test_logs()
 
         # Step 3: Re-create fresh log directories
         for d in [
@@ -445,6 +438,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         Record pre-sleep timestamp, run one sleep/wake cycle via PwrTestController,
         then generate a sleepstudy HTML report via SleepStudyController.
         """
+        self.reboot_mgr.require_after("test_05_clear_sleep_history")
         logger.info("[TEST_06] PwrTest sleep/wake started")
 
         # Record time before sleep for sleepstudy filtering
@@ -613,7 +607,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         Standby Cycling collector scenario using parameters from Config.json,
         wait for completion, then copy the trace folder to testlog/PHMTraces/.
         """
-        self.reboot_mgr.require_rebooted(min_count=2)
+        self.reboot_mgr.require_after("test_09_clear_sleepstudy_and_reboot")
         logger.info("[TEST_10] PHM collector session started")
 
 
