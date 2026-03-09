@@ -50,7 +50,7 @@ Parse an already-existing report::
 
 from .controller import SleepStudyController
 from .config import SleepStudyConfig
-from .sleep_report_parser import SleepReportParser, SleepSession
+from .sleep_report_parser import SleepReportParser, SleepSession, validate_drips
 from .history_cleaner import SleepHistoryCleaner
 from .exceptions import (
     SleepStudyError,
@@ -72,6 +72,7 @@ __all__ = [
     # Report parsing
     "SleepReportParser",
     "SleepSession",
+    "validate_drips",
     # History cleaner
     "SleepHistoryCleaner",
     # Exceptions

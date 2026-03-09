@@ -494,3 +494,55 @@ class SleepReportParser:
             pass
         # Fall through to the full datetime formats.
         return SleepReportParser._parse_dt_arg(dt_str)
+
+
+# ---------------------------------------------------------------------------
+# Utility
+# ---------------------------------------------------------------------------
+
+def validate_drips(
+    sessions: List[SleepSession],
+    threshold: float,
+    *,
+    strict: bool = False,
+) -> List[str]:
+    """
+    Validate SW and HW DRIPS percentages for a list of :class:`SleepSession` objects.
+
+    Args:
+        sessions:  Sessions returned by :meth:`SleepReportParser.get_sleep_sessions`.
+        threshold: Required minimum DRIPS percentage.
+        strict:    Comparison mode.
+
+                   * ``False`` (default) — fail if value ``< threshold``
+                     (session must be ``>= threshold``).
+                   * ``True`` — fail if value ``<= threshold``
+                     (session must be ``> threshold``; stricter).
+
+    Returns:
+        A list of human-readable failure strings, one per failing check.
+        An empty list means all sessions passed.
+
+    Example — require SW/HW >= 90%::
+
+        failures = validate_drips(sessions, threshold=90)
+        if failures:
+            pytest.fail("DRIPS check failed:\\n" + "\\n".join(failures))
+
+    Example — require SW/HW > 80% (strict)::
+
+        failures = validate_drips(sessions, threshold=80, strict=True)
+    """
+    op_sym = "<=" if strict else "<"
+    failures: List[str] = []
+    for s in sessions:
+        for label, value in (("SW", s.sw_pct), ("HW", s.hw_pct)):
+            if value is None:
+                failures.append(
+                    f"Session {s.session_id}: {label} DRIPS not found (None)"
+                )
+            elif (strict and value <= threshold) or (not strict and value < threshold):
+                failures.append(
+                    f"Session {s.session_id}: {label} DRIPS {value}% {op_sym} {threshold}%"
+                )
+    return failures

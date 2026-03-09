@@ -162,6 +162,63 @@ class PHMController(threading.Thread):
             timeout=int(self._config.get('timeout', 120)),
         )
 
+    def force_remove(self) -> bool:
+        """
+        Ensure PHM is fully removed regardless of its current state.
+
+        Tries a normal uninstall first.  If the uninstaller entry is missing
+        (``PHMInstallError``), falls back to force-killing the process and
+        deleting the install directory directly.  Intended for use in test
+        precondition steps that need a clean slate before installing PHM.
+
+        Returns:
+            True  — PHM is gone (or was never installed).
+            False — An unexpected error occurred; caller may decide to fail.
+
+        Example:
+            >>> ctrl = PHMController(
+            ...     installer_path=cfg['installer'],
+            ...     install_path=cfg['install_path'],
+            ... )
+            >>> if not ctrl.force_remove():
+            ...     pytest.fail('Failed to remove existing PHM installation')
+        """
+        mgr = self._get_process_manager()
+
+        if not mgr.is_installed():
+            logger.info('[force_remove] PHM is not installed — nothing to remove')
+            return True
+
+        logger.info('[force_remove] PHM found — attempting normal uninstall')
+        try:
+            mgr.uninstall(timeout=int(self._config.get('timeout', 120)))
+            logger.info('[force_remove] PHM uninstalled successfully')
+            return True
+        except PHMInstallError as exc:
+            logger.warning(
+                f'[force_remove] Uninstaller not found ({exc}) — '
+                'force-killing process and removing install directory'
+            )
+        except Exception as exc:
+            logger.error(f'[force_remove] Uninstall failed unexpectedly: {exc}')
+            return False
+
+        # Fallback: kill process + delete install directory
+        mgr.kill_by_name('PowerhouseMountain.exe')
+        install_dir = Path(self._config.get('install_path', ''))
+        if install_dir.exists():
+            import shutil
+            try:
+                shutil.rmtree(str(install_dir))
+                logger.info(f'[force_remove] Removed install directory: {install_dir}')
+            except Exception as rmex:
+                logger.warning(
+                    f'[force_remove] Could not remove install directory '
+                    f'({install_dir}): {rmex} — installer may still detect PHM'
+                )
+        logger.info('[force_remove] PHM force-removed')
+        return True
+
     # ------------------------------------------------------------------
     # Thread interface
     # ------------------------------------------------------------------

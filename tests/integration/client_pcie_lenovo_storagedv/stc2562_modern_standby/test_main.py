@@ -58,11 +58,10 @@ from lib.testtool.phm.process_manager import PHMProcessManager
 from lib.testtool.phm.ui_monitor import PHMUIMonitor
 from lib.testtool.phm.collector_session import CollectorSession
 from lib.testtool.phm.scenarios.modern_standby_cycling import ModernStandbyCyclingParams
-from lib.testtool.phm.exceptions import PHMInstallError
 from lib.testtool.pwrtest import PwrTestController
 from lib.testtool.pwrtest.config import PwrTestScenario
 from lib.testtool.sleepstudy import SleepStudyController
-from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser
+from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser, validate_drips
 from lib.testtool.sleepstudy.history_cleaner import SleepHistoryCleaner
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.config import OsConfigProfile
@@ -97,62 +96,13 @@ class TestSTC2562ModernStandby(BaseTestCase):
     # ------------------------------------------------------------------
 
     def _remove_existing_phm(self) -> bool:
-        """
-        Uninstall Powerhouse Mountain (PHM) if it is currently installed.
-
-        Uses PHMController.is_installed() / uninstall() so that the same
-        install-path configured in Config.json is used for detection.
-
-        If the standard uninstaller cannot be found (PHMInstallError), falls
-        back to force-killing any running PHM process and returns True —
-        step 03 will perform a fresh install regardless.
-
-        Returns:
-            True always (hard failures are logged as warnings, not test failures).
-        """
+        """Ensure PHM is fully removed before a fresh install (delegates to PHMController.force_remove)."""
         phm_cfg = self.config['phm']
         ctrl = PHMController(
             installer_path=phm_cfg['installer'],
             install_path=phm_cfg['install_path'],
         )
-
-        if not ctrl.is_installed():
-            logger.info("[_remove_existing_phm] PHM is not installed — nothing to remove")
-            return True
-
-        logger.info("[_remove_existing_phm] PHM found — starting uninstall")
-        try:
-            ctrl.uninstall()
-            logger.info("[_remove_existing_phm] PHM uninstalled successfully")
-            return True
-        except PHMInstallError as exc:
-            # No uninstaller entry found (e.g. previous install left files on
-            # disk without a valid registry entry).  Kill all PHM processes
-            # first, then remove the entire install directory so that
-            # is_installed() returns False and test_03 can do a clean install.
-            logger.warning(
-                f"[_remove_existing_phm] Uninstaller not found ({exc}) — "
-                "force-killing PHM processes and removing install directory"
-            )
-            mgr = PHMProcessManager(install_path=phm_cfg['install_path'])
-            mgr.kill_by_name('PowerhouseMountain.exe')
-            install_dir = Path(phm_cfg['install_path'])
-            if install_dir.exists():
-                try:
-                    shutil.rmtree(str(install_dir))
-                    logger.info(
-                        f"[_remove_existing_phm] Removed install directory: {install_dir}"
-                    )
-                except Exception as rmex:
-                    logger.warning(
-                        f"[_remove_existing_phm] Could not remove install directory "
-                        f"({install_dir}): {rmex} — installer may still detect PHM"
-                    )
-            logger.info("[_remove_existing_phm] PHM removed — continuing")
-            return True
-        except Exception as exc:
-            logger.error(f"[_remove_existing_phm] Uninstall failed: {exc}")
-            return False
+        return ctrl.force_remove()
 
     def _skip_if_not_rebooted(self, min_count: int = 1) -> None:
         """pytest.skip when the required number of reboots has not occurred yet."""
@@ -513,30 +463,17 @@ class TestSTC2562ModernStandby(BaseTestCase):
         )
 
         logger.info(f"[TEST_07] Found {len(sessions)} sleep session(s) in window")
-        failures = []
         for s in sessions:
-            sw = s.sw_pct
-            hw = s.hw_pct
-            logger.info(f"[TEST_07]   Session {s.session_id}: SW={sw}%  HW={hw}%")
+            logger.info(f"[TEST_07]   Session {s.session_id}: SW={s.sw_pct}%  HW={s.hw_pct}%")
 
-            # SW and HW values must be present
-            if sw is None:
-                failures.append(f"Session {s.session_id}: SW DRIPS not found (None)")
-            elif sw < threshold:
-                failures.append(f"Session {s.session_id}: SW DRIPS {sw}% < {threshold}%")
-
-            if hw is None:
-                failures.append(f"Session {s.session_id}: HW DRIPS not found (None)")
-            elif hw < threshold:
-                failures.append(f"Session {s.session_id}: HW DRIPS {hw}% < {threshold}%")
-
+        failures = validate_drips(sessions, threshold)
         if failures:
             pytest.fail("Sleepstudy DRIPS validation failed:\n" + "\n".join(failures))
 
         logger.info("[TEST_07] All sleep sessions passed SW/HW check")
 
     @pytest.mark.order(8)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
     @step(8, "OsConfig — apply OS settings")
     def test_08_apply_osconfig(self):
         """
@@ -563,7 +500,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_08] OsConfig applied successfully")
 
     @pytest.mark.order(9)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(9, "Clear Sleep Study history & Reboot device")
     def test_09_clear_sleepstudy_and_reboot(self, request):
         """
@@ -599,7 +536,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
     # ------------------------------------------------------------------
 
     @pytest.mark.order(10)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(10, "PHM collector — run Modern Standby")
     def test_10_run_modern_standby(self):
         """
@@ -688,7 +625,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
                 logger.warning(f"[TEST_10] close_browser error (non-fatal): {exc}")
 
     @pytest.mark.order(11)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(11, "Verify DRIPS — SW/HW > 80%")
     def test_11_verify_drips(self, test_params):
         """
@@ -733,26 +670,16 @@ class TestSTC2562ModernStandby(BaseTestCase):
                 f"{self._phm_start_time} and {self._phm_end_time}"
             )
         logger.info(f"[TEST_11] Found {len(sessions)} sleep session(s)")
-
-        failures = []
         for s in sessions:
-            sw, hw = s.sw_pct, s.hw_pct
-            logger.info(f"[TEST_11]   Session {s.session_id}: SW={sw}%  HW={hw}%")
-            if sw is None:
-                failures.append(f"Session {s.session_id}: SW DRIPS not found")
-            elif sw <= test_params.drips_threshold:
-                failures.append(f"Session {s.session_id}: SW DRIPS {sw}% \u2264 {test_params.drips_threshold}%")
-            if hw is None:
-                failures.append(f"Session {s.session_id}: HW DRIPS not found")
-            elif hw <= test_params.drips_threshold:
-                failures.append(f"Session {s.session_id}: HW DRIPS {hw}% \u2264 {test_params.drips_threshold}%")
+            logger.info(f"[TEST_11]   Session {s.session_id}: SW={s.sw_pct}%  HW={s.hw_pct}%")
 
+        failures = validate_drips(sessions, test_params.drips_threshold, strict=True)
         if failures:
             pytest.fail("Sleep Study DRIPS check failed:\n" + "\n".join(failures))
         logger.info("[TEST_11] Sleep Study DRIPS check passed")
 
     @pytest.mark.order(12)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(12, "CDI After — SMART snapshot")
     def test_12_cdi_after(self):
         """Run CrystalDiskInfo to capture post-test SMART data (After_ prefix)."""
@@ -775,7 +702,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_12] CDI After complete")
 
     @pytest.mark.order(13)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
     @step(13, "SMART compare — verify drive health")
     def test_13_smart_compare(self):
         """

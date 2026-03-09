@@ -70,7 +70,7 @@
   "phm_collector": {
     "cycle_count": 1,
     "delayed_start_seconds": 10,
-    "scenario_duration_minutes": 15,
+    "scenario_duration_minutes": 30,
     "wait_for_server_seconds": 60,
     "completion_timeout_seconds": 7200,
     "headless": true,
