@@ -337,6 +337,154 @@ When a user asks about a known tool, read the corresponding reference file first
 - **Test Templates**: `.claude/skills/scaffold-testtool/references/test_templates.md`
 - **PHM Tool Reference**: `.claude/skills/scaffold-testtool/references/phm.md`
 
+---
+
+## RebootManager Usage in Test Cases
+
+`framework/reboot_manager.py` (`RebootManager`) provides **cross-reboot pytest session recovery**.
+When a test needs to reboot the machine and then continue with the next step, `RebootManager` persists which steps have already completed, installs a Startup-folder BAT that re-launches pytest after reboot, and provides guards so that completed steps are skipped automatically on resume.
+
+> **Reference implementation**: `tests/integration/client_pcie_lenovo_storagedv/stc2562_modern_standby/test_main.py`  
+> **Auto-skip mechanism**: `framework/base_test.py` — `BaseTestCase.setup_teardown_function` calls `reboot_mgr.is_completed(test_name)` and `pytest.skip()` for every test before it executes.
+
+---
+
+### Key API
+
+| Method | When to call | Notes |
+|--------|-------------|-------|
+| `RebootManager(total_tests=N)` | fixture setup | N = total number of `@pytest.mark.order(N)` steps |
+| `is_recovering()` | fixture setup (log phase) | `True` if this is a post-reboot resume |
+| `pre_mark_completed(request.node.name)` | **inside the reboot test step** | Must call BEFORE `setup_reboot()` — see pitfall below |
+| `setup_reboot(delay, reason, test_file)` | inside the reboot test step | Increments `reboot_count`, writes Startup BAT, calls `os._exit(0)` |
+| `require_rebooted(min_count=N)` | first line of post-reboot steps | Calls `pytest.fail()` (not skip) if `reboot_count < N` |
+| `cleanup()` | fixture teardown | Removes state file + Startup BAT |
+
+---
+
+### Pattern 1 — Fixture Initialization
+
+Always initialize `RebootManager` after `os.chdir()` to the test directory (state file path is relative to cwd):
+
+```python
+@pytest.fixture(scope="class", autouse=True)
+def setup_test_class(self, request, testcase_config, runcard_params):
+    cls = request.cls
+    os.chdir(test_dir)   # ← must happen BEFORE RebootManager()
+
+    # ── Initialize RebootManager ─────────────────────────────────────
+    cls.reboot_mgr = RebootManager(total_tests=13)
+
+    phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
+    logger.info(f"[SETUP] Phase: {phase}")
+
+    yield
+
+    # ── Teardown: cleanup state file + Startup BAT ───────────────────
+    try:
+        cls.reboot_mgr.cleanup()
+    except Exception as exc:
+        logger.warning(f"[TEARDOWN] RebootManager cleanup failed — {exc}")
+```
+
+---
+
+### Pattern 2 — Reboot Step (Pre-Reboot side)
+
+Any test step that needs to reboot must:
+1. Do its work first (e.g., clear history, install something).
+2. Call `pre_mark_completed(request.node.name)` **before** `setup_reboot()`.
+3. Call `setup_reboot()` — this returns only via `os._exit(0)`, so no code after it runs.
+
+```python
+@pytest.mark.order(5)
+@step(5, "Clear Sleep Study history & Reboot device")
+def test_05_clear_sleep_history(self, request):
+    # ... do any pre-reboot work ...
+
+    # ① Mark this step done so it won't re-execute after reboot
+    self.reboot_mgr.pre_mark_completed(request.node.name)
+
+    # ② Schedule reboot; os._exit(0) is called internally — nothing after this runs
+    self.reboot_mgr.setup_reboot(
+        delay=10,
+        reason="Phase A complete — rebooting before PwrTest",
+        test_file=__file__,   # ← tells the Startup BAT which file to re-run
+    )
+    # ← code here is unreachable
+```
+
+> **Why `pre_mark_completed` is required**: `setup_reboot()` calls `os._exit(0)`, bypassing
+> pytest's teardown. Without pre-marking, `BaseTestCase.setup_teardown_function` never reaches
+> `reboot_mgr.mark_completed()`, so the reboot step appears incomplete after resume and would
+> execute again → **infinite reboot loop**.
+
+---
+
+### Pattern 3 — Post-Reboot Step (Hard Guard)
+
+Steps that must only run *after* at least N reboots use `require_rebooted(min_count=N)`.
+This raises `pytest.fail()` (not a skip) if the condition is unmet — signalling a flow error.
+
+```python
+@pytest.mark.order(10)
+@step(10, "PHM collector — run Modern Standby")
+def test_10_run_modern_standby(self):
+    # Hard assertion: this step requires exactly 2 reboots to have happened
+    self.reboot_mgr.require_rebooted(min_count=2)
+    # ... rest of step ...
+```
+
+For steps that run after only the first reboot but before a second one (steps 6–9 in the example),
+**no explicit guard is needed** — `BaseTestCase.setup_teardown_function` already skips any step
+whose name appears in `completed_tests`.
+
+---
+
+### Multi-Reboot Flow (Two Reboots Example)
+
+```
+─── PRE-REBOOT (reboot_count=0) ─────────────────────────────────────────────
+  test_01 → runs → marked completed
+  test_02 → runs → marked completed
+  ...
+  test_05 → pre_mark_completed("test_05_...")
+           setup_reboot(delay=10, test_file=__file__)
+           [os._exit(0) — process terminates]
+  [SYSTEM REBOOTS — Startup BAT re-launches pytest]
+
+─── POST-REBOOT 1 (reboot_count=1) ──────────────────────────────────────────
+  test_01..05 → skipped (already in completed_tests)
+  test_06 → runs → marked completed
+  ...
+  test_09 → pre_mark_completed("test_09_...")
+            setup_reboot(...)
+            [os._exit(0)]
+  [SYSTEM REBOOTS AGAIN — Startup BAT re-launches pytest]
+
+─── POST-REBOOT 2 (reboot_count=2) ──────────────────────────────────────────
+  test_01..09 → skipped (already in completed_tests)
+  test_10 → require_rebooted(min_count=2)  ← guards against wrong phase
+             ... runs ...
+  test_11..13 → run sequentially
+  [teardown: reboot_mgr.cleanup() removes state file + BAT]
+```
+
+---
+
+### Rules & Pitfalls
+
+| Rule | Reason |
+|------|--------|
+| Call `pre_mark_completed()` **before** `setup_reboot()` | `os._exit(0)` bypasses pytest teardown — no other chance to persist the completed flag |
+| Always pass `test_file=__file__` to `setup_reboot()` | The Startup BAT needs the path to re-run the correct test file |
+| `os.chdir()` must happen before `RebootManager()` | `STATE_FILE` path is relative (`"./pytest_reboot_state.json"`) |
+| Use `require_rebooted(min_count=N)` for hard phase guards | A `pytest.fail()` clearly signals a test-flow error; a skip would silently hide it |
+| Do **not** call `reboot_mgr.cleanup()` inside the reboot step | Cleanup must only happen in teardown after all tests complete normally |
+| `total_tests` must equal the actual number of `@pytest.mark.order(N)` steps | Used by `all_tests_completed()` to decide when to clean up |
+
+---
+
 ## Important Notes
 
 - Always import logger with `from lib.logger import get_module_logger`
