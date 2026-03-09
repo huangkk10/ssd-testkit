@@ -537,7 +537,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_07] OsConfig applied successfully")
 
     @pytest.mark.order(8)
-    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(8, "Reboot device")
     def test_08_reboot(self, request):
         """
@@ -547,6 +547,14 @@ class TestSTC2562ModernStandby(BaseTestCase):
         resume and this step is not re-executed (no infinite reboot loop).
         """
         logger.info("[TEST_08] Scheduling reboot")
+
+        # ── Clear accumulated Sleep Study history ─────────────────────
+        try:
+            cleaner = SleepHistoryCleaner()
+            deleted = cleaner.clear()
+            logger.info(f"[TEST_09] SleepHistory cleared: {deleted} file(s) deleted")
+        except Exception as exc:
+            logger.warning(f"[TEST_09] SleepHistory clear failed (non-fatal): {exc}")
 
         # Pre-mark this test as completed BEFORE setup_reboot() calls os._exit(0).
         # Without this, test_08 would not be in completed_tests after reboot
@@ -576,13 +584,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
         self.reboot_mgr.require_rebooted()
         logger.info("[TEST_09] PHM collector session started")
 
-        # ── Clear accumulated Sleep Study history ─────────────────────
-        # try:
-        #     cleaner = SleepHistoryCleaner()
-        #     deleted = cleaner.clear()
-        #     logger.info(f"[TEST_09] SleepHistory cleared: {deleted} file(s) deleted")
-        # except Exception as exc:
-        #     logger.warning(f"[TEST_09] SleepHistory clear failed (non-fatal): {exc}")
 
         # ── Verify PHM is installed ───────────────────────────────────
         phm_cfg = self.config['phm']
@@ -593,75 +594,75 @@ class TestSTC2562ModernStandby(BaseTestCase):
                 "Ensure test_03 ran successfully before this reboot."
             )
 
-        # # ── Launch PHM process ────────────────────────────────────────
-        # mgr.launch()
-        # logger.info("[TEST_09] PHM process launched")
+        # ── Launch PHM process ────────────────────────────────────────
+        mgr.launch()
+        logger.info("[TEST_09] PHM process launched")
 
-        # # ── Read collector parameters from Config ─────────────────────
-        # col_cfg = self.config.get('phm_collector', {})
-        # cycle_count               = col_cfg.get('cycle_count', 1)
-        # delayed_start_seconds     = col_cfg.get('delayed_start_seconds', 10)
-        # scenario_duration_minutes = col_cfg.get('scenario_duration_minutes', 15)
-        # wait_for_server_seconds   = col_cfg.get('wait_for_server_seconds', 60)
-        # completion_timeout        = col_cfg.get('completion_timeout_seconds', 7200)
-        # headless                  = col_cfg.get('headless', True)
-        # traces_output_dir         = col_cfg.get('traces_output_dir', './testlog/PHMTraces')
+        # ── Read collector parameters from Config ─────────────────────
+        col_cfg = self.config.get('phm_collector', {})
+        cycle_count               = col_cfg.get('cycle_count', 1)
+        delayed_start_seconds     = col_cfg.get('delayed_start_seconds', 10)
+        scenario_duration_minutes = col_cfg.get('scenario_duration_minutes', 15)
+        wait_for_server_seconds   = col_cfg.get('wait_for_server_seconds', 60)
+        completion_timeout        = col_cfg.get('completion_timeout_seconds', 7200)
+        headless                  = col_cfg.get('headless', True)
+        traces_output_dir         = col_cfg.get('traces_output_dir', './testlog/PHMTraces')
 
-        # params = ModernStandbyCyclingParams(
-        #     delayed_start_seconds=delayed_start_seconds,
-        #     scenario_duration_minutes=scenario_duration_minutes,
-        #     cycle_count=cycle_count,
-        # )
-        # logger.info(
-        #     f"[TEST_09] Collector params: cycles={cycle_count}, "
-        #     f"delayed_start={delayed_start_seconds}s, "
-        #     f"duration={scenario_duration_minutes}min"
-        # )
+        params = ModernStandbyCyclingParams(
+            delayed_start_seconds=delayed_start_seconds,
+            scenario_duration_minutes=scenario_duration_minutes,
+            cycle_count=cycle_count,
+        )
+        logger.info(
+            f"[TEST_09] Collector params: cycles={cycle_count}, "
+            f"delayed_start={delayed_start_seconds}s, "
+            f"duration={scenario_duration_minutes}min"
+        )
 
-        # # ── Open PHM web UI via Playwright ────────────────────────────
-        # ui = PHMUIMonitor(host='localhost', port=1337, headless=headless)
-        # try:
-        #     logger.info(f"[TEST_09] Waiting for PHM server (timeout={wait_for_server_seconds}s)")
-        #     ui.wait_for_ready(timeout=wait_for_server_seconds)
-        #     logger.info("[TEST_09] PHM server ready — opening browser")
-        #     # ui.open_browser(headless=headless)
-        #     ui.open_browser(headless=False)
+        # ── Open PHM web UI via Playwright ────────────────────────────
+        ui = PHMUIMonitor(host='localhost', port=1337, headless=headless)
+        try:
+            logger.info(f"[TEST_09] Waiting for PHM server (timeout={wait_for_server_seconds}s)")
+            ui.wait_for_ready(timeout=wait_for_server_seconds)
+            logger.info("[TEST_09] PHM server ready — opening browser")
+            # ui.open_browser(headless=headless)
+            ui.open_browser(headless=False)
 
-        #     # ── Run the collector session (steps 3-9 via CollectorSession) ──
-        #     TestSTC2562ModernStandby._phm_start_time = datetime.now().isoformat(timespec='seconds')
-        #     session = CollectorSession(ui)
-        #     session.run(params)
-        #     logger.info("[TEST_09] CollectorSession.run() finished — test is running")
+            # ── Run the collector session (steps 3-9 via CollectorSession) ──
+            TestSTC2562ModernStandby._phm_start_time = datetime.now().isoformat(timespec='seconds')
+            session = CollectorSession(ui)
+            session.run(params)
+            logger.info("[TEST_09] CollectorSession.run() finished — test is running")
 
-        #     # ── Poll for completion ───────────────────────────────────
-        #     logger.info(f"[TEST_09] Waiting for completion (timeout={completion_timeout}s)")
-        #     completed = ui.wait_for_completion(timeout=completion_timeout)
-        #     if not completed:
-        #         pytest.fail("PHM collector did not complete within the configured timeout")
-        #     TestSTC2562ModernStandby._phm_end_time = datetime.now().isoformat(timespec='seconds')
-        #     logger.info("[TEST_09] PHM collector completed")
+            # ── Poll for completion ───────────────────────────────────
+            logger.info(f"[TEST_09] Waiting for completion (timeout={completion_timeout}s)")
+            completed = ui.wait_for_completion(timeout=completion_timeout)
+            if not completed:
+                pytest.fail("PHM collector did not complete within the configured timeout")
+            TestSTC2562ModernStandby._phm_end_time = datetime.now().isoformat(timespec='seconds')
+            logger.info("[TEST_09] PHM collector completed")
 
-        #     # ── Collect traces ────────────────────────────────────────
-        #     try:
-        #         traces_src = ui.get_traces_path()
-        #         dest_dir = Path(traces_output_dir)
-        #         if dest_dir.exists():
-        #             shutil.rmtree(str(dest_dir))
-        #         dest_dir.mkdir(parents=True, exist_ok=True)
-        #         shutil.copytree(traces_src, str(dest_dir), dirs_exist_ok=True)
-        #         logger.info(f"[TEST_09] Traces copied: {traces_src} -> {dest_dir}")
-        #     except Exception as exc:
-        #         logger.warning(f"[TEST_09] Trace collection failed (non-fatal): {exc}")
+            # ── Collect traces ────────────────────────────────────────
+            try:
+                traces_src = ui.get_traces_path()
+                dest_dir = Path(traces_output_dir)
+                if dest_dir.exists():
+                    shutil.rmtree(str(dest_dir))
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(traces_src, str(dest_dir), dirs_exist_ok=True)
+                logger.info(f"[TEST_09] Traces copied: {traces_src} -> {dest_dir}")
+            except Exception as exc:
+                logger.warning(f"[TEST_09] Trace collection failed (non-fatal): {exc}")
 
-        # finally:
-        #     try:
-        #         ui.close_browser()
-        #         logger.info("[TEST_09] Browser closed")
-        #     except Exception as exc:
-        #         logger.warning(f"[TEST_09] close_browser error (non-fatal): {exc}")
+        finally:
+            try:
+                ui.close_browser()
+                logger.info("[TEST_09] Browser closed")
+            except Exception as exc:
+                logger.warning(f"[TEST_09] close_browser error (non-fatal): {exc}")
 
     @pytest.mark.order(10)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(10, "Verify DRIPS — SW/HW > 80%")
     def test_10_verify_drips(self):
         """
@@ -669,7 +670,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         (phm_start_time … phm_end_time captured in test_09), then verify
         that every session's SW DRIPS and HW DRIPS are both > 80%.
         """
-        self._skip_if_not_rebooted()
+        # self._skip_if_not_rebooted()
         logger.info("[TEST_10] Sleep Study DRIPS verification started")
 
         # Require that test_09 actually ran and captured timestamps
