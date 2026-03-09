@@ -6,6 +6,7 @@ Common configuration classes and fixtures are inherited from tests/integration/c
 """
 
 import pytest
+from dataclasses import dataclass
 from pathlib import Path
 
 # Import shared TestCaseConfiguration from parent conftest
@@ -110,3 +111,20 @@ def testcase_config():
     config.smicli_executable = case_root_dir / "bin/SmiWinTools/bin/x64/SmiCli2.exe"
 
     return config
+
+
+@dataclass
+class STC2562Params:
+    """Tunable test parameters for STC-2562 Modern Standby."""
+    wake_after_min: int = 30
+    """Minutes to stay in sleep during the PwrTest cycle (test_06)."""
+    sleepstudy_threshold: int = 90
+    """Minimum SW/HW DRIPS % required by the PwrTest sleepstudy check (test_07)."""
+    drips_threshold: int = 80
+    """Minimum SW/HW DRIPS % required by the PHM Modern Standby check (test_11)."""
+
+
+@pytest.fixture(scope="session")
+def test_params() -> STC2562Params:
+    """Return tunable parameters for STC-2562.  Override values here to change thresholds."""
+    return STC2562Params()
