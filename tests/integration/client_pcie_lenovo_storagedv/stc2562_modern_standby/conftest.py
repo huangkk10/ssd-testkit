@@ -42,26 +42,47 @@ def pytest_collection_finish(session):
     if has_test01:
         return  # full run — let test_01 manage the state file
 
-    # Post-reboot tests (09–11) require the state file to be present so that
+    # Post-reboot tests require the state file to be present so that
     # _is_recovering() returns True.  If the collected set contains only
     # post-reboot tests, ensure the state file exists (create a synthetic one
     # if missing) so developers can run these tests standalone without rebooting.
-    _POST_REBOOT_TESTS = {'test_09_run_modern_standby', 'test_10_verify_drips'}
+    #
+    # Phase B1 (after reboot 1): test_06 ~ test_09  → reboot_count = 1
+    # Phase B2 (after reboot 2): test_10 ~ test_11  → reboot_count = 2
+    _POST_REBOOT1_TESTS = {
+        'test_06_pwrtest_sleep_wake',
+        'test_07_verify_sleepstudy',
+        'test_08_apply_osconfig',
+        'test_09_clear_sleepstudy_and_reboot',
+    }
+    _POST_REBOOT2_TESTS = {'test_10_run_modern_standby', 'test_11_verify_drips'}
     collected_names = {item.name for item in stc2562_items}
-    if collected_names.issubset(_POST_REBOOT_TESTS):
+
+    if collected_names.issubset(_POST_REBOOT2_TESTS):
+        reboot_count = 2
+    elif collected_names.issubset(_POST_REBOOT1_TESTS | _POST_REBOOT2_TESTS):
+        reboot_count = 1
+    else:
+        reboot_count = None  # not a recognisable post-reboot partial run
+
+    if reboot_count is not None:
         if not _STATE_FILE.exists():
             import json as _json
             _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
             _STATE_FILE.write_text(
                 _json.dumps({
                     "is_recovering": True,
+                    "reboot_count": reboot_count,
                     "current_cycle": 1,
                     "total_cycles": 1,
                     "last_reboot_timestamp": "synthetic",
                 }, indent=2),
                 encoding='utf-8',
             )
-            print(f"\n[STC-2562 conftest] Created synthetic reboot state for post-reboot partial run: {_STATE_FILE}")
+            print(
+                f"\n[STC-2562 conftest] Created synthetic reboot state "
+                f"(reboot_count={reboot_count}) for post-reboot partial run: {_STATE_FILE}"
+            )
         return  # post-reboot partial run — keep state file
 
     if _STATE_FILE.exists():
