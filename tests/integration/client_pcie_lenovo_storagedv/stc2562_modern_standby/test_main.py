@@ -624,6 +624,12 @@ class TestSTC2562ModernStandby(BaseTestCase):
             except Exception as exc:
                 logger.warning(f"[TEST_10] close_browser error (non-fatal): {exc}")
 
+            try:
+                mgr.terminate()
+                logger.info("[TEST_10] PHM process terminated")
+            except Exception as exc:
+                logger.warning(f"[TEST_10] PHM terminate error (non-fatal): {exc}")
+
     @pytest.mark.order(11)
     # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(11, "Verify DRIPS — SW/HW > 80%")
