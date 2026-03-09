@@ -20,6 +20,7 @@ a = Analysis(
     ],
     hiddenimports=[
         # stdlib modules not always auto-detected by PyInstaller 6.x
+        'configparser',
         'linecache',
         'tokenize',
         'token',
