@@ -357,7 +357,8 @@ When a test needs to reboot the machine and then continue with the next step, `R
 | `is_recovering()` | fixture setup (log phase) | `True` if this is a post-reboot resume |
 | `pre_mark_completed(request.node.name)` | **inside the reboot test step** | Must call BEFORE `setup_reboot()` — see pitfall below |
 | `setup_reboot(delay, reason, test_file)` | inside the reboot test step | Increments `reboot_count`, writes Startup BAT, calls `os._exit(0)` |
-| `require_rebooted(min_count=N)` | first line of post-reboot steps | Calls `pytest.fail()` (not skip) if `reboot_count < N` |
+| `require_after(predecessor)` | first line of post-reboot steps | **Preferred** — guards by predecessor test name, not a magic counter |
+| `require_rebooted(min_count=N)` | first line of post-reboot steps | Alternative — use only when no single predecessor name makes sense |
 | `cleanup()` | fixture teardown | Removes state file + Startup BAT |
 
 ---
@@ -423,21 +424,22 @@ def test_05_clear_sleep_history(self, request):
 
 ### Pattern 3 — Post-Reboot Step (Hard Guard)
 
-Steps that must only run *after* at least N reboots use `require_rebooted(min_count=N)`.
-This raises `pytest.fail()` (not a skip) if the condition is unmet — signalling a flow error.
+Steps that must only run *after* a specific predecessor prefer `require_after(predecessor_name)`.
+This is more robust than a magic `min_count` number — if steps are added or removed, only the name needs updating.
 
 ```python
 @pytest.mark.order(10)
 @step(10, "PHM collector — run Modern Standby")
 def test_10_run_modern_standby(self):
-    # Hard assertion: this step requires exactly 2 reboots to have happened
-    self.reboot_mgr.require_rebooted(min_count=2)
+    # Preferred: guard by predecessor name rather than hardcoded reboot count.
+    # test_09 is pre_mark_completed before the 2nd reboot, so this implicitly
+    # asserts that both reboots have occurred.
+    self.reboot_mgr.require_after("test_09_clear_sleepstudy_and_reboot")
     # ... rest of step ...
 ```
 
-For steps that run after only the first reboot but before a second one (steps 6–9 in the example),
-**no explicit guard is needed** — `BaseTestCase.setup_teardown_function` already skips any step
-whose name appears in `completed_tests`.
+Use `require_rebooted(min_count=N)` only when there is no single named predecessor that cleanly
+expresses the phase boundary (rare).
 
 ---
 
@@ -479,7 +481,8 @@ whose name appears in `completed_tests`.
 | Call `pre_mark_completed()` **before** `setup_reboot()` | `os._exit(0)` bypasses pytest teardown — no other chance to persist the completed flag |
 | Always pass `test_file=__file__` to `setup_reboot()` | The Startup BAT needs the path to re-run the correct test file |
 | `os.chdir()` must happen before `RebootManager()` | `STATE_FILE` path is relative (`"./pytest_reboot_state.json"`) |
-| Use `require_rebooted(min_count=N)` for hard phase guards | A `pytest.fail()` clearly signals a test-flow error; a skip would silently hide it |
+| Prefer `require_after(predecessor)` over `require_rebooted(min_count=N)` | Name-based guard is self-documenting and doesn't break when steps are added/removed |
+| Use `require_rebooted(min_count=N)` only as fallback | Only when no single predecessor name cleanly expresses the phase boundary |
 | Do **not** call `reboot_mgr.cleanup()` inside the reboot step | Cleanup must only happen in teardown after all tests complete normally |
 | `total_tests` must equal the actual number of `@pytest.mark.order(N)` steps | Used by `all_tests_completed()` to decide when to clean up |
 
