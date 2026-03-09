@@ -22,8 +22,9 @@ class RebootManager:
     STATE_FILE = "./pytest_reboot_state.json"
     STARTUP_PATH = r"C:\Users\{}\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\pytest_auto_run.bat"
     
-    def __init__(self):
+    def __init__(self, total_tests: int = 5):
         self.state_file = self.STATE_FILE
+        self.total_tests = total_tests
         self.state = self._load_state()
     
     def _load_state(self):
@@ -59,11 +60,23 @@ class RebootManager:
             self.state["completed_tests"].append(test_name)
         self.state["is_recovering"] = False
         self._save_state()
-    
+
+    def pre_mark_completed(self, test_name: str) -> None:
+        """
+        Mark a test as completed without resetting is_recovering.
+
+        Used by reboot tests that call setup_reboot() (which calls os._exit(0))
+        and therefore cannot rely on the normal mark_completed() post-yield call.
+        Without this, the reboot test would not be in completed_tests after the
+        system restarts and would execute again — causing an infinite reboot loop.
+        """
+        if test_name not in self.state["completed_tests"]:
+            self.state["completed_tests"].append(test_name)
+        self._save_state()
+
     def all_tests_completed(self):
         """檢查所有測試是否完成（用於判斷是否清理）"""
-        # 可以根據實際測試數量判斷
-        return len(self.state["completed_tests"]) >= 5  # 示例
+        return len(self.state["completed_tests"]) >= self.total_tests
     
     def setup_reboot(self, delay=10, reason="System reboot required", test_file=None):
         """

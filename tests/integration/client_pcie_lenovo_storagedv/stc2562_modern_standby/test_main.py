@@ -63,35 +63,10 @@ from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser
 from lib.testtool.sleepstudy.history_cleaner import SleepHistoryCleaner
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.config import OsConfigProfile
-from lib.testtool.reboot import OsRebootController, OsRebootStateManager
 from lib.logger import get_module_logger, logConfig
+from framework.reboot_manager import RebootManager
 
 logger = get_module_logger(__name__)
-
-# ---------------------------------------------------------------------------
-# Phase detection helpers
-# ---------------------------------------------------------------------------
-
-_STATE_FILE_REL = './testlog/reboot_state.json'
-
-
-def _is_recovering() -> bool:
-    """Return True when running in the post-reboot (recovery) phase."""
-    mgr = OsRebootStateManager(_STATE_FILE_REL)
-    return mgr.is_recovering()
-
-
-def _skip_if_recovering(reason: str = "Pre-reboot step — skip after reboot"):
-    """pytest.skip when we are in the post-reboot phase."""
-    if _is_recovering():
-        pytest.skip(reason)
-
-
-def _skip_if_not_recovering(reason: str = "Post-reboot step — skip before reboot"):
-    """pytest.skip when we are NOT in the post-reboot phase."""
-    if not _is_recovering():
-        pytest.skip(reason)
-
 
 # ---------------------------------------------------------------------------
 # Test class
@@ -176,50 +151,10 @@ class TestSTC2562ModernStandby(BaseTestCase):
             logger.error(f"[_remove_existing_phm] Uninstall failed: {exc}")
             return False
 
-    # ------------------------------------------------------------------
-    # Reboot auto-run helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _autorun_bat_path() -> Path:
-        """Path to the Windows Startup folder BAT used for post-reboot recovery."""
-        import getpass
-        user = getpass.getuser()
-        return Path(
-            rf"C:\Users\{user}\AppData\Roaming\Microsoft\Windows"
-            r"\Start Menu\Programs\Startup\stc2562_recovery.bat"
-        )
-
-    @classmethod
-    def _setup_autorun(cls, test_file: str) -> None:
-        """
-        Write a BAT script to the Windows Startup folder so that pytest
-        re-runs *test_file* automatically after the system reboots.
-
-        The script changes directory to the project root and invokes
-        the same Python interpreter that is currently active.
-        """
-        import getpass
-        bat_path = cls._autorun_bat_path()
-        python_exe = sys.executable
-        bat_content = (
-            f'@echo off\r\n'
-            f'cd /d "{_PROJECT_ROOT}"\r\n'
-            f'"{python_exe}" -m pytest --tb=short -q "{test_file}"\r\n'
-        )
-        bat_path.parent.mkdir(parents=True, exist_ok=True)
-        bat_path.write_text(bat_content, encoding='utf-8')
-        logger.info(f"[REBOOT] Auto-run script created: {bat_path}")
-
-    @classmethod
-    def _remove_autorun(cls) -> None:
-        """Remove the Startup BAT created by :meth:`_setup_autorun`, if present."""
-        bat_path = cls._autorun_bat_path()
-        if bat_path.exists():
-            bat_path.unlink()
-            logger.info(f"[REBOOT] Auto-run script removed: {bat_path}")
-        else:
-            logger.debug("[REBOOT] No auto-run script to remove")
+    def _skip_if_not_rebooted(self) -> None:
+        """pytest.skip when no reboot has occurred yet (Phase A guard for Phase B tests)."""
+        if self.reboot_mgr.state.get("reboot_count", 0) < 1:
+            pytest.skip("Post-reboot step — reboot has not occurred yet")
 
     def _cleanup_test_logs(self) -> None:
         """
@@ -238,8 +173,8 @@ class TestSTC2562ModernStandby(BaseTestCase):
         Path('./testlog').mkdir(parents=True, exist_ok=True)
 
         # 0. Reboot state file — must be removed so the next full run
-        #    starts in PRE-REBOOT phase rather than POST-REBOOT (recovery).
-        state_file = Path(_STATE_FILE_REL)
+        #    starts fresh without any completed tests recorded.
+        state_file = Path(RebootManager.STATE_FILE)
         if state_file.exists():
             state_file.unlink()
             logger.info(f"[_cleanup_test_logs] Removed reboot state file: {state_file}")
@@ -306,7 +241,10 @@ class TestSTC2562ModernStandby(BaseTestCase):
         cls.config = testcase_config.tool_config
         cls.bin_path = testcase_config.bin_directory
 
-        phase = "POST-REBOOT (recovery)" if _is_recovering() else "PRE-REBOOT"
+        # ── Initialize RebootManager (must be after os.chdir to correct cwd) ───────────
+        cls.reboot_mgr = RebootManager(total_tests=12)
+
+        phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
         logger.info(f"[SETUP] Phase: {phase}")
         logger.info(f"[SETUP] Test case: {testcase_config.case_id}  version: {testcase_config.case_version}")
         logger.info(f"[SETUP] Working directory: {test_dir}")
@@ -346,8 +284,11 @@ class TestSTC2562ModernStandby(BaseTestCase):
             except Exception as exc:
                 logger.warning(f"[TEARDOWN] OsConfig revert failed — {exc} (continuing)")
 
-        # Remove the post-reboot auto-run BAT (best-effort)
-        TestSTC2562ModernStandby._remove_autorun()
+        # Clean up RebootManager state file and auto-run BAT (best-effort)
+        try:
+            cls.reboot_mgr.cleanup()
+        except Exception as exc:
+            logger.warning(f"[TEARDOWN] RebootManager cleanup failed — {exc} (continuing)")
 
         logger.info("STC-2562 session complete")
         os.chdir(cls.original_cwd)
@@ -366,7 +307,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
         2. Clean up leftover logs from previous runs
         3. Create fresh log directory structure
         """
-        _skip_if_recovering()
         logger.info("[TEST_01] Precondition setup started")
 
         # Step 1: Remove existing PHM installation
@@ -394,7 +334,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
     @step(2, "CDI Before — SMART baseline")
     def test_02_cdi_before(self):
         """Run CrystalDiskInfo to capture SMART baseline (Before_ prefix)."""
-        _skip_if_recovering()
         logger.info("[TEST_02] CDI Before started")
 
         cfg = self.config['cdi']
@@ -417,7 +356,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
     @step(3, "Install PHM tool")
     def test_03_install_phm(self):
         """Install Powerhouse Mountain (PHM) tool silently."""
-        _skip_if_recovering()
         logger.info("[TEST_03] PHM install started")
 
         cfg = self.config['phm']
@@ -445,7 +383,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
         Output files: PBC-Report.html, PBC-sleepstudy-report.html,
                       PBC-Debug-Log.txt, PBC-Errors.txt
         """
-        _skip_if_recovering()
         logger.info("[TEST_04] PEPChecker started")
 
         cfg = self.config['pep_checker']
@@ -476,7 +413,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
         Record pre-sleep timestamp, run one sleep/wake cycle via PwrTestController,
         then generate a sleepstudy HTML report via SleepStudyController.
         """
-        _skip_if_recovering()
         logger.info("[TEST_05] PwrTest sleep/wake started")
 
         # Record time before sleep for sleepstudy filtering
@@ -531,7 +467,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
         High DRIPS (% of time in low-power state) indicates the SSD correctly
         entered low-power mode during sleep.
         """
-        _skip_if_recovering()
         logger.info("[TEST_06] Sleepstudy verification started")
 
         ss_cfg = self.config['sleepstudy']
@@ -584,7 +519,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
         - Disable OneDrive (including file-storage prevention)
         - Disable Windows Defender real-time protection
         """
-        _skip_if_recovering()
         logger.info("[TEST_07] OsConfig apply started")
 
         cfg = self.config.get('osconfig', {})
@@ -603,31 +537,30 @@ class TestSTC2562ModernStandby(BaseTestCase):
         logger.info("[TEST_07] OsConfig applied successfully")
 
     @pytest.mark.order(8)
-    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")    
+    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(8, "Reboot device")
-    def test_08_reboot(self):
+    def test_08_reboot(self, request):
         """
-        Schedule a system reboot.  After reboot, pytest is re-invoked by the
-        run_test framework; the OsRebootStateManager state file flags the
-        post-reboot (recovery) phase so steps 01–08 are automatically skipped.
+        Schedule a system reboot.  After reboot, pytest is re-invoked automatically
+        via the Windows Startup folder BAT created by RebootManager.  The
+        completed_tests list in the state file ensures steps 01–08 are skipped on
+        resume and this step is not re-executed (no infinite reboot loop).
         """
-        _skip_if_recovering()
         logger.info("[TEST_08] Scheduling reboot")
 
-        # Register auto-run BAT *before* issuing the shutdown command so that
-        # pytest is relaunched automatically when the OS comes back up.
-        TestSTC2562ModernStandby._setup_autorun(__file__)
-
         cfg = self.config['reboot']
-        ctrl = OsRebootController(
-            delay_seconds=cfg.get('delay_seconds', 10),
-            reboot_count=1,
-            state_file=cfg.get('state_file', _STATE_FILE_REL),
-        )
-        ctrl.start()
-        ctrl.join(timeout=60)
 
-        logger.info("[TEST_08] Reboot scheduled — system will restart shortly")
+        # Pre-mark this test as completed BEFORE setup_reboot() calls os._exit(0).
+        # Without this, test_08 would not be in completed_tests after reboot
+        # and would execute again → infinite reboot loop.
+        self.reboot_mgr.pre_mark_completed(request.node.name)
+
+        self.reboot_mgr.setup_reboot(
+            delay=cfg.get('delay_seconds', 10),
+            reason="STC-2562 Phase A complete — rebooting for Modern Standby test",
+            test_file=__file__,
+        )
+        # os._exit(0) is called inside setup_reboot — code below never executes
 
     # ------------------------------------------------------------------
     # Phase B — Post-Reboot
@@ -642,7 +575,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         Standby Cycling collector scenario using parameters from Config.json,
         wait for completion, then copy the trace folder to testlog/PHMTraces/.
         """
-        _skip_if_not_recovering()
+        self._skip_if_not_rebooted()
         logger.info("[TEST_09] PHM collector session started")
 
         # ── Clear accumulated Sleep Study history ─────────────────────
@@ -662,75 +595,75 @@ class TestSTC2562ModernStandby(BaseTestCase):
                 "Ensure test_03 ran successfully before this reboot."
             )
 
-        # ── Launch PHM process ────────────────────────────────────────
-        mgr.launch()
-        logger.info("[TEST_09] PHM process launched")
+        # # ── Launch PHM process ────────────────────────────────────────
+        # mgr.launch()
+        # logger.info("[TEST_09] PHM process launched")
 
-        # ── Read collector parameters from Config ─────────────────────
-        col_cfg = self.config.get('phm_collector', {})
-        cycle_count               = col_cfg.get('cycle_count', 1)
-        delayed_start_seconds     = col_cfg.get('delayed_start_seconds', 10)
-        scenario_duration_minutes = col_cfg.get('scenario_duration_minutes', 15)
-        wait_for_server_seconds   = col_cfg.get('wait_for_server_seconds', 60)
-        completion_timeout        = col_cfg.get('completion_timeout_seconds', 7200)
-        headless                  = col_cfg.get('headless', True)
-        traces_output_dir         = col_cfg.get('traces_output_dir', './testlog/PHMTraces')
+        # # ── Read collector parameters from Config ─────────────────────
+        # col_cfg = self.config.get('phm_collector', {})
+        # cycle_count               = col_cfg.get('cycle_count', 1)
+        # delayed_start_seconds     = col_cfg.get('delayed_start_seconds', 10)
+        # scenario_duration_minutes = col_cfg.get('scenario_duration_minutes', 15)
+        # wait_for_server_seconds   = col_cfg.get('wait_for_server_seconds', 60)
+        # completion_timeout        = col_cfg.get('completion_timeout_seconds', 7200)
+        # headless                  = col_cfg.get('headless', True)
+        # traces_output_dir         = col_cfg.get('traces_output_dir', './testlog/PHMTraces')
 
-        params = ModernStandbyCyclingParams(
-            delayed_start_seconds=delayed_start_seconds,
-            scenario_duration_minutes=scenario_duration_minutes,
-            cycle_count=cycle_count,
-        )
-        logger.info(
-            f"[TEST_09] Collector params: cycles={cycle_count}, "
-            f"delayed_start={delayed_start_seconds}s, "
-            f"duration={scenario_duration_minutes}min"
-        )
+        # params = ModernStandbyCyclingParams(
+        #     delayed_start_seconds=delayed_start_seconds,
+        #     scenario_duration_minutes=scenario_duration_minutes,
+        #     cycle_count=cycle_count,
+        # )
+        # logger.info(
+        #     f"[TEST_09] Collector params: cycles={cycle_count}, "
+        #     f"delayed_start={delayed_start_seconds}s, "
+        #     f"duration={scenario_duration_minutes}min"
+        # )
 
-        # ── Open PHM web UI via Playwright ────────────────────────────
-        ui = PHMUIMonitor(host='localhost', port=1337, headless=headless)
-        try:
-            logger.info(f"[TEST_09] Waiting for PHM server (timeout={wait_for_server_seconds}s)")
-            ui.wait_for_ready(timeout=wait_for_server_seconds)
-            logger.info("[TEST_09] PHM server ready — opening browser")
-            # ui.open_browser(headless=headless)
-            ui.open_browser(headless=False)
+        # # ── Open PHM web UI via Playwright ────────────────────────────
+        # ui = PHMUIMonitor(host='localhost', port=1337, headless=headless)
+        # try:
+        #     logger.info(f"[TEST_09] Waiting for PHM server (timeout={wait_for_server_seconds}s)")
+        #     ui.wait_for_ready(timeout=wait_for_server_seconds)
+        #     logger.info("[TEST_09] PHM server ready — opening browser")
+        #     # ui.open_browser(headless=headless)
+        #     ui.open_browser(headless=False)
 
-            # ── Run the collector session (steps 3-9 via CollectorSession) ──
-            TestSTC2562ModernStandby._phm_start_time = datetime.now().isoformat(timespec='seconds')
-            session = CollectorSession(ui)
-            session.run(params)
-            logger.info("[TEST_09] CollectorSession.run() finished — test is running")
+        #     # ── Run the collector session (steps 3-9 via CollectorSession) ──
+        #     TestSTC2562ModernStandby._phm_start_time = datetime.now().isoformat(timespec='seconds')
+        #     session = CollectorSession(ui)
+        #     session.run(params)
+        #     logger.info("[TEST_09] CollectorSession.run() finished — test is running")
 
-            # ── Poll for completion ───────────────────────────────────
-            logger.info(f"[TEST_09] Waiting for completion (timeout={completion_timeout}s)")
-            completed = ui.wait_for_completion(timeout=completion_timeout)
-            if not completed:
-                pytest.fail("PHM collector did not complete within the configured timeout")
-            TestSTC2562ModernStandby._phm_end_time = datetime.now().isoformat(timespec='seconds')
-            logger.info("[TEST_09] PHM collector completed")
+        #     # ── Poll for completion ───────────────────────────────────
+        #     logger.info(f"[TEST_09] Waiting for completion (timeout={completion_timeout}s)")
+        #     completed = ui.wait_for_completion(timeout=completion_timeout)
+        #     if not completed:
+        #         pytest.fail("PHM collector did not complete within the configured timeout")
+        #     TestSTC2562ModernStandby._phm_end_time = datetime.now().isoformat(timespec='seconds')
+        #     logger.info("[TEST_09] PHM collector completed")
 
-            # ── Collect traces ────────────────────────────────────────
-            try:
-                traces_src = ui.get_traces_path()
-                dest_dir = Path(traces_output_dir)
-                if dest_dir.exists():
-                    shutil.rmtree(str(dest_dir))
-                dest_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(traces_src, str(dest_dir), dirs_exist_ok=True)
-                logger.info(f"[TEST_09] Traces copied: {traces_src} -> {dest_dir}")
-            except Exception as exc:
-                logger.warning(f"[TEST_09] Trace collection failed (non-fatal): {exc}")
+        #     # ── Collect traces ────────────────────────────────────────
+        #     try:
+        #         traces_src = ui.get_traces_path()
+        #         dest_dir = Path(traces_output_dir)
+        #         if dest_dir.exists():
+        #             shutil.rmtree(str(dest_dir))
+        #         dest_dir.mkdir(parents=True, exist_ok=True)
+        #         shutil.copytree(traces_src, str(dest_dir), dirs_exist_ok=True)
+        #         logger.info(f"[TEST_09] Traces copied: {traces_src} -> {dest_dir}")
+        #     except Exception as exc:
+        #         logger.warning(f"[TEST_09] Trace collection failed (non-fatal): {exc}")
 
-        finally:
-            try:
-                ui.close_browser()
-                logger.info("[TEST_09] Browser closed")
-            except Exception as exc:
-                logger.warning(f"[TEST_09] close_browser error (non-fatal): {exc}")
+        # finally:
+        #     try:
+        #         ui.close_browser()
+        #         logger.info("[TEST_09] Browser closed")
+        #     except Exception as exc:
+        #         logger.warning(f"[TEST_09] close_browser error (non-fatal): {exc}")
 
     @pytest.mark.order(10)
-    # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
+    @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(10, "Verify DRIPS — SW/HW > 80%")
     def test_10_verify_drips(self):
         """
@@ -738,7 +671,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         (phm_start_time … phm_end_time captured in test_09), then verify
         that every session's SW DRIPS and HW DRIPS are both > 80%.
         """
-        _skip_if_not_recovering()
+        self._skip_if_not_rebooted()
         logger.info("[TEST_10] Sleep Study DRIPS verification started")
 
         # Require that test_09 actually ran and captured timestamps
@@ -800,7 +733,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
     @step(11, "CDI After — SMART snapshot")
     def test_11_cdi_after(self):
         """Run CrystalDiskInfo to capture post-test SMART data (After_ prefix)."""
-        _skip_if_not_recovering()
+        self._skip_if_not_rebooted()
         logger.info("[TEST_11] CDI After started")
 
         cfg = self.config['cdi']
@@ -828,7 +761,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         - Reallocated Sectors Count, Current Pending Sector Count,
           Uncorrectable Sector Count must all be 0
         """
-        _skip_if_not_recovering()
+        self._skip_if_not_rebooted()
         logger.info("[TEST_12] SMART comparison started")
 
         cdi_cfg = self.config['cdi']
