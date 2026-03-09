@@ -575,8 +575,13 @@ class CDIController(threading.Thread):
             ...     raise Exception(msg)
         """
         values = self.get_smart_value(drive_letter, log_prefix, keys)
+        msg = ''
         for key in keys:
             got = values[0].get(key)
+            if got is None:
+                msg = f'Check SMART Skipped {key}: attribute not present on this drive'
+                logger.warning(msg)
+                continue
             if got != expected_value:
                 msg = f'Check SMART Failed {key}: {got} != {expected_value}'
                 logger.error(msg)
