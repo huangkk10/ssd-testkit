@@ -10,10 +10,34 @@ Usage::
     from lib.testtool.browser_setup import ensure_playwright_chromium
 
     ensure_playwright_chromium(logger)   # call once in precondition step
+
+**PyInstaller / reboot safety note**
+-------------------------------------
+When running inside a PyInstaller bundle, each process launch extracts to a
+*new* ``_MEIxxxxxx`` temp directory.  If Playwright uses its default browser
+path (relative to that temp dir) the Chromium binary installed in run-1 is
+invisible to run-2 after a reboot.
+
+To avoid this we pin ``PLAYWRIGHT_BROWSERS_PATH`` to a *persistent* directory
+under ``%LOCALAPPDATA%`` at module import time.  Setting it here (before any
+Playwright import) ensures the env var is already in place when Playwright
+resolves browser paths, both for the ``launch()`` check and for the
+``node cli.js install chromium`` subprocess.
 """
 
+import os
 import subprocess
 from typing import Optional
+
+# ---------------------------------------------------------------------------
+# Persistent browser cache — survives PyInstaller temp-dir rotation & reboots
+# ---------------------------------------------------------------------------
+_PERSISTENT_BROWSERS_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+    "playwright-browsers",
+)
+# setdefault: only set if the caller hasn't already overridden it
+os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", _PERSISTENT_BROWSERS_DIR)
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -68,6 +92,8 @@ def ensure_playwright_chromium(logger=None) -> bool:
         return False
 
     # ── Step 1: quick launch check ────────────────────────────────────────
+    browsers_dir = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", _PERSISTENT_BROWSERS_DIR)
+    _log_info(f"[browser_setup] PLAYWRIGHT_BROWSERS_PATH={browsers_dir}")
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -80,7 +106,11 @@ def ensure_playwright_chromium(logger=None) -> bool:
     # ── Step 2: install via bundled node.exe + cli.js ─────────────────────
     # compute_driver_executable() resolves paths relative to playwright's
     # own __file__, so it works in both frozen (RunTest.exe) and dev environments.
-    _log_info("[browser_setup] Playwright Chromium not found — installing via bundled driver...")
+    # The PLAYWRIGHT_BROWSERS_PATH env var (already set at module import) is
+    # inherited by the subprocess so the binary lands in the persistent dir.
+    _log_info(
+        f"[browser_setup] Playwright Chromium not found — installing to {browsers_dir} ..."
+    )
     try:
         node_exe, cli_js = compute_driver_executable()
         result = subprocess.run(
@@ -88,9 +118,10 @@ def ensure_playwright_chromium(logger=None) -> bool:
             capture_output=True,
             text=True,
             timeout=300,
+            env=os.environ,   # explicitly forward — includes PLAYWRIGHT_BROWSERS_PATH
         )
         if result.returncode == 0:
-            _log_info("[browser_setup] Playwright Chromium installed successfully")
+            _log_info(f"[browser_setup] Playwright Chromium installed successfully → {browsers_dir}")
             return True
         else:
             _log_warning(
