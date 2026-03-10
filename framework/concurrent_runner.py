@@ -1,5 +1,5 @@
 """
-並發執行器 - 使用 Thread 實現並發任務執行
+Concurrent runner - uses threads to execute tasks concurrently
 """
 import threading
 import queue
@@ -8,9 +8,9 @@ from typing import Callable, List, Tuple, Any
 
 class ConcurrentRunner:
     """
-    並發執行器（基於 Thread）
-    
-    使用方式：
+    Concurrent runner (thread-based)
+
+    Usage:
         runner = ConcurrentRunner()
         result = runner.run_concurrent([task1, task2], timeout=300)
     """
@@ -26,19 +26,19 @@ class ConcurrentRunner:
         return_when: str = "FIRST_COMPLETED"
     ) -> dict:
         """
-        並發執行多個任務
-        
+        Run multiple tasks concurrently
+
         Args:
-            tasks: [(函數, 參數tuple, 任務名稱), ...]
-            timeout: 超時時間（秒），None 表示不限制
-            return_when: "FIRST_COMPLETED" 或 "ALL_COMPLETED"
-        
+            tasks: [(function, args_tuple, task_name), ...]
+            timeout: timeout in seconds, None means no limit
+            return_when: "FIRST_COMPLETED" or "ALL_COMPLETED"
+
         Returns:
-            {"success": bool, "completed": 任務名稱, "result": 結果, "error": 錯誤訊息}
+            {"success": bool, "completed": task name or list, "result": result, "error": error message}
         """
         threads = []
         
-        # 啟動所有任務
+        # Start all tasks
         for func, args, task_name in tasks:
             thread = threading.Thread(
                 target=self._run_task,
@@ -48,12 +48,12 @@ class ConcurrentRunner:
             thread.start()
             threads.append((thread, task_name))
         
-        # 等待任務完成
+        # Wait for tasks to complete
         start_time = time.time()
         completed_tasks = []
         
         while True:
-            # 檢查超時
+            # Check timeout
             if timeout and (time.time() - start_time) > timeout:
                 self.stop_event.set()
                 return {
@@ -63,12 +63,12 @@ class ConcurrentRunner:
                     "error": f"Timeout after {timeout} seconds"
                 }
             
-            # 檢查結果隊列
+            # Check result queue
             try:
                 task_name, success, result = self.result_queue.get(timeout=0.5)
                 completed_tasks.append((task_name, success, result))
                 
-                # FIRST_COMPLETED：有任務完成就返回
+                # FIRST_COMPLETED: return upon first task completion
                 if return_when == "FIRST_COMPLETED":
                     self.stop_event.set()
                     return {
@@ -78,7 +78,7 @@ class ConcurrentRunner:
                         "error": None if success else result
                     }
                 
-                # ALL_COMPLETED：檢查是否所有任務都完成
+                # ALL_COMPLETED: check if all tasks finished
                 if return_when == "ALL_COMPLETED" and len(completed_tasks) == len(tasks):
                     return {
                         "success": all([r[1] for r in completed_tasks]),
@@ -88,13 +88,13 @@ class ConcurrentRunner:
                     }
                 
             except queue.Empty:
-                # 檢查是否所有線程都結束
+                # Check whether all threads have finished
                 if return_when == "ALL_COMPLETED":
                     if not any(t.is_alive() for t, _ in threads):
                         break
                 continue
         
-        # 等待所有線程結束
+        # Wait for all threads to finish
         for thread, _ in threads:
             thread.join(timeout=1)
         
@@ -106,7 +106,7 @@ class ConcurrentRunner:
         }
     
     def _run_task(self, func: Callable, args: tuple, task_name: str):
-        """執行單個任務"""
+        """Execute a single task"""
         try:
             result = func(*args)
             if not self.stop_event.is_set():
@@ -116,9 +116,9 @@ class ConcurrentRunner:
                 self.result_queue.put((task_name, False, str(e)))
     
     def reset(self):
-        """重置狀態"""
+        """Reset state"""
         self.stop_event.clear()
-        # 清空隊列
+        # Clear queue
         while not self.result_queue.empty():
             try:
                 self.result_queue.get_nowait()
@@ -126,18 +126,18 @@ class ConcurrentRunner:
                 break
 
 
-# ========== 便利函數 ==========
+# ========== Helper functions ==========
 def run_with_monitoring(main_task, monitor_task, timeout=None):
     """
-    執行主任務並同時監控
-    
+    Run a main task while monitoring it with a secondary task
+
     Args:
-        main_task: (函數, 參數, 名稱)
-        monitor_task: (函數, 參數, 名稱)
-        timeout: 超時時間
-    
+        main_task: (function, args, name)
+        monitor_task: (function, args, name)
+        timeout: timeout in seconds
+
     Returns:
-        執行結果
+        execution result
     """
     runner = ConcurrentRunner()
     result = runner.run_concurrent(
