@@ -311,25 +311,48 @@ class PHMProcessManager:
 
     def terminate(self, timeout: int = 30) -> None:
         """
-        Gracefully terminate the PHM process.
+        Terminate PHM and its entire process tree.
 
-        Sends SIGTERM and waits up to *timeout* seconds; kills if necessary.
+        PHM is a web app: ``PowerhouseMountain.exe`` is a short-lived launcher
+        that spawns a Node.js server **and** opens a Microsoft Edge window
+        (localhost:1337).  A plain ``process.terminate()`` / ``SIGTERM`` only
+        kills the launcher; the Edge child window stays alive.
+
+        We therefore use ``taskkill /F /T /PID`` to recursively kill the full
+        process tree, then fall back to ``process.kill()`` on the Popen handle
+        if the tree-kill somehow times out.
 
         Args:
-            timeout: Seconds to wait before escalating to kill.
+            timeout: Seconds to wait after tree-kill before escalating.
         """
         if self._process is None:
-            logger.debug("terminate() called but no tracked process")
+            logger.warning(
+                "terminate() called but no tracked process — "
+                "PHM may not have been launched or was already terminated"
+            )
             return
 
-        logger.info(f"Terminating PHM process (PID {self._pid})")
-        self._process.terminate()
-        try:
-            self._process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            logger.warning("PHM did not terminate gracefully — killing")
-            self._process.kill()
-            self._process.wait()
+        pid = self._pid
+        logger.info(f"Terminating PHM process tree (PID {pid})")
+
+        # Kill the entire spawn tree (launcher + Node.js server + Edge window)
+        result = subprocess.run(
+            ['taskkill', '/F', '/T', '/PID', str(pid)],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            logger.info(f"PHM process tree (PID {pid}) terminated via taskkill")
+        else:
+            stderr = result.stderr.decode(errors='replace').strip()
+            logger.warning(
+                f"taskkill /T /PID {pid} returned {result.returncode}: {stderr} "
+                "— falling back to Popen.kill()"
+            )
+            try:
+                self._process.kill()
+                self._process.wait(timeout=timeout)
+            except Exception as exc:
+                logger.warning(f"Popen.kill() also failed: {exc}")
 
         self._process = None
         self._pid = None
@@ -337,18 +360,38 @@ class PHMProcessManager:
 
     def kill_by_name(self, process_name: str = 'PowerhouseMountain.exe') -> None:
         """
-        Force-kill any running PHM.exe processes by name (taskkill).
+        Force-kill any running PHM-related processes by name.
 
-        Useful as a global cleanup when PID is unknown.
+        Because PHM opens a Microsoft Edge window as its UI shell, this method
+        kills both ``PowerhouseMountain.exe`` (the Node.js launcher / server)
+        and any ``msedge.exe`` processes whose window title contains
+        "Powerhouse Mountain".
 
         Args:
-            process_name: Name of the process to kill (default ``PHM.exe``).
+            process_name: Primary executable to kill (default
+                ``PowerhouseMountain.exe``).
         """
+        # Kill the main launcher / server process
         logger.info(f"Force-killing all '{process_name}' processes")
         subprocess.run(
             ['taskkill', '/F', '/IM', process_name],
             capture_output=True,
         )
+
+        # Also kill the Edge window that PHM opens as its UI shell.
+        # Use PowerShell to target only Edge processes whose MainWindowTitle
+        # contains 'Powerhouse Mountain', avoiding killing unrelated Edge tabs.
+        logger.info("Force-killing msedge.exe processes with 'Powerhouse Mountain' window title")
+        ps_cmd = (
+            "Get-Process msedge -ErrorAction SilentlyContinue "
+            "| Where-Object { $_.MainWindowTitle -like '*Powerhouse Mountain*' } "
+            "| ForEach-Object { taskkill /F /T /PID $_.Id }"
+        )
+        subprocess.run(
+            ['powershell', '-NoProfile', '-Command', ps_cmd],
+            capture_output=True,
+        )
+        logger.info("kill_by_name cleanup complete")
 
     def is_running(self) -> bool:
         """

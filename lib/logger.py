@@ -424,13 +424,22 @@ def clear_log_files() -> None:
     Logger._initialized = False
 
     # ── Step 2: delete the files (handles are now released) ───────────────────
+    # On Windows, FileHandler.close() may not immediately release the OS lock,
+    # so unlink() can fail with PermissionError.  Fall back to truncation ('w'
+    # mode) which works even on a still-open file, so the next init_logging()
+    # call opens a fresh, empty file rather than appending to the old content.
     for filename in target_names:
         log_file = log_dir / filename
         if log_file.exists():
             try:
                 log_file.unlink()
-            except Exception as exc:
-                print(f'[Logger] WARNING: Could not remove {log_file}: {exc}')
+            except Exception:
+                # unlink failed (Windows file lock) — truncate as fallback
+                try:
+                    with open(log_file, 'w'):
+                        pass
+                except Exception as exc2:
+                    print(f'[Logger] WARNING: Could not clear {log_file}: {exc2}')
 
     # ── Step 3: re-initialize so subsequent log calls work normally ───────────
     Logger.init_logging()

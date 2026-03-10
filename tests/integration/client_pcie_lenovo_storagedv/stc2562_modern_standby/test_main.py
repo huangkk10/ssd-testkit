@@ -598,6 +598,16 @@ class TestSTC2562ModernStandby(BaseTestCase):
             except Exception as exc:
                 logger.warning(f"[TEST_10] PHM terminate error (non-fatal): {exc}")
 
+            # Safety net: force-kill by process name regardless of whether
+            # terminate() succeeded.  Handles the case where PowerhouseMountain.exe
+            # is a short-lived launcher that spawns child processes and exits,
+            # leaving mgr._process pointing to an already-exited handle.
+            try:
+                mgr.kill_by_name()
+                logger.info("[TEST_10] PHM force-kill by name executed")
+            except Exception as exc:
+                logger.warning(f"[TEST_10] PHM kill_by_name error (non-fatal): {exc}")
+
     @pytest.mark.order(11)
     # @pytest.mark.skip(reason="Dependent on PHM, which is currently blocked — will re-enable once PHM is testable")
     @step(11, "Verify DRIPS — SW/HW > 80%")
