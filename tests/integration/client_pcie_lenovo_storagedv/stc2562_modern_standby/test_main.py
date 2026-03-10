@@ -28,6 +28,7 @@ Test Flow:
 import sys
 import os
 import shutil
+import subprocess
 import time
 import json
 import urllib.request
@@ -56,6 +57,7 @@ from lib.testtool.phm import (
 from lib.testtool.phm.process_manager import PHMProcessManager
 from lib.testtool.phm.ui_monitor import PHMUIMonitor
 from lib.testtool.phm.collector_session import CollectorSession
+from lib.testtool.browser_setup import ensure_playwright_chromium
 from lib.testtool.phm.scenarios.modern_standby_cycling import ModernStandbyCyclingParams
 from lib.testtool.pwrtest import PwrTestController
 from lib.testtool.pwrtest.config import PwrTestScenario
@@ -240,6 +242,9 @@ class TestSTC2562ModernStandby(BaseTestCase):
         ]:
             Path(d).mkdir(parents=True, exist_ok=True)
             logger.info(f"[TEST_01] Directory ready: {d}")
+
+        # Step 4: Ensure playwright Chromium browser binary is installed.
+        ensure_playwright_chromium(logger)
 
         logger.info("[TEST_01] Precondition complete")
 
