@@ -1,5 +1,5 @@
 """
-重啟管理器 - 處理系統重啟和狀態恢復
+Restart manager - handles system reboots and state recovery
 """
 import json
 import os
@@ -11,12 +11,12 @@ import pytest
 
 class RebootManager:
     """
-    管理測試重啟流程
-    
-    功能：
-    - 狀態保存與恢復
-    - 開機自啟動設置
-    - 測試完成追蹤
+    Manage the test reboot flow
+
+    Features:
+    - State save and restore
+    - Auto-start on boot
+    - Test completion tracking
     """
     
     STATE_FILE = "./pytest_reboot_state.json"
@@ -28,34 +28,40 @@ class RebootManager:
         self.state = self._load_state()
     
     def _load_state(self):
-        """載入狀態"""
+        """Load state"""
         if Path(self.state_file).exists():
             with open(self.state_file, 'r') as f:
-                return json.load(f)
+                state = json.load(f)
+            # backward-compat: old state files won't have these keys
+            state.setdefault("step_reboot_counts", {})
+            state.setdefault("loop_groups", {})
+            return state
         return {
             "completed_tests": [],
             "is_recovering": False,
             "current_test": None,
-            "reboot_count": 0
+            "reboot_count": 0,
+            "step_reboot_counts": {},
+            "loop_groups": {},
         }
     
     def _save_state(self):
-        """保存狀態（強制寫入磁碟）"""
+        """Save state (force write to disk)"""
         with open(self.state_file, 'w') as f:
             json.dump(self.state, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
     
     def is_recovering(self):
-        """檢查是否為重啟後恢復"""
+        """Check if recovering after a reboot"""
         return self.state.get("is_recovering", False)
     
     def is_completed(self, test_name):
-        """檢查測試是否已完成"""
+        """Check whether a test is completed"""
         return test_name in self.state["completed_tests"]
     
     def mark_completed(self, test_name):
-        """標記測試完成"""
+        """Mark test as completed"""
         if test_name not in self.state["completed_tests"]:
             self.state["completed_tests"].append(test_name)
         self.state["is_recovering"] = False
@@ -126,39 +132,187 @@ class RebootManager:
             self.state["completed_tests"].append(test_name)
         self._save_state()
 
+    # ------------------------------------------------------------------
+    # Multi-reboot API
+    # ------------------------------------------------------------------
+
+    def _get_step_reboot_count(self, step_name: str) -> int:
+        """Return the number of reboots already performed for *step_name*."""
+        return self.state.setdefault("step_reboot_counts", {}).get(step_name, 0)
+
+    def _increment_step_reboot_count(self, step_name: str) -> int:
+        """Increment and persist the per-step reboot counter. Returns new value."""
+        counts = self.state.setdefault("step_reboot_counts", {})
+        counts[step_name] = counts.get(step_name, 0) + 1
+        return counts[step_name]
+
+    def reboot_cycles(
+        self,
+        count: int,
+        *,
+        request,
+        test_file: str,
+        delay: int = 10,
+        reason: str = "",
+    ) -> None:
+        """
+        Perform *count* consecutive reboots for the calling test step, then
+        return so that the rest of the test body can execute.
+
+        Each time the system reboots and pytest resumes, all previously
+        completed steps remain in ``completed_tests`` and are skipped
+        automatically.  The calling step is **not** marked completed until
+        ``reboot_cycles`` returns, which happens only after the Nth reboot.
+
+        Usage (the entire multi-reboot logic fits in one line)::
+
+            def test_02_reboot_cycles(self, request):
+                self.reboot_mgr.reboot_cycles(3, request=request, test_file=__file__)
+                # Execution reaches here only after 3 successful reboots
+
+        Args:
+            count:      Total number of reboots required.
+            request:    The pytest ``request`` fixture (used to obtain the
+                        step name via ``request.node.name``).
+            test_file:  Pass ``__file__`` so the auto-start BAT relaunches
+                        the correct test file after each reboot.
+            delay:      Seconds before the system shuts down (default 10).
+            reason:     Optional log message prefix shown at reboot time.
+        """
+        step_name = request.node.name
+        current = self._get_step_reboot_count(step_name)
+
+        if current < count:
+            new_count = self._increment_step_reboot_count(step_name)
+            _reason = reason or f"{step_name}: reboot cycle {new_count}/{count}"
+            self.setup_reboot(
+                delay=delay,
+                reason=_reason,
+                test_file=test_file,
+            )
+            # setup_reboot calls os._exit(0) — code below never executes
+
+        # All required reboots completed — clean up the per-step counter
+        # and let the test body continue.  mark_completed() will be called
+        # automatically by BaseTestCase.setup_teardown_function teardown.
+        self.state.get("step_reboot_counts", {}).pop(step_name, None)
+        self._save_state()
+
+    def loop_next(
+        self,
+        group: str,
+        *,
+        total: int,
+        steps: list,
+        request=None,
+        test_file: str = None,
+        reboot: bool = True,
+        delay: int = 10,
+        reason: str = "",
+    ) -> None:
+        """
+        Advance a named loop group by one round, then either reboot or return.
+
+        Call this at the **end** of the last step in a repeating block.
+        The steps listed in *steps* are removed from ``completed_tests`` so
+        they will execute again on the next round.  When the final round
+        finishes, the method returns normally and execution continues with
+        whatever test follows in the collection order.
+
+        Usage::
+
+            # test_04 is the last step of the loop block
+            def test_04_end_of_loop(self, request):
+                # ... test body ...
+                self.reboot_mgr.loop_next(
+                    "main_loop",
+                    total=3,
+                    steps=["test_02_step_a", "test_03_step_b", "test_04_end_of_loop"],
+                    request=request,
+                    test_file=__file__,   # required when reboot=True
+                )
+                # Reached here only on the final round — test_05 follows.
+
+        Args:
+            group:      Unique name for this loop (supports multiple independent
+                        loops in the same test class).
+            total:      Total number of rounds to execute.
+            steps:      Test names whose ``completed_tests`` entry is cleared at
+                        the end of each non-final round so they re-execute.
+            request:    pytest ``request`` fixture (used for logging only;
+                        may be ``None``).
+            test_file:  Pass ``__file__``; required when ``reboot=True``.
+            reboot:     ``True`` (default) — reboot after each non-final round.
+                        ``False`` — return immediately; the same pytest session
+                        continues and unreached steps will re-run because they
+                        are no longer in ``completed_tests``.
+            delay:      Seconds before shutdown (only used when reboot=True).
+            reason:     Log message shown at reboot time.
+        """
+        groups = self.state.setdefault("loop_groups", {})
+        current_round = groups.get(group, {}).get("current_round", 0)
+
+        step_label = request.node.name if request is not None else group
+
+        if current_round < total - 1:
+            # Advance to the next round
+            current_round += 1
+            groups[group] = {"current_round": current_round, "total_rounds": total}
+
+            # Remove loop steps from completed_tests so they re-execute
+            completed = self.state["completed_tests"]
+            for s in steps:
+                if s in completed:
+                    completed.remove(s)
+
+            self._save_state()
+
+            if reboot:
+                _reason = reason or (
+                    f"{step_label}: loop '{group}' round {current_round}/{total - 1}"
+                )
+                self.setup_reboot(delay=delay, reason=_reason, test_file=test_file)
+                # setup_reboot calls os._exit(0) — code below never executes
+            # reboot=False: return so pytest continues in the same session
+            return
+
+        # Final round complete — clean up this group and return
+        groups.pop(group, None)
+        self._save_state()
+
     def all_tests_completed(self):
-        """檢查所有測試是否完成（用於判斷是否清理）"""
+        """Check whether all tests are completed (used to decide cleanup)"""
         return len(self.state["completed_tests"]) >= self.total_tests
     
     def setup_reboot(self, delay=10, reason="System reboot required", test_file=None):
         """
-        設置重啟流程
-        
+        Prepare and trigger a reboot sequence.
+
         Args:
-            delay: 重啟延遲時間（秒）
-            reason: 重啟原因（用於日誌）
-            test_file: 測試文件路徑（用於自動恢復時運行正確的測試）
+            delay: Reboot delay in seconds.
+            reason: Reason for the reboot (used in logs).
+            test_file: Path to the test file (used to resume the correct test on auto-recovery).
         """
-        # 標記即將重啟
+        # mark that a reboot is imminent
         self.state["is_recovering"] = True
         self.state["reboot_count"] += 1
         self._save_state()
-        
-        # 設置開機自啟動
+
+        # set up auto-start on boot
         self._setup_auto_start(test_file)
-        
-        # 顯示訊息
+
+        # display messages
         print(f"\n{'='*60}")
         print(f"[Reboot] {reason}")
         print(f"System will reboot in {delay} seconds...")
         print(f"Tests will resume automatically after reboot.")
         print(f"{'='*60}\n")
-        
-        # 執行重啟
+
+        # execute reboot
         try:
             result = subprocess.run(
-                ["shutdown", "/r", "/t", str(delay)], 
-                capture_output=True, 
+                ["shutdown", "/r", "/t", str(delay)],
+                capture_output=True,
                 text=True,
                 check=True
             )
@@ -169,55 +323,55 @@ class RebootManager:
             print(f"[RebootManager] WARNING: Reboot command failed: {e}")
             print(f"[RebootManager] Error output: {e.stderr}")
             raise
-        
-        # 强制退出进程，避免任何 cleanup/teardown 代码执行
-        # 这样可以确保启动脚本和状态文件不被删除
+
+        # Force exit process to avoid running any cleanup/teardown code
+        # This ensures the startup script and state file are preserved
         print(f"\n[RebootManager] Forcing process exit - system will reboot shortly...")
         print(f"[RebootManager] Startup script and state file preserved for recovery")
         sys.stdout.flush()
         sys.stderr.flush()
-        # 使用 os._exit(0) 立即终止进程，不执行任何清理
+        # Use os._exit(0) to terminate immediately without cleanup
         os._exit(0)
     
     def _setup_auto_start(self, test_file=None):
-        """設置開機自啟動腳本"""
+        """Set up an auto-start script that runs pytest on boot."""
         user = getpass.getuser()
         bat_path = self.STARTUP_PATH.format(user)
-        
-        # 取得當前執行環境
+
+        # get current execution environment
         python_exe = sys.executable
         current_dir = os.getcwd()
-        
-        # 如果有指定測試文件，加到命令中
+
+        # if a test file is specified, add it to the command
         pytest_args = "-v --tb=short"
         if test_file:
             pytest_args += f" {test_file}"
-        
-        # 創建啟動腳本
+
+        # create the startup script
         bat_content = f"""@echo off
 cd /d {current_dir}
 "{python_exe}" -m pytest {pytest_args}
 """
-        
+
         os.makedirs(os.path.dirname(bat_path), exist_ok=True)
         with open(bat_path, 'w') as f:
             f.write(bat_content)
-        
+
         print(f"[RebootManager] Auto-start script created: {bat_path}")
         if test_file:
             print(f"[RebootManager] Will resume test file: {test_file}")
     
     def cleanup(self):
-        """清理狀態和自啟動腳本"""
+        """Clean up state and auto-start script"""
         import logging
         _log = logging.getLogger(__name__)
 
-        # 刪除狀態文件
+        # remove state file
         if Path(self.state_file).exists():
             os.remove(self.state_file)
             _log.info("[RebootManager] State file removed: %s", self.state_file)
         
-        # 刪除自啟動腳本
+        # remove auto-start script
         user = getpass.getuser()
         bat_path = self.STARTUP_PATH.format(user)
         if os.path.exists(bat_path):
