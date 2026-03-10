@@ -116,7 +116,7 @@ def testcase_config():
 @dataclass
 class STC2562Params:
     """Tunable test parameters for STC-2562 Modern Standby."""
-    wake_after_min: int = 30
+    wake_after_min: int = 60
     """Minutes to stay in sleep during the PwrTest cycle (test_06)."""
     sleepstudy_threshold: int = 90
     """Minimum SW/HW DRIPS % required by the PwrTest sleepstudy check (test_07)."""

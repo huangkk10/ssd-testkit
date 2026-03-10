@@ -28,6 +28,7 @@ Test Flow:
 import sys
 import os
 import shutil
+import subprocess
 import time
 import json
 import urllib.request
@@ -56,6 +57,7 @@ from lib.testtool.phm import (
 from lib.testtool.phm.process_manager import PHMProcessManager
 from lib.testtool.phm.ui_monitor import PHMUIMonitor
 from lib.testtool.phm.collector_session import CollectorSession
+from lib.testtool.browser_setup import ensure_playwright_chromium
 from lib.testtool.phm.scenarios.modern_standby_cycling import ModernStandbyCyclingParams
 from lib.testtool.pwrtest import PwrTestController
 from lib.testtool.pwrtest.config import PwrTestScenario
@@ -241,6 +243,9 @@ class TestSTC2562ModernStandby(BaseTestCase):
             Path(d).mkdir(parents=True, exist_ok=True)
             logger.info(f"[TEST_01] Directory ready: {d}")
 
+        # Step 4: Ensure playwright Chromium browser binary is installed.
+        ensure_playwright_chromium(logger)
+
         logger.info("[TEST_01] Precondition complete")
 
     @pytest.mark.order(2)
@@ -363,6 +368,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         TestSTC2562ModernStandby._pre_sleep_time = datetime.now().isoformat(timespec='seconds')
         logger.info(f"[TEST_06] pre_sleep_time: {self._pre_sleep_time}")
 
+        # sleep/wake cycle via PwrTest
         cfg = self.config['pwrtest']
         pwrtest = PwrTestController(
             pwrtest_base_dir=cfg['pwrtest_base_dir'],
@@ -372,7 +378,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
             cycle_count=1,
             delay_seconds=10,
             wake_after_seconds=60*test_params.wake_after_min,  # long enough to trigger deep S0ix states
-            timeout_seconds=300,
+            timeout_seconds=60*test_params.wake_after_min+300,
             log_path=cfg['log_path'],
         )
         pwrtest.start()

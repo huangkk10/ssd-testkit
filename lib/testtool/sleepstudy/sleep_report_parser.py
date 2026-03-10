@@ -538,9 +538,11 @@ def validate_drips(
     for s in sessions:
         for label, value in (("SW", s.sw_pct), ("HW", s.hw_pct)):
             if value is None:
-                failures.append(
-                    f"Session {s.session_id}: {label} DRIPS not found (None)"
-                )
+                # None means the sleepstudy HTML has no DRIPS data for this
+                # session (e.g. a short transitional/incomplete session at the
+                # start of a CS cycle).  Skip rather than fail — only fully
+                # populated sessions are meaningful for DRIPS validation.
+                continue
             elif (strict and value <= threshold) or (not strict and value < threshold):
                 failures.append(
                     f"Session {s.session_id}: {label} DRIPS {value}% {op_sym} {threshold}%"

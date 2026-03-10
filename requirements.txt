@@ -8,6 +8,9 @@ pywin32>=300
 pywinauto>=0.6.8
 pyautogui>=0.9.50
 
+# Browser automation (PHM web UI)
+playwright>=1.40.0
+
 # Image processing (for screenshots)
 Pillow>=9.0.0
 

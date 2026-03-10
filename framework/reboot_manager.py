@@ -1,5 +1,10 @@
 """
-Restart manager - handles system reboots and state recovery
+Reboot manager - handles system reboots and recovery state
+
+Responsibilities:
+- Persist and load reboot/test state
+- Create an auto-start entry so the packaged test runner resumes after reboot
+- Track completed tests to avoid re-running steps after recovery
 """
 import json
 import os
@@ -11,12 +16,12 @@ import pytest
 
 class RebootManager:
     """
-    Manage the test reboot flow
+    Manage test reboot workflow
 
     Features:
-    - State save and restore
-    - Auto-start on boot
-    - Test completion tracking
+    - Save and restore state across reboots
+    - Create startup auto-run so the packaged runner resumes after reboot
+    - Track which tests have completed to avoid loops on recovery
     """
     
     STATE_FILE = "./pytest_reboot_state.json"
@@ -28,7 +33,7 @@ class RebootManager:
         self.state = self._load_state()
     
     def _load_state(self):
-        """Load state"""
+        """Load persisted state from the state file."""
         if Path(self.state_file).exists():
             with open(self.state_file, 'r') as f:
                 state = json.load(f)
@@ -46,22 +51,22 @@ class RebootManager:
         }
     
     def _save_state(self):
-        """Save state (force write to disk)"""
+        """Persist state to disk (flush and fsync to ensure durability)."""
         with open(self.state_file, 'w') as f:
             json.dump(self.state, f, indent=2)
             f.flush()
             os.fsync(f.fileno())
     
     def is_recovering(self):
-        """Check if recovering after a reboot"""
+        """Return True if current run is a recovery after reboot."""
         return self.state.get("is_recovering", False)
     
     def is_completed(self, test_name):
-        """Check whether a test is completed"""
+        """Return True if the given test name is recorded as completed."""
         return test_name in self.state["completed_tests"]
     
     def mark_completed(self, test_name):
-        """Mark test as completed"""
+        """Mark a test as completed and clear the recovering flag."""
         if test_name not in self.state["completed_tests"]:
             self.state["completed_tests"].append(test_name)
         self.state["is_recovering"] = False
@@ -120,13 +125,11 @@ class RebootManager:
             )
 
     def pre_mark_completed(self, test_name: str) -> None:
-        """
-        Mark a test as completed without resetting is_recovering.
+        """Mark a test as completed without toggling the recovering flag.
 
-        Used by reboot tests that call setup_reboot() (which calls os._exit(0))
-        and therefore cannot rely on the normal mark_completed() post-yield call.
-        Without this, the reboot test would not be in completed_tests after the
-        system restarts and would execute again — causing an infinite reboot loop.
+        This is used by tests that call `setup_reboot()` which terminates the
+        process immediately (os._exit(0)). The pre-mark ensures the test is
+        recorded as completed so it won't re-run after recovery.
         """
         if test_name not in self.state["completed_tests"]:
             self.state["completed_tests"].append(test_name)
@@ -281,34 +284,36 @@ class RebootManager:
         self._save_state()
 
     def all_tests_completed(self):
-        """Check whether all tests are completed (used to decide cleanup)"""
+        """Return True when the number of completed tests >= total_tests."""
         return len(self.state["completed_tests"]) >= self.total_tests
     
     def setup_reboot(self, delay=10, reason="System reboot required", test_file=None):
         """
-        Prepare and trigger a reboot sequence.
+        Configure and trigger a system reboot.
 
         Args:
-            delay: Reboot delay in seconds.
-            reason: Reason for the reboot (used in logs).
-            test_file: Path to the test file (used to resume the correct test on auto-recovery).
+            delay: Seconds before reboot.
+            reason: Human-readable reason for logs.
+            test_file: Path to the test file to run on recovery (written into
+                       the startup script so the packaged runner resumes the
+                       right test file after the system boots).
         """
-        # mark that a reboot is imminent
+        # Mark that we're about to reboot and persist state
         self.state["is_recovering"] = True
         self.state["reboot_count"] += 1
         self._save_state()
 
-        # set up auto-start on boot
+        # Create a startup entry so the packaged runner will resume after boot
         self._setup_auto_start(test_file)
 
-        # display messages
+        # Informational messages for the console
         print(f"\n{'='*60}")
         print(f"[Reboot] {reason}")
         print(f"System will reboot in {delay} seconds...")
         print(f"Tests will resume automatically after reboot.")
         print(f"{'='*60}\n")
 
-        # execute reboot
+        # Execute the reboot command
         try:
             result = subprocess.run(
                 ["shutdown", "/r", "/t", str(delay)],
@@ -324,33 +329,47 @@ class RebootManager:
             print(f"[RebootManager] Error output: {e.stderr}")
             raise
 
-        # Force exit process to avoid running any cleanup/teardown code
-        # This ensures the startup script and state file are preserved
+        # Immediately terminate the process to avoid any teardown that might
+        # remove the startup script or state file.  This guarantees the recovery
+        # data remains on disk for the post-boot execution.
         print(f"\n[RebootManager] Forcing process exit - system will reboot shortly...")
         print(f"[RebootManager] Startup script and state file preserved for recovery")
         sys.stdout.flush()
         sys.stderr.flush()
-        # Use os._exit(0) to terminate immediately without cleanup
         os._exit(0)
     
     def _setup_auto_start(self, test_file=None):
-        """Set up an auto-start script that runs pytest on boot."""
+        """Create a startup BAT file that re-launches the packaged runner.
+
+        The BAT is written to the current user's Startup folder so that Windows
+        automatically runs it after boot.  The command is chosen based on the
+        runtime (frozen vs development) so the correct invocation is used.
+        """
         user = getpass.getuser()
         bat_path = self.STARTUP_PATH.format(user)
 
-        # get current execution environment
-        python_exe = sys.executable
         current_dir = os.getcwd()
+        is_frozen = getattr(sys, 'frozen', False)
 
-        # if a test file is specified, add it to the command
-        pytest_args = "-v --tb=short"
-        if test_file:
-            pytest_args += f" {test_file}"
+        if is_frozen:
+            # Packaged executable uses its own CLI; use --test to resume a file
+            exe = sys.executable
+            cmd_args = "-v"
+            if test_file:
+                cmd_args += f' --test "{test_file}"'
+            run_cmd = f'"{exe}" {cmd_args}'
+        else:
+            # In development, invoke the Python interpreter with -m pytest
+            python_exe = sys.executable
+            pytest_args = "-v --tb=short"
+            if test_file:
+                pytest_args += f' "{test_file}"'
+            run_cmd = f'"{python_exe}" -m pytest {pytest_args}'
 
-        # create the startup script
+        # Write the BAT file
         bat_content = f"""@echo off
 cd /d {current_dir}
-"{python_exe}" -m pytest {pytest_args}
+{run_cmd}
 """
 
         os.makedirs(os.path.dirname(bat_path), exist_ok=True)
@@ -362,20 +381,20 @@ cd /d {current_dir}
             print(f"[RebootManager] Will resume test file: {test_file}")
     
     def cleanup(self):
-        """Clean up state and auto-start script"""
+        """Remove persisted state and the auto-start script (if present)."""
         import logging
         _log = logging.getLogger(__name__)
 
-        # remove state file
+        # Remove the state file
         if Path(self.state_file).exists():
             os.remove(self.state_file)
             _log.info("[RebootManager] State file removed: %s", self.state_file)
-        
-        # remove auto-start script
+
+        # Remove the startup script from the user's Startup folder
         user = getpass.getuser()
         bat_path = self.STARTUP_PATH.format(user)
         if os.path.exists(bat_path):
             os.remove(bat_path)
             _log.info("[RebootManager] Auto-start script removed: %s", bat_path)
-        
+
         _log.info("[RebootManager] Cleanup completed")
