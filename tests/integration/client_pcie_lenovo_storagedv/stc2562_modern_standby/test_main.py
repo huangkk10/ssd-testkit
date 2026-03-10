@@ -47,7 +47,6 @@ import pytest
 from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.test_utils import cleanup_directory
-from lib.testtool import RunCard as RC
 from lib.testtool.cdi import CDIController
 from lib.testtool.phm import (
     PHMController,
@@ -65,7 +64,7 @@ from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser, valid
 from lib.testtool.sleepstudy.history_cleaner import SleepHistoryCleaner
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.config import OsConfigProfile
-from lib.logger import get_module_logger, logConfig, clear_log_files
+from lib.logger import get_module_logger, clear_log_files
 from framework.reboot_manager import RebootManager
 
 logger = get_module_logger(__name__)
@@ -104,10 +103,10 @@ class TestSTC2562ModernStandby(BaseTestCase):
         )
         return ctrl.force_remove()
 
-    def _skip_if_not_rebooted(self, min_count: int = 1) -> None:
-        """pytest.skip when the required number of reboots has not occurred yet."""
-        if self.reboot_mgr.state.get("reboot_count", 0) < min_count:
-            pytest.skip(f"Post-reboot step — reboot_count < {min_count}")
+    # def _skip_if_not_rebooted(self, min_count: int = 1) -> None:
+    #     """pytest.skip when the required number of reboots has not occurred yet."""
+    #     if self.reboot_mgr.state.get("reboot_count", 0) < min_count:
+    #         pytest.skip(f"Post-reboot step — reboot_count < {min_count}")
 
     def _cleanup_test_logs(self) -> None:
         """
@@ -171,57 +170,30 @@ class TestSTC2562ModernStandby(BaseTestCase):
         cls = request.cls
         cls.original_cwd = os.getcwd()
 
-        # Resolve test directory (packaged vs development)
-        try:
-            from path_manager import path_manager
-            test_dir = path_manager.app_dir
-            logger.info(f"[SETUP] Packaged environment: {test_dir}")
-        except ImportError:
-            test_dir = Path(__file__).parent
-            logger.info(f"[SETUP] Development environment: {test_dir}")
+        # ── Working directory + logging ────────────────────────────────────────
+        test_dir = cls._setup_working_directory(__file__)
 
-        os.chdir(test_dir)
-
-        logConfig()
-
+        # ── Config ────────────────────────────────────────────────────────────
         cls.config = testcase_config.tool_config
         cls.bin_path = testcase_config.bin_directory
 
-        # ── Initialize RebootManager (must be after os.chdir to correct cwd) ───────────
-        cls.reboot_mgr = RebootManager(total_tests=13)
+        # ── RebootManager (must be after os.chdir) ────────────────────────────
+        cls.reboot_mgr = RebootManager(total_tests=cls._count_test_methods())
 
         phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
         logger.info(f"[SETUP] Phase: {phase}")
         logger.info(f"[SETUP] Test case: {testcase_config.case_id}  version: {testcase_config.case_version}")
         logger.info(f"[SETUP] Working directory: {test_dir}")
 
-        # RunCard integration
-        cls.runcard = None
-        try:
-            cls.runcard = RC.Runcard(**runcard_params['initialization'])
-            cls.runcard.start_test(**runcard_params['start_params'])
-            logger.info("[RunCard] Started")
-        except Exception as exc:
-            logger.warning(f"[RunCard] Init failed — {exc} (continuing)")
-            cls.runcard = None
+        # ── RunCard ───────────────────────────────────────────────────────────
+        cls._init_runcard(runcard_params)
 
         yield
 
-        # Record final RunCard result
-        if cls.runcard:
-            try:
-                failed = request.session.testsfailed > 0
-                if not failed:
-                    cls.runcard.end_test(RC.TestResult.PASS.value)
-                else:
-                    cls.runcard.end_test(
-                        RC.TestResult.FAIL.value,
-                        f"{request.session.testsfailed} test(s) failed",
-                    )
-            except Exception as exc:
-                logger.error(f"[RunCard] end_test failed — {exc}")
+        # ── Teardown ──────────────────────────────────────────────────────────
+        cls._teardown_runcard(request.session)
 
-        # Revert OS configuration changes applied in test_07 (best-effort)
+        # Revert OS configuration changes applied in test_08 (best-effort, STC-2562 specific)
         if cls._osconfig_controller is not None:
             try:
                 logger.info("[TEARDOWN] Reverting OsConfig changes...")
@@ -230,13 +202,9 @@ class TestSTC2562ModernStandby(BaseTestCase):
             except Exception as exc:
                 logger.warning(f"[TEARDOWN] OsConfig revert failed — {exc} (continuing)")
 
-        # Clean up RebootManager state file and auto-run BAT (best-effort)
-        try:
-            cls.reboot_mgr.cleanup()
-        except Exception as exc:
-            logger.warning(f"[TEARDOWN] RebootManager cleanup failed — {exc} (continuing)")
+        cls._teardown_reboot_manager()
 
-        logger.info("STC-2562 session complete")
+        logger.info(f"{cls.__name__} session complete")
         os.chdir(cls.original_cwd)
 
     # ------------------------------------------------------------------

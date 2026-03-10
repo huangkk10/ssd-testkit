@@ -2,12 +2,15 @@
 Base test class — all test cases should inherit from this class.
 Provides standard setup/teardown hooks and test state management.
 """
+import inspect
+import os
 import pytest
 import shutil
 from pathlib import Path
 from framework.reboot_manager import RebootManager
 from framework.test_utils import setup_test_environment, cleanup_test_environment
 import lib.logger as logger
+from lib.logger import logConfig
 
 class BaseTestCase:
     """
@@ -73,6 +76,92 @@ class BaseTestCase:
         self.reboot_mgr.mark_completed(test_name)
     
     # ========== Helper methods ==========
+    @classmethod
+    def _count_test_methods(cls) -> int:
+        """Return the number of test_* methods defined on the class."""
+        return sum(
+            1 for name, _ in inspect.getmembers(cls, predicate=inspect.isfunction)
+            if name.startswith('test_')
+        )
+
+    @classmethod
+    def _setup_working_directory(cls, caller_file: str) -> Path:
+        """
+        Resolve the test working directory (packaged vs development) and chdir into it.
+        Also initialises the logging system via logConfig().
+
+        Args:
+            caller_file: Pass ``__file__`` from the subclass fixture so that the
+                         development-mode fallback points to the correct directory.
+
+        Returns:
+            Resolved test_dir Path (already set as cwd).
+        """
+        try:
+            from path_manager import path_manager
+            test_dir = Path(path_manager.app_dir)
+            logger.LogEvt(f"[SETUP] Packaged environment: {test_dir}")
+        except ImportError:
+            test_dir = Path(caller_file).parent
+            logger.LogEvt(f"[SETUP] Development environment: {test_dir}")
+        os.chdir(test_dir)
+        logConfig()
+        return test_dir
+
+    @classmethod
+    def _init_runcard(cls, runcard_params: dict) -> None:
+        """
+        Initialise RunCard and call start_test.  Sets ``cls.runcard``.
+        Failures are non-fatal — ``cls.runcard`` is set to ``None`` on error.
+
+        Args:
+            runcard_params: Dict with keys ``'initialization'`` and ``'start_params'``
+                            as expected by the RunCard API.
+        """
+        from lib.testtool import RunCard as RC
+        cls.runcard = None
+        try:
+            cls.runcard = RC.Runcard(**runcard_params['initialization'])
+            cls.runcard.start_test(**runcard_params['start_params'])
+            logger.LogEvt("[RunCard] Started")
+        except Exception as exc:
+            logger.LogEvt(f"[RunCard] Init failed — {exc} (continuing)")
+            cls.runcard = None
+
+    @classmethod
+    def _teardown_runcard(cls, session) -> None:
+        """
+        End RunCard with PASS or FAIL based on ``session.testsfailed``.
+        No-op when ``cls.runcard`` is ``None``.
+
+        Args:
+            session: The pytest ``Session`` object (``request.session``).
+        """
+        if cls.runcard is None:
+            return
+        from lib.testtool import RunCard as RC
+        try:
+            if session.testsfailed > 0:
+                cls.runcard.end_test(
+                    RC.TestResult.FAIL.value,
+                    f"{session.testsfailed} test(s) failed",
+                )
+            else:
+                cls.runcard.end_test(RC.TestResult.PASS.value)
+        except Exception as exc:
+            logger.LogErr(f"[RunCard] end_test failed — {exc}")
+
+    @classmethod
+    def _teardown_reboot_manager(cls) -> None:
+        """
+        Clean up RebootManager state file and auto-run BAT (best-effort).
+        Swallows all exceptions so teardown always completes.
+        """
+        try:
+            cls.reboot_mgr.cleanup()
+        except Exception as exc:
+            logger.LogEvt(f"[TEARDOWN] RebootManager cleanup failed — {exc} (continuing)")
+
     @staticmethod
     def _cleanup_testlog_directory():
         """
