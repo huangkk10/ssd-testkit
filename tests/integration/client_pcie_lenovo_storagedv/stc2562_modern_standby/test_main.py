@@ -368,6 +368,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
         TestSTC2562ModernStandby._pre_sleep_time = datetime.now().isoformat(timespec='seconds')
         logger.info(f"[TEST_06] pre_sleep_time: {self._pre_sleep_time}")
 
+        # sleep/wake cycle via PwrTest
         cfg = self.config['pwrtest']
         pwrtest = PwrTestController(
             pwrtest_base_dir=cfg['pwrtest_base_dir'],
@@ -377,7 +378,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
             cycle_count=1,
             delay_seconds=10,
             wake_after_seconds=60*test_params.wake_after_min,  # long enough to trigger deep S0ix states
-            timeout_seconds=300,
+            timeout_seconds=60*test_params.wake_after_min+300,
             log_path=cfg['log_path'],
         )
         pwrtest.start()
