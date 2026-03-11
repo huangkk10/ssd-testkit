@@ -541,7 +541,6 @@ class TestSTC2562ModernStandby(BaseTestCase):
         delayed_start_seconds     = col_cfg.get('delayed_start_seconds', 10)
         scenario_duration_minutes = col_cfg.get('scenario_duration_minutes', 15)
         wait_for_server_seconds   = col_cfg.get('wait_for_server_seconds', 60)
-        completion_timeout        = col_cfg.get('completion_timeout_seconds', 7200)
         headless                  = col_cfg.get('headless', True)
         traces_output_dir         = col_cfg.get('traces_output_dir', './testlog/PHMTraces')
 
@@ -550,6 +549,8 @@ class TestSTC2562ModernStandby(BaseTestCase):
             scenario_duration_minutes=scenario_duration_minutes,
             cycle_count=cycle_count,
         )
+        # Timeout derived from params; Config can still override explicitly.
+        completion_timeout = col_cfg.get('completion_timeout_seconds', params.completion_timeout)
         logger.info(
             f"[TEST_10] Collector params: cycles={cycle_count}, "
             f"delayed_start={delayed_start_seconds}s, "

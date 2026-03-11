@@ -408,3 +408,44 @@ class PHMProcessManager:
     def pid(self) -> Optional[int]:
         """PID of the currently tracked PHM process, or None."""
         return self._pid
+
+    @staticmethod
+    def compute_completion_timeout(
+        cycle_count: int,
+        delayed_start_seconds: int,
+        scenario_duration_minutes: int,
+        post_capture_buffer_seconds: int = 120,
+        startup_overhead_seconds: int = 300,
+        safety_margin: float = 1.1,
+    ) -> int:
+        """
+        Compute a safe completion timeout for a PHM collector run.
+
+        The formula accounts for every phase within a single cycle:
+
+        .. code-block::
+
+            per_cycle = delayed_start + (scenario_duration × 60)
+                        + post_capture_buffer
+            total     = (per_cycle × cycles + startup_overhead) × safety_margin
+
+        Args:
+            cycle_count: Number of Modern-Standby cycles to run.
+            delayed_start_seconds: SoCWatch pre-capture delay per cycle (s).
+            scenario_duration_minutes: Sleep duration per cycle (min).
+            post_capture_buffer_seconds: Extra seconds per cycle for SoCWatch
+                stop + trace extraction (default 120 s, observed ~80–90 s).
+            startup_overhead_seconds: One-time PHM initialisation cost
+                (default 300 s).
+            safety_margin: Multiplicative safety factor (default 1.1 = 10 %).
+
+        Returns:
+            Timeout in seconds (integer, rounded up).
+
+        Example:
+            >>> # 50 cycles × 30 s delay × 15 min sleep → ~57 915 s
+            >>> PHMProcessManager.compute_completion_timeout(50, 30, 15)
+            57915
+        """
+        per_cycle = delayed_start_seconds + scenario_duration_minutes * 60 + post_capture_buffer_seconds
+        return int((cycle_count * per_cycle + startup_overhead_seconds) * safety_margin)

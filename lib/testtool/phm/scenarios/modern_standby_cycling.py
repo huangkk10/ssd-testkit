@@ -65,6 +65,29 @@ class ModernStandbyCyclingParams(ScenarioParams):
             )
 
     # ------------------------------------------------------------------
+    # Derived helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def completion_timeout(self) -> int:
+        """
+        Compute a safe wait-for-completion timeout (seconds) derived entirely
+        from the scenario parameters, so callers never need to hard-code a
+        value.
+
+        Formula::
+
+            per_cycle = delayed_start + (scenario_duration × 60)
+                        + 120 s  # SoCWatch stop + trace extraction buffer
+            total     = (per_cycle × cycles + 300 s startup overhead) × 1.1
+
+        The 10 % safety margin absorbs occasional slower capture phases
+        (observed ~80–90 s; buffer is 120 s).
+        """
+        per_cycle = self.delayed_start_seconds + self.scenario_duration_minutes * 60 + 120
+        return int((self.cycle_count * per_cycle + 300) * 1.1)
+
+    # ------------------------------------------------------------------
     # ScenarioParams interface
     # ------------------------------------------------------------------
 

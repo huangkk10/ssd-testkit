@@ -72,7 +72,6 @@
     "delayed_start_seconds": 30,
     "scenario_duration_minutes": 15,
     "wait_for_server_seconds": 60,
-    "completion_timeout_seconds": 7200,
     "headless": true,
     "traces_output_dir": "./testlog/PHMTraces",
     "drips_threshold_pct": 80
