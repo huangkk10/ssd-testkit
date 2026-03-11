@@ -173,59 +173,149 @@ test_03_<next_action>
 
 ### setup_test_class Fixture Pattern
 
+`setup_test_class` is the **single class-scoped fixture** that initialises everything the
+test needs — working directory, config, `RebootManager`, RunCard — and tears it all down
+after the session.
+
+#### Two-fixture architecture in `BaseTestCase`
+
+`BaseTestCase` provides two autouse fixtures that run alongside `setup_test_class`:
+
+| Fixture | Scope | Purpose |
+|---------|-------|---------|
+| `setup_teardown_class` | `class` | Default minimal setup (generic `RebootManager`, `log_path`) — **overridden** by your `setup_test_class` |
+| `setup_teardown_function` | `function` | Auto-skip via `is_completed()` + `mark_completed()` after each test  — **always runs automatically**, no code needed in your class |
+
+The per-test auto-skip/mark mechanism comes **for free** — you never call it explicitly:
+
+```
+pytest session
+└── setup_test_class (your fixture, class scope)
+    ├── _setup_working_directory(__file__)
+    ├── RebootManager(total_tests=N)       ← MUST come after os.chdir
+    ├── _init_runcard(runcard_params)
+    ├── [yield — tests run here]
+    ├── [optional teardown: revert OS changes, etc.]
+    ├── _teardown_runcard(request.session)
+    ├── _teardown_reboot_manager()
+    └── os.chdir(original_cwd)
+
+    For each test_XX method (BaseTestCase.setup_teardown_function, automatic):
+    ├── is_completed(test_name) → pytest.skip if True   ← auto-skip
+    ├── [yield — test body]
+    └── mark_completed(test_name)                       ← auto-mark
+```
+
+#### Canonical Template
+
 ```python
 @pytest.fixture(scope="class", autouse=True)
 def setup_test_class(self, request, testcase_config, runcard_params):
+    """Load configuration and initialize test class (runs before all tests)."""
     cls = request.cls
-    cls.testcase_config = testcase_config
     cls.original_cwd = os.getcwd()
 
-    # Resolve test directory (packaged vs development)
-    try:
-        from path_manager import path_manager
-        test_dir = path_manager.app_dir
-    except ImportError:
-        test_dir = Path(__file__).parent
-    os.chdir(test_dir)
+    # ── 1. Working directory + logging ────────────────────────────────
+    # FIRST — all relative paths anchor to this directory.
+    # Handles packaged (path_manager.app_dir) vs dev (Path(__file__).parent) automatically.
+    test_dir = cls._setup_working_directory(__file__)
 
-    logConfig()
-
-    cls.config = testcase_config.tool_config
+    # ── 2. Config ──────────────────────────────────────────────────────
+    cls.config = testcase_config.tool_config   # parsed Config/Config.json
     cls.bin_path = testcase_config.bin_directory
 
-    # RunCard start
-    cls.runcard = None
-    try:
-        cls.runcard = RC.Runcard(**runcard_params['initialization'])
-        cls.runcard.start_test(**runcard_params['start_params'])
-    except Exception as e:
-        logger.error(f"[RunCard] Initialization failed - {e}")
+    # ── 3. RebootManager ─────────────────────────────────────────────
+    # MUST come AFTER os.chdir — STATE_FILE is relative ("./pytest_reboot_state.json").
+    # Only include RebootManager when the test needs reboots; omit for simple tests.
+    cls.reboot_mgr = RebootManager(total_tests=cls._count_test_methods())
 
-    yield
+    phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
+    logger.info(f"[SETUP] Phase: {phase}")
+    logger.info(f"[SETUP] Test case: {testcase_config.case_id}  version: {testcase_config.case_version}")
+    logger.info(f"[SETUP] Working directory: {test_dir}")
 
-    # RunCard end
-    if cls.runcard:
-        failed = request.session.testsfailed > 0
-        result = RC.TestResult.FAIL.value if failed else RC.TestResult.PASS.value
-        cls.runcard.end_test(result)
+    # ── 4. RunCard ────────────────────────────────────────────────────
+    cls._init_runcard(runcard_params)   # non-fatal; cls.runcard = None on failure
 
+    yield   # ← all test_XX methods execute here
+
+    # ── 5. (Optional) test-specific teardown ─────────────────────────
+    # Example: revert OS changes applied mid-test (best-effort)
+    # if cls._osconfig_controller is not None:
+    #     try:
+    #         cls._osconfig_controller.revert_all()
+    #     except Exception as exc:
+    #         logger.warning(f"[TEARDOWN] revert failed — {exc}")
+
+    # ── 6. RunCard end ────────────────────────────────────────────────
+    cls._teardown_runcard(request.session)   # PASS/FAIL based on session.testsfailed
+
+    # ── 7. RebootManager cleanup ──────────────────────────────────────
+    cls._teardown_reboot_manager()   # removes state file + Startup BAT; swallows exceptions
+
+    logger.info(f"{cls.__name__} session complete")
     os.chdir(cls.original_cwd)
 ```
+
+> **Tests without reboots**: omit lines 3 / `_teardown_reboot_manager()`.
+> `BaseTestCase.setup_teardown_class` already creates a default `RebootManager()`
+> when none is set, but for simple tests you can ignore it entirely.
+
+#### Fixture Parameters
+
+| Parameter | Defined in | What it provides |
+|-----------|-----------|-----------------|
+| `testcase_config` | test case's own `conftest.py` | `TestCaseConfiguration` — `case_id`, `bin_directory`, `tool_config` (parsed Config.json) |
+| `runcard_params` | `tests/integration/conftest.py` (shared) | Dict with `'initialization'` and `'start_params'` keys for RunCard init |
+| `test_params` | test case's own `conftest.py` | `@dataclass` with tunable thresholds/durations — used as a **test method** parameter, not in the fixture |
+
+#### BaseTestCase Helper Methods
+
+| Method | Where to call | What it does |
+|--------|--------------|--------------|
+| `cls._setup_working_directory(__file__)` | 1st line of setup | Resolves test dir, `os.chdir()`, calls `logConfig()`; returns `Path` |
+| `cls._count_test_methods()` | `RebootManager(total_tests=...)` | Counts `test_*` methods; used by `all_tests_completed()` |
+| `cls._init_runcard(runcard_params)` | after RebootManager | Non-fatal RunCard start; sets `cls.runcard` (`None` on error) |
+| `cls._teardown_runcard(request.session)` | teardown | Calls `runcard.end_test(PASS/FAIL)`; no-op when `cls.runcard is None` |
+| `cls._teardown_reboot_manager()` | last teardown step | Calls `reboot_mgr.cleanup()`, swallows all exceptions |
+
+#### Initialisation Order Rules
+
+| Order | Must do before | Reason |
+|-------|---------------|--------|
+| `_setup_working_directory` | everything else | All relative paths depend on cwd |
+| `RebootManager(...)` | after `os.chdir` | STATE_FILE is relative (`"./pytest_reboot_state.json"`) |
+| `os.chdir(original_cwd)` | absolute last in teardown | Restores cwd for subsequent code |
 
 ### conftest.py Pattern
 
 ```python
 import pytest
 from pathlib import Path
+from dataclasses import dataclass
 from tests.integration.conftest import TestCaseConfiguration
 
 @pytest.fixture(scope="session")
 def testcase_config():
-    return TestCaseConfiguration(Path(__file__).parent)
+    case_root_dir = Path(__file__).parent
+    config = TestCaseConfiguration(case_root_dir)
+    # Optional overrides (e.g., custom smicli path):
+    # config.smicli_executable = case_root_dir / "bin/SmiWinTools/bin/x64/SmiCli2.exe"
+    return config
+
+# Optional: tunable test parameters (used as fixture in individual test methods)
+@dataclass
+class STCXXXXParams:
+    some_duration_min: int = 60
+    some_threshold: int = 90
+
+@pytest.fixture(scope="session")
+def test_params() -> STCXXXXParams:
+    return STCXXXXParams()
 ```
 
-The shared `runcard_params` fixture is defined in `tests/integration/conftest.py`
-and is automatically available to all sub-test conftest.py files.
+The shared `runcard_params` fixture is in `tests/integration/conftest.py` and is
+**automatically available** — no import needed in your conftest.
 
 ---
 
