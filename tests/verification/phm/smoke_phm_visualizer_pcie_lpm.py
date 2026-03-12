@@ -598,6 +598,59 @@ def main() -> None:
             else:
                 print("  ⚠ Skipping save — no data to write")
 
+            # ── Step 9: Verify L1.2 ≥ 90 % ────────────────────────────────────
+            step(9, "Verify L1.2 residency ≥ 90 % for Standard NVM Express Controller")
+
+            L12_THRESHOLD = 90.0
+            verdict_pass  = True
+            verdict_lines = []
+
+            if not all_rows:
+                verdict_pass = False
+                verdict_lines.append("  ✗ No data rows to evaluate")
+            else:
+                for row in all_rows:
+                    comp   = row.get("Component", row.get("_title", "?"))
+                    l12_raw = row.get("L1.2", None)
+                    if l12_raw is None:
+                        verdict_pass = False
+                        verdict_lines.append(
+                            f"  ✗ 'L1.2' column not found in row: {comp}"
+                        )
+                        continue
+                    try:
+                        l12_val = float(l12_raw)
+                    except (ValueError, TypeError):
+                        verdict_pass = False
+                        verdict_lines.append(
+                            f"  ✗ 'L1.2' value cannot be parsed as float: "
+                            f"'{l12_raw}'  ({comp})"
+                        )
+                        continue
+
+                    if l12_val >= L12_THRESHOLD:
+                        verdict_lines.append(
+                            f"  ✓ PASS  L1.2 = {l12_val:.2f} % ≥ {L12_THRESHOLD} %"
+                            f"  [{comp}]"
+                        )
+                    else:
+                        verdict_pass = False
+                        verdict_lines.append(
+                            f"  ✗ FAIL  L1.2 = {l12_val:.2f} % < {L12_THRESHOLD} %"
+                            f"  [{comp}]"
+                        )
+
+            for line in verdict_lines:
+                print(line)
+
+            if verdict_pass:
+                print(f"\n  ★ OVERALL: PASS — L1.2 ≥ {L12_THRESHOLD} %")
+            else:
+                raise AssertionError(
+                    f"FAIL — L1.2 residency did not meet the {L12_THRESHOLD} % threshold. "
+                    f"Details: {verdict_lines}"
+                )
+
         except Exception as exc:
             print(f"\n✗ ERROR at step above: {exc}")
             raise
