@@ -131,6 +131,7 @@ dmypy.json
 *~
 
 # Test logs and outputs
+lib/testtool/phm/output
 tests/verification/phm/output/
 log/
 logs/
