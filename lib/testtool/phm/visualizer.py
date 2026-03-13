@@ -154,10 +154,12 @@ class VisualizerResult:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_visualizer_check(
-    metric_name:   str                       = "PCIeLPM",
-    device_filter: Optional[str]             = "Standard NVM Express Controller",
-    thresholds:    Optional[dict[str, float]] = None,
-    config:        Optional[VisualizerConfig] = None,
+    metric_name:     str                        = "PCIeLPM",
+    device_filter:   Optional[str]              = "Standard NVM Express Controller",
+    thresholds:      Optional[dict[str, float]] = None,
+    max_thresholds:  Optional[dict[str, float]] = None,
+    config:          Optional[VisualizerConfig] = None,
+    api_metric_name: Optional[str]              = None,
 ) -> VisualizerResult:
     """
     Full end-to-end PHM Visualizer check.
@@ -170,19 +172,31 @@ def run_visualizer_check(
     Parameters
     ----------
     metric_name
-        Tree item to check / expand and API ``name=`` parameter.
-        Examples: ``"PCIeLPM"``, ``"PCIeLTR"``.
+        Tree item label to search / check / expand in the Visualizer sidebar.
+        Also used as the REST API ``name=`` parameter unless *api_metric_name*
+        is provided.
+        Examples: ``"PCIeLPM"``, ``"PCIe LTR"``.
     device_filter
         Sub-string to exclusively-select among *metric_name*'s children.
         Also used to filter API rows by ``"Component"`` field.
         Pass ``None`` to keep all children and all result rows.
     thresholds
-        ``{column_name: minimum_value}`` pairs for Step-9 verification.
-        Example: ``{"L1.2": 90.0}`` or ``{"L1.2": 90.0, "L1": 0.5}``.
-        Pass ``None`` or ``{}`` to skip verification (``result.passed``
-        is ``True`` by default in that case).
+        ``{column_name: minimum_value}`` pairs — column must be **>=** value.
+        Example: ``{"L1.2": 90.0}``.
+        Pass ``None`` or ``{}`` to skip minimum checks.
+    max_thresholds
+        ``{column_name: maximum_value}`` pairs — column must be **<=** value.
+        Useful for LTR latency checks where lower is better.
+        Example: ``{"Min": 50_000_000}`` (50 ms expressed in ns).
+        Non-numeric cell values (e.g. ``"No LTR"``) are silently skipped.
+        Pass ``None`` or ``{}`` to skip maximum checks.
     config
         Infrastructure settings.  Defaults to :class:`VisualizerConfig`.
+    api_metric_name
+        Override the ``name=`` parameter sent to the parserService REST API.
+        Use when the tree sidebar label differs from the API name
+        (e.g. tree shows ``"PCIe LTR"`` but API expects ``"PCIeLTR"``).  
+        Defaults to *metric_name* when ``None``.
 
     Returns
     -------
@@ -208,8 +222,14 @@ def run_visualizer_check(
     cfg = config if config is not None else VisualizerConfig()
     if thresholds is None:
         thresholds = {}
+    if max_thresholds is None:
+        max_thresholds = {}
+    effective_api_name = api_metric_name if api_metric_name is not None else metric_name
 
-    session = _VisualizerSession(cfg, metric_name, device_filter, thresholds)
+    session = _VisualizerSession(
+        cfg, metric_name, device_filter,
+        thresholds, max_thresholds, effective_api_name,
+    )
     return session.run()
 
 
@@ -225,15 +245,19 @@ class _VisualizerSession:
 
     def __init__(
         self,
-        cfg:           VisualizerConfig,
-        metric_name:   str,
-        device_filter: Optional[str],
-        thresholds:    dict[str, float],
+        cfg:             VisualizerConfig,
+        metric_name:     str,
+        device_filter:   Optional[str],
+        thresholds:      dict[str, float],
+        max_thresholds:  dict[str, float],
+        api_metric_name: str,
     ) -> None:
-        self._cfg           = cfg
-        self._metric_name   = metric_name
-        self._device_filter = device_filter
-        self._thresholds    = thresholds
+        self._cfg             = cfg
+        self._metric_name     = metric_name
+        self._api_metric_name = api_metric_name
+        self._device_filter   = device_filter
+        self._thresholds      = thresholds
+        self._max_thresholds  = max_thresholds
 
         # Resolve output directory
         if cfg.output_dir is not None:
@@ -454,10 +478,13 @@ class _VisualizerSession:
 
     def _verify_thresholds(self, rows: list[dict]) -> tuple[list[str], bool]:
         """
-        Check every (column, min_value) pair in self._thresholds against
-        all rows.  Returns (verdict_lines, overall_passed).
+        Check lower-bound (self._thresholds, column >= min) and
+        upper-bound (self._max_thresholds, column <= max) against all rows.
+        Non-numeric cell values are SKIPPED for upper-bound checks (treated
+        as "no measurement", e.g. "No LTR").
+        Returns (verdict_lines, overall_passed).
         """
-        if not self._thresholds:
+        if not self._thresholds and not self._max_thresholds:
             return [], True
 
         verdicts: list[str] = []
@@ -465,13 +492,13 @@ class _VisualizerSession:
 
         for row in rows:
             comp = row.get("Component", row.get("_title", "?"))
+
+            # ── lower-bound checks (column >= min_val) ────────────────────
             for col, min_val in self._thresholds.items():
                 raw = row.get(col)
                 if raw is None:
                     passed = False
-                    verdicts.append(
-                        f"  ✗ Column '{col}' not found in row: {comp}"
-                    )
+                    verdicts.append(f"  ✗ Column '{col}' not found in row: {comp}")
                     continue
                 try:
                     val = float(raw)
@@ -481,15 +508,41 @@ class _VisualizerSession:
                         f"  ✗ Column '{col}' = '{raw}' is not numeric  [{comp}]"
                     )
                     continue
-
                 if val >= min_val:
                     verdicts.append(
-                        f"  ✓ PASS  {col} = {val:.2f} % ≥ {min_val} %  [{comp}]"
+                        f"  ✓ PASS  {col} = {val:.4g} ≥ {min_val}  [{comp}]"
                     )
                 else:
                     passed = False
                     verdicts.append(
-                        f"  ✗ FAIL  {col} = {val:.2f} % < {min_val} %  [{comp}]"
+                        f"  ✗ FAIL  {col} = {val:.4g} < {min_val}  [{comp}]"
+                    )
+
+            # ── upper-bound checks (column <= max_val) ────────────────────
+            for col, max_val in self._max_thresholds.items():
+                raw = row.get(col)
+                if raw is None:
+                    passed = False
+                    verdicts.append(f"  ✗ Column '{col}' not found in row: {comp}")
+                    continue
+                try:
+                    val = float(raw)
+                except (ValueError, TypeError):
+                    # Non-numeric (e.g. "No LTR") — skip, not a failure
+                    verdicts.append(
+                        f"  — SKIP  {col} = '{raw}' (non-numeric, skipped)  [{comp}]"
+                    )
+                    continue
+                if val <= max_val:
+                    verdicts.append(
+                        f"  ✓ PASS  {col} = {val:.4g} ns ≤ {max_val:.4g} ns"
+                        f" ({max_val/1_000_000:.0f} ms)  [{comp}]"
+                    )
+                else:
+                    passed = False
+                    verdicts.append(
+                        f"  ✗ FAIL  {col} = {val:.4g} ns > {max_val:.4g} ns"
+                        f" ({max_val/1_000_000:.0f} ms)  [{comp}]"
                     )
 
         return verdicts, passed
@@ -662,7 +715,7 @@ class _VisualizerSession:
                     f"http://localhost:{cfg.api_port}/parserService"
                     f"?target=getSummaryData"
                     f"&url={encoded_path}"
-                    f"&name={_urlparse.quote(self._metric_name)}"
+                    f"&name={_urlparse.quote(self._api_metric_name)}"
                     f"&minTime=0"
                     f"&maxTime=1844674407370950000"
                 )
@@ -685,9 +738,15 @@ class _VisualizerSession:
 
                 print(f"  ✓ API OK  type={report.get('type')}  name={report.get('name')}")
                 raw_rows = report.get("data", [])
-                col_defs = report.get("columnDefs", [])
-                if not col_defs and raw_rows:
-                    col_defs = list(raw_rows[0].keys())
+                col_defs = list(report.get("columnDefs", []))
+                # columnDefs may be incomplete — merge with actual data keys
+                # so every field present in the rows is included in headers.
+                if raw_rows:
+                    seen = set(col_defs)
+                    for k in raw_rows[0].keys():
+                        if k not in seen:
+                            col_defs.append(k)
+                            seen.add(k)
                 print(f"  ℹ columnDefs: {col_defs}")
                 print(f"  ℹ Total rows: {len(raw_rows)}")
                 for r in raw_rows:
@@ -726,11 +785,13 @@ class _VisualizerSession:
                     print("  ⚠ Skipping save (no rows or save_output=False)")
 
                 # ── Step 9: verify thresholds ──────────────────────────────
-                if self._thresholds:
-                    threshold_label = ", ".join(
-                        f"{c} ≥ {v}%" for c, v in self._thresholds.items()
-                    )
-                    self._step(9, f"Verify thresholds: {threshold_label}")
+                _labels = []
+                for c, v in self._thresholds.items():
+                    _labels.append(f"{c} ≥ {v}")
+                for c, v in self._max_thresholds.items():
+                    _labels.append(f"{c} ≤ {v/1_000_000:.0f} ms ({v:.4g} ns)")
+                if _labels:
+                    self._step(9, "Verify thresholds: " + ", ".join(_labels))
                 else:
                     self._step(9, "No thresholds specified — skipping verification")
 
@@ -739,16 +800,11 @@ class _VisualizerSession:
                 for line in verdicts:
                     print(line)
 
-                if not self._thresholds:
+                if not _labels:
                     print("  ℹ (no threshold checks configured)")
                     passed = True
                 elif passed:
-                    print(
-                        f"\n  ★ OVERALL: PASS — "
-                        + ", ".join(
-                            f"{c} ≥ {v}%" for c, v in self._thresholds.items()
-                        )
-                    )
+                    print(f"\n  ★ OVERALL: PASS — " + ", ".join(_labels))
                 else:
                     raise AssertionError(
                         f"FAIL — thresholds not met. Details: {verdicts}"
