@@ -57,7 +57,8 @@ lib/testtool/phm/
 ├── process_manager.py     # 安裝 / 移除 / 啟動 / 停止生命週期
 ├── log_parser.py          # PHM HTML 測試報告解析
 ├── sleep_report_parser.py # ⚠️ re-export shim（已遷移至 lib.testtool.sleepstudy，向下相容保留）
-└── ui_monitor.py          # Playwright Web UI 自動化
+├── ui_monitor.py          # Playwright Collector Tab Web UI 自動化
+└── visualizer.py          # Playwright Visualizer Tab + REST API 摘要資料抽取與驗證
 ```
 
 > ⚠️ `log_parser.py` 解析 PHM 自身的測試結果 HTML。
@@ -220,7 +221,7 @@ for s in sessions:
 - SW/HW %公式：`round(100 * sw_ticks / dur_ticks / 10)`
 - `_raw_data` 快取：第二次呼叫 `get_sleep_sessions()` 不重新解析
 
-### `ui_monitor.py`（Playwright）
+### `ui_monitor.py`（Playwright — Collector Tab）
 ```python
 monitor = PHMUIMonitor(host='localhost', port=1337)
 monitor.wait_for_ready(timeout=30)      # 輪詢直到 HTTP 200
@@ -235,6 +236,124 @@ monitor.take_screenshot('./testlog/result.png')
 monitor.close_browser()
 ```
 > ⚠️ CSS selector / locator 需實際探測確認（用 `playwright codegen` 或 DevTools）
+> 詳細 Collector Tab 自動化說明見 `.claude/skills/scaffold-testtool/references/phm_automation_guide.md`
+
+---
+
+### `visualizer.py`（Playwright — Visualizer Tab + REST API 摘要）
+
+**完整功能**：開啟 Chromium → 載入 trace → 切到 Visualizer tab → 在 metric 樹設定 check/expand/exclusive-select → 等待 canvas render → 呼叫 `parserService` REST API 拿摘要數據 → 驗證 column 門檻 → 儲存 CSV/JSON。
+
+#### 公開 API
+
+**`VisualizerConfig` dataclass**（基礎設施設定，所有欄位均有預設值）
+
+| 欄位 | 型別 | 預設 | 說明 |
+|------|------|------|------|
+| `host` | `str` | `"localhost"` | PHM Web UI 主機 |
+| `port` | `int` | `1337` | PHM Web UI Port |
+| `api_port` | `int` | `1338` | parserService REST API Port |
+| `headless` | `bool` | `False` | Chromium headless 模式 |
+| `traces_base_dir` | `Path` | `C:\Program Files\PowerhouseMountain\traces` | Scenario* 資料夾根目錄 |
+| `output_dir` | `Path\|None` | `None`（→ `lib/testtool/phm/output`） | CSV/JSON 輸出目錄 |
+| `pause_between_steps` | `float` | `1.0` | 步驟間 sleep（秒），0 停用 |
+| `save_output` | `bool` | `True` | 是否寫出 CSV + JSON 檔案 |
+| `canvas_wait_seconds` | `int` | `20` | canvas render 最大等待秒數 |
+
+**`VisualizerResult` dataclass**（`run_visualizer_check` 回傳值）
+
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| `metric_name` | `str` | 被查詢的 metric（如 `"PCIeLPM"`） |
+| `device_filter` | `str\|None` | 篩選用子字串 |
+| `rows` | `list[dict]` | 篩選後的摘要行（含 `_title` 欄位） |
+| `headers` | `list[str]` | 欄位名稱（`["_title", ...]`） |
+| `csv_path` | `Path\|None` | 儲存的 CSV 路徑 |
+| `json_path` | `Path\|None` | 儲存的 JSON 路徑 |
+| `verdicts` | `list[str]` | 每個 threshold 檢查的詳細結果字串 |
+| `passed` | `bool` | 全部 threshold 通過則 `True` |
+
+**`run_visualizer_check(...)` 函數參數**
+
+| 參數 | 型別 | 預設 | 說明 |
+|------|------|------|------|
+| `metric_name` | `str` | `"PCIeLPM"` | Visualizer 樹中的 metric 標籤（也當 API `name=` 參數） |
+| `device_filter` | `str\|None` | `"Standard NVM Express Controller"` | 對 metric 的 children 做 exclusive-select；同時過濾 API 回傳的 `Component` 欄位。`None` = 保留全部 |
+| `thresholds` | `dict[str, float]\|None` | `None` | **下限** `{col: min_val}`，column 值必須 `>= min_val` |
+| `max_thresholds` | `dict[str, float]\|None` | `None` | **上限** `{col: max_val}`，column 值必須 `<= max_val`。非數值（如 `"No LTR"`）自動 skip |
+| `config` | `VisualizerConfig\|None` | `None`（→預設值） | 基礎設施設定 |
+| `api_metric_name` | `str\|None` | `None`（→同 `metric_name`） | 覆寫 API `name=` 參數（當樹標籤 ≠ API name 時用，如樹 `"PCIe LTR"` vs API `"PCIeLTR"`） |
+
+**例外**
+- `RuntimeError` — playwright 未安裝
+- `AssertionError` — threshold 未通過 / canvas 未 render / API 回傳空
+- `FileNotFoundError` — 找不到 Scenario* 資料夾或 Contents.cycl
+
+#### 使用範例
+
+```python
+from lib.testtool.phm.visualizer import VisualizerConfig, run_visualizer_check
+
+cfg = VisualizerConfig(headless=True, save_output=False)
+
+# ── PCIeLPM：Standard NVM，L1.2 至少 90 % ─────────────────────────────────
+result = run_visualizer_check(
+    metric_name="PCIeLPM",
+    device_filter="Standard NVM Express Controller",
+    thresholds={"L1.2": 90.0},
+    config=cfg,
+)
+assert result.passed, result.verdicts
+
+# ── PCIeLTR：treeside 標籤 "PCIe LTR"，API name "PCIeLTR"，Min latency ≤ 50 ms ──
+result = run_visualizer_check(
+    metric_name="PCIe LTR",
+    api_metric_name="PCIeLTR",
+    device_filter="Standard NVM Express Controller",
+    max_thresholds={"Min": 50_000_000},   # 50 ms in ns
+    config=cfg,
+)
+assert result.passed, result.verdicts
+
+# ── 取所有裝置的 PCIeLPM 數據（不驗 threshold，不儲存值） ──────────────────
+result = run_visualizer_check(
+    metric_name="PCIeLPM",
+    device_filter=None,
+)
+for row in result.rows:
+    print(row)
+
+# ── 讀取 rows 欄位 ─────────────────────────────────────────────────────────
+# result.rows 是 list[dict]，每筆 row 鍵名對應 API columnDefs
+# 第一欄固定為 "_title" = "{metric_name} — {device_filter}"
+# 其他欄位名稱視 metric 而定，如 "Component", "L0s", "L1", "L1.1", "L1.2" (LPM)
+# 或 "Component", "Min", "Max", "Average" (LTR)
+#
+# result.headers = ["_title", "Component", "L1.2", ...]  # 欄位有序清單
+# result.csv_path / result.json_path — 不為 None 時表示已儲存
+```
+
+#### 9 步驟執行流程（內部）
+
+```
+Step 0: 找最新 Scenario* 資料夾 → Contents.cycl
+Step 1: 開啟 Chromium → goto http://localhost:1337 → 處理 Open Trace（file chooser 或 viewtrace URL）
+Step 2: 點擊 Content.phm 連結（CycleSummary 頁面）
+Step 3: 切到 Visualizer tab（找 title="Visualize metrics in a timeline" 的 button）
+Step 4: uncheck 所有 → check + expand metric_name
+Step 5: exclusive-select device_filter 下的 child（若指定）
+        → 等 canvas render（最多 canvas_wait_seconds * 2 × 0.5s 輪詢）
+Step 6: 呼叫 parserService REST API → getSummaryData?name={api_metric_name}&url={Content.phm}
+Step 7: 依 device_filter 過濾 rows
+Step 8: 儲存 CSV + JSON（若 save_output=True）
+Step 9: 驗證 thresholds / max_thresholds → 回傳 VisualizerResult
+```
+
+> **調試技巧**：每一步驟都會在 `output_dir` 下存 `debug_*.html` + `debug_*.png`（`headless=False` 時可視覺觀察），並在 stdout 輸出詳細 log。若 canvas 未 render，可降低 `pause_between_steps=0` 並提高 `canvas_wait_seconds=40`。
+
+> **實際 smoke test 範例**：`tests/verification/phm/smoke_phm_visualizer_pcie_lpm.py`（PCIeLPM）、`smoke_phm_visualizer_pcie_ltr.py`（PCIeLTR）
+
+---
 
 ### `controller.py` 執行流程
 ```
@@ -317,6 +436,8 @@ assert controller.status is True, f"PHM test failed: {controller.error_count} er
 |------|------|
 | 開發計畫（詳細） | `PHM_PLAN.md` |
 | 套件程式碼 | `lib/testtool/phm/` |
+| Visualizer 模組 | `lib/testtool/phm/visualizer.py` |
+| Visualizer smoke tests | `tests/verification/phm/smoke_phm_visualizer_pcie_lpm.py`、`smoke_phm_visualizer_pcie_ltr.py` |
 | Sleep Study 解析模組（canonical） | `lib/testtool/sleepstudy/` |
 | Sleep Study 解析模組（PHM shim） | `lib/testtool/phm/sleep_report_parser.py`（re-export shim） |
 | Sleep Study 樣本 HTML | `tmp/sleepstudy-report.html` |

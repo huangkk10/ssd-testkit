@@ -37,6 +37,43 @@ Every testtool library follows this layout:
     - For numeric counters, triple-click semantics are `click(click_count=3)` in Playwright; `triple_click()` is not available.
     - When test runs finish, the PHM status label contains the traces path; copy the traces directory into your verification folder for archiving using `shutil.copytree()`.
 - **Reference implementation**: See `lib/testtool/phm/ui_monitor.py` for helper methods: `select_preset_scenario()`, `expand_collection_options()`, `_fill_counter_field()`, `get_log_text()`, `wait_for_completion()`, and `get_traces_path()`.
+
+## PHM Visualizer Tab — `lib/testtool/phm/visualizer.py`
+
+- **Purpose**: Automates the PHM **Visualizer tab** to extract metric summary data (PCIeLPM, PCIeLTR, …) and optionally verify column thresholds. Uses Playwright + parserService REST API.
+- **Single public entry point**: `run_visualizer_check(metric_name, device_filter, thresholds, max_thresholds, config, api_metric_name) → VisualizerResult`
+- **Config**: `VisualizerConfig(headless, port=1337, api_port=1338, traces_base_dir, canvas_wait_seconds=20, save_output=True, …)`
+- **Result**: `VisualizerResult(rows, headers, csv_path, json_path, verdicts, passed)`
+- **Threshold params**:
+    - `thresholds={"L1.2": 90.0}` → column must be **≥** value (lower-bound, e.g. LPM %)
+    - `max_thresholds={"Min": 50_000_000}` → column must be **≤** value (upper-bound, e.g. LTR latency ns); non-numeric values (`"No LTR"`) are silently skipped
+- **api_metric_name**: use when UI tree label ≠ REST API name (e.g. tree `"PCIe LTR"` vs API `"PCIeLTR"`)
+- **Quick examples**:
+    ```python
+    from lib.testtool.phm.visualizer import VisualizerConfig, run_visualizer_check
+
+    # PCIeLPM — L1.2 ≥ 90 %
+    result = run_visualizer_check(
+        metric_name="PCIeLPM",
+        device_filter="Standard NVM Express Controller",
+        thresholds={"L1.2": 90.0},
+        config=VisualizerConfig(headless=True),
+    )
+    assert result.passed, result.verdicts
+
+    # PCIeLTR — Min latency ≤ 50 ms (expressed in ns)
+    result = run_visualizer_check(
+        metric_name="PCIe LTR",
+        api_metric_name="PCIeLTR",
+        device_filter="Standard NVM Express Controller",
+        max_thresholds={"Min": 50_000_000},
+        config=VisualizerConfig(headless=True),
+    )
+    assert result.passed, result.verdicts
+    ```
+- **Smoke tests**: `tests/verification/phm/smoke_phm_visualizer_pcie_lpm.py`, `smoke_phm_visualizer_pcie_ltr.py`
+- **Full API reference**: See `references/phm.md` → Section 6 `### visualizer.py`
+
 lib/testtool/<toolname>/
 ├── __init__.py          # Package entry, exports, docstring with usage example
 ├── config.py            # DEFAULT_CONFIG, type validation, merge_config()
