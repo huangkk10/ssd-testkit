@@ -56,5 +56,20 @@
     "pause_between_steps": 1.0,
     "traces_dir": null,
     "output_dir": "./testlog/PHMVisualizer"
+  },
+
+  "phm_visualizer_ltr": {
+    "metric_name": "PCIe LTR",
+    "api_metric_name": "PCIe LTR",
+    "device_filter": "Standard NVM Express Controller",
+    "thresholds": {},
+    "max_thresholds": {"Min": 50000000},
+    "headless": true,
+    "host": "localhost",
+    "port": 1337,
+    "api_port": 1338,
+    "pause_between_steps": 1.0,
+    "traces_dir": null,
+    "output_dir": "./testlog/PHMVisualizerLTR"
   }
 }

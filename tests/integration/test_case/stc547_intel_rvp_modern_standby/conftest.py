@@ -53,6 +53,7 @@ def pytest_collection_finish(session):
         'test_05_run_modern_standby',
         'test_06_verify_drips',
         'test_07_verify_pcie_lpm',
+        'test_08_verify_pcie_ltr',
     }
     collected_names = {item.name for item in stc547_items}
 

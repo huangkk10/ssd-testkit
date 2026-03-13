@@ -15,6 +15,7 @@ Test Flow:
     5. PHM collector — run Modern Standby Cycling scenario
     6. Verify DRIPS  — generate sleepstudy report; SW/HW DRIPS > 80%
     7. PHM Visualizer — PCIe LPM check; L1.2 >= threshold
+    8. PHM Visualizer — PCIe LTR check; Min <= 50 ms
 """
 
 import sys
@@ -541,3 +542,89 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
                 + "\n".join(str(v) for v in result.verdicts)
             )
         logger.info("[TEST_07] PCIe LPM visualizer check passed")
+
+    @pytest.mark.order(8)
+    @step(8, "PHM Visualizer — PCIe LTR check")
+    def test_08_verify_pcie_ltr(self, test_params):
+        """
+        Re-launch PHM, open the Visualizer page, select the PCIe LTR metric,
+        read the Min column from the results table (in ns), and assert that
+        the value is <= the configured upper-bound threshold (default 50 ms
+        = 50,000,000 ns).  Rows reporting "No LTR" are automatically skipped.
+
+        Mirrors the logic in tests/verification/phm/smoke_phm_visualizer_pcie_ltr.py.
+        """
+        logger.info("[TEST_08] PCIe LTR visualizer check started")
+
+        phm_cfg = self.config['phm']
+        vis_cfg_raw = self.config.get('phm_visualizer_ltr', {})
+
+        metric_name     = vis_cfg_raw.get('metric_name', 'PCIe LTR')
+        api_metric_name = vis_cfg_raw.get('api_metric_name', 'PCIe LTR')
+        device_filter   = vis_cfg_raw.get('device_filter', 'Standard NVM Express Controller') or None
+        thresholds      = vis_cfg_raw.get('thresholds', {})
+        max_thresholds  = vis_cfg_raw.get('max_thresholds', {'Min': 50_000_000})
+        headless        = vis_cfg_raw.get('headless', True)
+        host            = vis_cfg_raw.get('host', 'localhost')
+        port            = vis_cfg_raw.get('port', 1337)
+        api_port        = vis_cfg_raw.get('api_port', 1338)
+        pause           = vis_cfg_raw.get('pause_between_steps', 1.0)
+        traces_dir      = vis_cfg_raw.get('traces_dir', None)
+        output_dir      = vis_cfg_raw.get('output_dir', './testlog/PHMVisualizerLTR')
+
+        # ── (Re-)launch PHM ───────────────────────────────────────────
+        mgr = PHMProcessManager(install_path=phm_cfg['install_path'])
+        if not mgr.is_installed():
+            pytest.fail(
+                "PHM is not installed — cannot run Visualizer check. "
+                "Ensure test_02 ran successfully."
+            )
+        mgr.launch()
+        logger.info("[TEST_08] PHM process launched")
+
+        try:
+            cfg = VisualizerConfig(
+                host=host,
+                port=port,
+                api_port=api_port,
+                headless=headless,
+                pause_between_steps=pause,
+                save_output=True,
+            )
+            if traces_dir:
+                cfg.traces_base_dir = Path(traces_dir)
+            if output_dir:
+                cfg.output_dir = Path(output_dir)
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+            logger.info(
+                f"[TEST_08] Visualizer params: metric={metric_name}, "
+                f"device={device_filter!r}, max_thresholds={max_thresholds}"
+            )
+
+            result = run_visualizer_check(
+                metric_name=metric_name,
+                api_metric_name=api_metric_name,
+                device_filter=device_filter,
+                thresholds=thresholds,
+                max_thresholds=max_thresholds,
+                config=cfg,
+            )
+        finally:
+            try:
+                mgr.terminate()
+                logger.info("[TEST_08] PHM process terminated")
+            except Exception as exc:
+                logger.warning(f"[TEST_08] PHM terminate error (non-fatal): {exc}")
+            try:
+                mgr.kill_by_name()
+                logger.info("[TEST_08] PHM force-kill by name executed")
+            except Exception as exc:
+                logger.warning(f"[TEST_08] PHM kill_by_name error (non-fatal): {exc}")
+
+        if not result.passed:
+            pytest.fail(
+                "PCIe LTR visualizer check failed:\n"
+                + "\n".join(str(v) for v in result.verdicts)
+            )
+        logger.info("[TEST_08] PCIe LTR visualizer check passed")

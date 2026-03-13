@@ -56,6 +56,9 @@ try:
 except ImportError:
     _PW_OK = False
 
+from lib.logger import get_module_logger
+logger = get_module_logger(__name__)
+
 # ── Default paths ─────────────────────────────────────────────────────────────
 _DEFAULT_TRACES_DIR = Path(r"C:\Program Files\PowerhouseMountain\traces")
 
@@ -269,9 +272,9 @@ class _VisualizerSession:
     # ── Utilities ────────────────────────────────────────────────────────────
 
     def _step(self, n: int | str, description: str) -> None:
-        print(f"\n{'='*60}")
-        print(f"  Step {n}: {description}")
-        print(f"{'='*60}")
+        logger.info("=" * 60)
+        logger.info("  Step %s: %s", n, description)
+        logger.info("=" * 60)
         if self._cfg.pause_between_steps > 0:
             time.sleep(self._cfg.pause_between_steps)
 
@@ -281,8 +284,8 @@ class _VisualizerSession:
         png_path  = self._output_dir / f"debug_{label}.png"
         html_path.write_text(page.content(), encoding="utf-8")
         page.screenshot(path=str(png_path), full_page=True)
-        print(f"  ℹ [DEBUG] HTML  → {html_path}")
-        print(f"  ℹ [DEBUG] Screenshot → {png_path}")
+        logger.debug("HTML dump  → %s", html_path)
+        logger.debug("Screenshot → %s", png_path)
 
     # ── Filesystem helpers ───────────────────────────────────────────────────
 
@@ -295,16 +298,16 @@ class _VisualizerSession:
         if not scenarios:
             raise FileNotFoundError(f"No Scenario* folders found under {base}")
         latest = scenarios[-1]
-        print(f"  ℹ Latest scenario : {latest}")
-        print(f"  ℹ All scenarios ({len(scenarios)}) — last 5:")
+        logger.info("Latest scenario : %s", latest)
+        logger.info("All scenarios (%d) — last 5:", len(scenarios))
         for s in scenarios[-5:]:
-            print(f"      {s.name}")
+            logger.info("    %s", s.name)
         return latest
 
     def _find_contents_cycl(self, scenario_dir: Path) -> Path:
         direct = scenario_dir / "Contents.cycl"
         if direct.exists():
-            print(f"  ℹ Contents.cycl (direct): {direct}")
+            logger.info("Contents.cycl (direct): %s", direct)
             return direct
         found = list(scenario_dir.rglob("Contents.cycl"))
         if not found:
@@ -312,10 +315,10 @@ class _VisualizerSession:
                 f"Contents.cycl not found anywhere under {scenario_dir}"
             )
         if len(found) > 1:
-            print(f"  ⚠ Multiple Contents.cycl — using first:")
+            logger.warning("Multiple Contents.cycl — using first:")
             for f in found:
-                print(f"      {f}")
-        print(f"  ℹ Contents.cycl (recursive): {found[0]}")
+                logger.warning("    %s", f)
+        logger.info("Contents.cycl (recursive): %s", found[0])
         return found[0]
 
     def _find_content_phm(self, scenario_dir: Path) -> Path:
@@ -470,8 +473,8 @@ class _VisualizerSession:
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(rows, f, ensure_ascii=False, indent=2)
 
-        print(f"  ✓ CSV  saved → {csv_path}")
-        print(f"  ✓ JSON saved → {json_path}")
+        logger.info("CSV  saved → %s", csv_path)
+        logger.info("JSON saved → %s", json_path)
         return csv_path, json_path
 
     # ── Threshold verification ───────────────────────────────────────────────
@@ -556,7 +559,7 @@ class _VisualizerSession:
         self._step(0, "Locate latest Scenario folder and Contents.cycl")
         latest_scenario = self._find_latest_scenario_dir()
         contents_cycl   = self._find_contents_cycl(latest_scenario)
-        print(f"  ✓ Contents.cycl : {contents_cycl}")
+        logger.info("Contents.cycl : %s", contents_cycl)
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=cfg.headless)
@@ -574,7 +577,7 @@ class _VisualizerSession:
                     wait_until="networkidle",
                     timeout=30_000,
                 )
-                print("  ✓ PHM UI loaded")
+                logger.info("PHM UI loaded")
 
                 open_trace_btn = page.locator(
                     'button:has-text("Open Trace"), '
@@ -586,15 +589,15 @@ class _VisualizerSession:
                     with page.expect_file_chooser(timeout=5_000) as fc_info:
                         open_trace_btn.click(timeout=10_000)
                     fc_info.value.set_files(str(contents_cycl))
-                    print(f"  ✓ File chooser handled")
+                    logger.info("File chooser handled")
                     page.wait_for_url("**/viewtrace/**", timeout=15_000)
                 except PWTimeoutError:
-                    print("  ℹ No file-chooser — navigating directly")
+                    logger.info("No file-chooser — navigating directly")
                     viewtrace_url = self._build_viewtrace_url(contents_cycl)
-                    print(f"  → {viewtrace_url}")
+                    logger.info("→ %s", viewtrace_url)
                     page.goto(viewtrace_url, wait_until="networkidle", timeout=30_000)
 
-                print(f"  ✓ Viewtrace loaded: {page.url}")
+                logger.info("Viewtrace loaded: %s", page.url)
                 page.wait_for_timeout(3_000)
                 self._dump_debug(page, "after_viewtrace_load")
 
@@ -615,9 +618,9 @@ class _VisualizerSession:
 
                 phm_link.wait_for(state="visible", timeout=15_000)
                 phm_text = phm_link.inner_text().strip()
-                print(f"  ℹ Link text: {phm_text}")
+                logger.debug("Link text: %s", phm_text)
                 phm_link.click()
-                print("  ✓ Content.phm clicked")
+                logger.info("Content.phm clicked")
                 page.wait_for_load_state("networkidle", timeout=30_000)
                 page.wait_for_timeout(2_000)
 
@@ -633,7 +636,7 @@ class _VisualizerSession:
                     return null;
                 }""")
                 assert vis_clicked, "Could not find Visualizer tab button."
-                print(f"  ✓ Visualizer tab: {vis_clicked}")
+                logger.info("Visualizer tab: %s", vis_clicked)
                 page.wait_for_timeout(2_000)
                 self._dump_debug(page, "after_visualizer_tab")
 
@@ -642,19 +645,19 @@ class _VisualizerSession:
 
                 # Clean slate — uncheck everything
                 unchecked_all = self._tree_uncheck_all(page)
-                print(f"  ℹ Unchecked {len(unchecked_all)} item(s):")
+                logger.info("Unchecked %d item(s):", len(unchecked_all))
                 for u in unchecked_all:
-                    print(f"      - {u}")
+                    logger.info("    - %s", u)
                 page.wait_for_timeout(600)
 
                 info = self._tree_item_info(page, self._metric_name)
-                print(f"  ℹ '{self._metric_name}' state before: {info}")
+                logger.debug("'%s' state before: %s", self._metric_name, info)
 
                 result = self._tree_check(page, self._metric_name)
-                print(f"  ℹ check result: {result}")
+                logger.debug("check result: %s", result)
 
                 result = self._tree_expand(page, self._metric_name)
-                print(f"  ℹ expand result: {result}")
+                logger.debug("expand result: %s", result)
                 page.wait_for_timeout(1_500)
 
                 # ── Step 5: exclusive-select child (if device_filter set) ──
@@ -663,15 +666,15 @@ class _VisualizerSession:
                     actions = self._tree_set_exclusive(
                         page, self._metric_name, self._device_filter
                     )
-                    print(f"  ℹ Exclusive-select actions ({len(actions)}):")
+                    logger.info("Exclusive-select actions (%d):", len(actions))
                     for a in actions:
-                        print(f"      {a}")
+                        logger.info("    %s", a)
                     page.wait_for_timeout(800)
 
                     nvm_info = self._tree_item_info(page, self._device_filter)
-                    print(f"  ℹ Child final state: {nvm_info}")
+                    logger.debug("Child final state: %s", nvm_info)
                     if nvm_info and not nvm_info["checked"]:
-                        print("  ⚠ Child still unchecked — force-checking…")
+                        logger.warning("Child still unchecked — force-checking…")
                         self._tree_check(page, self._device_filter)
                 else:
                     self._step(5, "No device_filter set — all children kept as-is")
@@ -685,7 +688,7 @@ class _VisualizerSession:
                     if (c) c.scrollIntoView({block:'center', inline:'center'});
                 }""")
                 page.wait_for_timeout(500)
-                print("  ℹ Waiting for canvas to render…")
+                logger.info("Waiting for canvas to render…")
                 canvas_ready = False
                 for _i in range(self._cfg.canvas_wait_seconds * 2):
                     _bb = page.evaluate("""() => {
@@ -695,7 +698,7 @@ class _VisualizerSession:
                         return {x: r.x, y: r.y, width: r.width, height: r.height};
                     }""")
                     if _bb and _bb["width"] > 0:
-                        print(f"  ✓ Canvas ready after {_i * 0.5:.1f}s: {_bb}")
+                        logger.info("Canvas ready after %.1fs: %s", _i * 0.5, _bb)
                         canvas_ready = True
                         break
                     page.wait_for_timeout(500)
@@ -708,7 +711,7 @@ class _VisualizerSession:
                 # ── Step 6: call parserService REST API ───────────────────
                 self._step(6, f"REST API → getSummaryData for '{self._metric_name}'")
                 phm_file = self._find_content_phm(latest_scenario)
-                print(f"  ℹ PHM file: {phm_file}")
+                logger.info("PHM file: %s", phm_file)
 
                 encoded_path = _urlparse.quote(str(phm_file), safe="")
                 api_url = (
@@ -719,7 +722,7 @@ class _VisualizerSession:
                     f"&minTime=0"
                     f"&maxTime=1844674407370950000"
                 )
-                print(f"  ℹ API URL: {api_url[:140]}…")
+                logger.debug("API URL: %s…", api_url[:140])
 
                 # --- Retry loop: parserService may still be indexing the
                 # trace when the canvas first renders.  Allow up to
@@ -738,9 +741,9 @@ class _VisualizerSession:
                         api_exc = None
                     except Exception as _e:
                         api_exc = _e
-                        print(
-                            f"  ⚠ parserService attempt {_attempt}/{_API_MAX_RETRIES}"
-                            f" failed ({_e}) — retrying in {_API_RETRY_DELAY_S}s…"
+                        logger.warning(
+                            "parserService attempt %d/%d failed (%s) — retrying in %ds…",
+                            _attempt, _API_MAX_RETRIES, _e, _API_RETRY_DELAY_S,
                         )
                         time.sleep(_API_RETRY_DELAY_S)
                         continue
@@ -748,11 +751,11 @@ class _VisualizerSession:
                     api_resp = json.loads(_raw)
                     report   = api_resp.get("report", {})
                     if report:
-                        print(f"  ✓ parserService responded on attempt {_attempt}")
+                        logger.info("parserService responded on attempt %d", _attempt)
                         break
-                    print(
-                        f"  ⚠ parserService attempt {_attempt}/{_API_MAX_RETRIES}"
-                        f" returned empty report — retrying in {_API_RETRY_DELAY_S}s…"
+                    logger.warning(
+                        "parserService attempt %d/%d returned empty report — retrying in %ds…",
+                        _attempt, _API_MAX_RETRIES, _API_RETRY_DELAY_S,
                     )
                     time.sleep(_API_RETRY_DELAY_S)
 
@@ -767,7 +770,7 @@ class _VisualizerSession:
                         f" {_API_MAX_RETRIES} attempts: {_raw[:300] if _raw else '(no response)'}"
                     )
 
-                print(f"  ✓ API OK  type={report.get('type')}  name={report.get('name')}")
+                logger.info("API OK  type=%s  name=%s", report.get('type'), report.get('name'))
                 raw_rows = report.get("data", [])
                 col_defs = list(report.get("columnDefs", []))
                 # columnDefs may be incomplete — merge with actual data keys
@@ -778,10 +781,10 @@ class _VisualizerSession:
                         if k not in seen:
                             col_defs.append(k)
                             seen.add(k)
-                print(f"  ℹ columnDefs: {col_defs}")
-                print(f"  ℹ Total rows: {len(raw_rows)}")
+                logger.debug("columnDefs: %s", col_defs)
+                logger.info("Total rows: %d", len(raw_rows))
                 for r in raw_rows:
-                    print(f"      {r}")
+                    logger.debug("    %s", r)
 
                 # ── Step 7: filter rows ────────────────────────────────────
                 self._step(7, "Filter rows" + (f" → '{self._device_filter}'" if self._device_filter else " (no filter)"))
@@ -792,14 +795,14 @@ class _VisualizerSession:
                         if self._device_filter in r.get("Component", "")
                     ]
                     if not filtered:
-                        print(f"  ⚠ No rows matched device_filter '{self._device_filter}' — using all rows")
+                        logger.warning("No rows matched device_filter '%s' — using all rows", self._device_filter)
                         filtered = raw_rows
                 else:
                     filtered = raw_rows
 
-                print(f"  ✓ Rows after filter: {len(filtered)}")
+                logger.info("Rows after filter: %d", len(filtered))
                 for r in filtered:
-                    print(f"      {r}")
+                    logger.debug("    %s", r)
 
                 title_str  = (
                     f"{self._metric_name}"
@@ -813,7 +816,7 @@ class _VisualizerSession:
                 if all_rows and cfg.save_output:
                     csv_path, json_path = self._save_summary(all_rows, all_headers)
                 else:
-                    print("  ⚠ Skipping save (no rows or save_output=False)")
+                    logger.warning("Skipping save (no rows or save_output=False)")
 
                 # ── Step 9: verify thresholds ──────────────────────────────
                 _labels = []
@@ -829,13 +832,13 @@ class _VisualizerSession:
                 verdicts, passed = self._verify_thresholds(all_rows)
 
                 for line in verdicts:
-                    print(line)
+                    logger.info("%s", line)
 
                 if not _labels:
-                    print("  ℹ (no threshold checks configured)")
+                    logger.info("(no threshold checks configured)")
                     passed = True
                 elif passed:
-                    print(f"\n  ★ OVERALL: PASS — " + ", ".join(_labels))
+                    logger.info("★ OVERALL: PASS — %s", ", ".join(_labels))
                 else:
                     raise AssertionError(
                         f"FAIL — thresholds not met. Details: {verdicts}"
@@ -853,11 +856,11 @@ class _VisualizerSession:
                 )
 
             except Exception as exc:
-                print(f"\n✗ ERROR: {exc}")
+                logger.error("ERROR: %s", exc)
                 raise
 
             finally:
                 self._step(99, "Close browser")
                 context.close()
                 browser.close()
-                print("  ✓ Browser closed\n")
+                logger.info("Browser closed")
