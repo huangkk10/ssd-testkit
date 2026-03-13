@@ -1,0 +1,60 @@
+{
+  "test_name": "STC-547",
+  "description": "Modern Standby Test with PHM (Intel RVP PCIe)",
+  "log_path": "./log/STC-547",
+
+  "DUT_info": {
+    "DiskType": 0,
+    "_comment": "DiskType: 0 = PRIMARY (C: drive), 1 = SECONDARY"
+  },
+
+  "phm": {
+    "installer": "./bin/PHM/phm_nda_V4.22.0_B25.02.06.02_H.exe",
+    "install_path": "C:\\Program Files\\PowerhouseMountain",
+    "timeout": 120
+  },
+
+  "sleepstudy": {
+    "output_path": "./testlog/sleepstudy-report.html",
+    "timeout": 60
+  },
+
+  "osconfig": {
+    "disable_search_index": true,
+    "disable_onedrive": true,
+    "disable_defender": true
+  },
+
+  "reboot": {
+    "delay_seconds": 10,
+    "reboot_count": 1,
+    "state_file": "./testlog/reboot_state.json"
+  },
+
+  "smicli": {
+    "config_path": "./Config/SmiCli.json"
+  },
+
+  "phm_collector": {
+    "cycle_count": 1,
+    "delayed_start_seconds": 30,
+    "scenario_duration_minutes": 15,
+    "wait_for_server_seconds": 60,
+    "headless": true,
+    "traces_output_dir": "./testlog/PHMTraces",
+    "drips_threshold_pct": 80
+  },
+
+  "phm_visualizer": {
+    "metric_name": "PCIeLPM",
+    "device_filter": "Standard NVM Express Controller",
+    "thresholds": {"L1.2": 90.0},
+    "headless": true,
+    "host": "localhost",
+    "port": 1337,
+    "api_port": 1338,
+    "pause_between_steps": 1.0,
+    "traces_dir": null,
+    "output_dir": "./testlog/PHMVisualizer"
+  }
+}

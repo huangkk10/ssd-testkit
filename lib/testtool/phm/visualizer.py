@@ -721,19 +721,50 @@ class _VisualizerSession:
                 )
                 print(f"  ℹ API URL: {api_url[:140]}…")
 
-                try:
-                    with urllib.request.urlopen(api_url, timeout=15) as _resp:
-                        _raw = _resp.read().decode("utf-8")
-                except Exception as _e:
-                    raise AssertionError(
-                        f"parserService REST call failed: {_e}\nURL: {api_url}"
-                    )
+                # --- Retry loop: parserService may still be indexing the
+                # trace when the canvas first renders.  Allow up to
+                # _API_MAX_RETRIES attempts with _API_RETRY_DELAY_S seconds
+                # between each attempt before giving up.
+                _API_MAX_RETRIES   = 5
+                _API_RETRY_DELAY_S = 5
 
-                api_resp = json.loads(_raw)
-                report   = api_resp.get("report", {})
+                _raw    = None
+                report  = {}
+                api_exc = None
+                for _attempt in range(1, _API_MAX_RETRIES + 1):
+                    try:
+                        with urllib.request.urlopen(api_url, timeout=15) as _resp:
+                            _raw = _resp.read().decode("utf-8")
+                        api_exc = None
+                    except Exception as _e:
+                        api_exc = _e
+                        print(
+                            f"  ⚠ parserService attempt {_attempt}/{_API_MAX_RETRIES}"
+                            f" failed ({_e}) — retrying in {_API_RETRY_DELAY_S}s…"
+                        )
+                        time.sleep(_API_RETRY_DELAY_S)
+                        continue
+
+                    api_resp = json.loads(_raw)
+                    report   = api_resp.get("report", {})
+                    if report:
+                        print(f"  ✓ parserService responded on attempt {_attempt}")
+                        break
+                    print(
+                        f"  ⚠ parserService attempt {_attempt}/{_API_MAX_RETRIES}"
+                        f" returned empty report — retrying in {_API_RETRY_DELAY_S}s…"
+                    )
+                    time.sleep(_API_RETRY_DELAY_S)
+
+                if api_exc is not None:
+                    raise AssertionError(
+                        f"parserService REST call failed after {_API_MAX_RETRIES}"
+                        f" attempts: {api_exc}\nURL: {api_url}"
+                    )
                 if not report:
                     raise AssertionError(
-                        f"parserService returned empty report: {_raw[:300]}"
+                        f"parserService returned empty report after"
+                        f" {_API_MAX_RETRIES} attempts: {_raw[:300] if _raw else '(no response)'}"
                     )
 
                 print(f"  ✓ API OK  type={report.get('type')}  name={report.get('name')}")

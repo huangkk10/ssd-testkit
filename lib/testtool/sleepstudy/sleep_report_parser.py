@@ -266,10 +266,14 @@ class SleepReportParser:
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True)
                 page = browser.new_page()
-                page.goto(file_url, wait_until="domcontentloaded", timeout=30_000)
+                # Use 'load' (not 'domcontentloaded') so that all synchronous
+                # <script> tags — including the one that assigns LocalSprData —
+                # have been fully executed before we call evaluate().
+                page.goto(file_url, wait_until="load", timeout=30_000)
                 # Evaluate the LocalSprData JS variable that is defined
                 # inline in the HTML <script> block.
                 data = page.evaluate("() => typeof LocalSprData !== 'undefined' ? LocalSprData : null")
+                logger.debug("Playwright evaluate returned type: %s", type(data).__name__)
                 browser.close()
         except Exception as exc:
             raise SleepStudyLogParseError(
@@ -278,7 +282,8 @@ class SleepReportParser:
 
         if not isinstance(data, dict):
             raise SleepStudyLogParseError(
-                f"LocalSprData is not a dict in '{self.html_path}'"
+                f"LocalSprData is not a dict in '{self.html_path}' "
+                f"(got {type(data).__name__!r}: {str(data)[:120]})"
             )
         return data
 
@@ -299,8 +304,9 @@ class SleepReportParser:
         pattern = re.compile(r'var LocalSprData\s*=\s*(\{.+?\})\s*;', re.DOTALL)
         # The JSON is always on a single (very long) line so we can use a
         # line-oriented match first which is much faster.
+        # rstrip() is applied to handle trailing \r or whitespace (CRLF files).
         for line in html_text.splitlines():
-            m = re.match(r'\s*var LocalSprData = (.+);$', line)
+            m = re.match(r'\s*var LocalSprData = (.+);\s*$', line.rstrip())
             if m:
                 try:
                     return json.loads(m.group(1))
