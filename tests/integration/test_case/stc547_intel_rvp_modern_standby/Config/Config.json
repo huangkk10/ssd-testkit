@@ -71,5 +71,20 @@
     "pause_between_steps": 1.0,
     "traces_dir": null,
     "output_dir": "./testlog/PHMVisualizerLTR"
+  },
+
+  "phm_visualizer_os_ms": {
+    "metric_name": "OS Events",
+    "api_metric_name": "OS Events",
+    "device_filter": "Modern Standby",
+    "thresholds": {"Entered": 90.0},
+    "max_thresholds": {},
+    "headless": true,
+    "host": "localhost",
+    "port": 1337,
+    "api_port": 1338,
+    "pause_between_steps": 1.0,
+    "traces_dir": null,
+    "output_dir": "./testlog/PHMVisualizerOSMS"
   }
 }

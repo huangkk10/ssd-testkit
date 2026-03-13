@@ -16,6 +16,7 @@ Test Flow:
     6. Verify DRIPS  — generate sleepstudy report; SW/HW DRIPS > 80%
     7. PHM Visualizer — PCIe LPM check; L1.2 >= threshold
     8. PHM Visualizer — PCIe LTR check; Min <= 50 ms
+    9. PHM Visualizer — OS Events / Modern Standby; Entered >= 90%
 """
 
 import sys
@@ -628,3 +629,90 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
                 + "\n".join(str(v) for v in result.verdicts)
             )
         logger.info("[TEST_08] PCIe LTR visualizer check passed")
+
+    @pytest.mark.order(9)
+    @step(9, "PHM Visualizer — OS Modern Standby check")
+    def test_09_verify_os_modern_standby(self, test_params):
+        """
+        Re-launch PHM, open the Visualizer page, select the OS Events parent
+        node and exclusively filter to the Modern Standby child item, then
+        assert that the Entered column value meets the configured lower-bound
+        threshold (default >= 90%).
+
+        Mirrors the logic in
+        tests/verification/phm/smoke_phm_visualizer_os_modern_standby.py.
+        """
+        logger.info("[TEST_09] OS Events / Modern Standby visualizer check started")
+
+        phm_cfg = self.config['phm']
+        vis_cfg_raw = self.config.get('phm_visualizer_os_ms', {})
+
+        metric_name     = vis_cfg_raw.get('metric_name', 'OS Events')
+        api_metric_name = vis_cfg_raw.get('api_metric_name', 'OS Events')
+        device_filter   = vis_cfg_raw.get('device_filter', 'Modern Standby') or None
+        thresholds      = vis_cfg_raw.get('thresholds', {'Entered': 90.0})
+        max_thresholds  = vis_cfg_raw.get('max_thresholds', {})
+        headless        = vis_cfg_raw.get('headless', True)
+        host            = vis_cfg_raw.get('host', 'localhost')
+        port            = vis_cfg_raw.get('port', 1337)
+        api_port        = vis_cfg_raw.get('api_port', 1338)
+        pause           = vis_cfg_raw.get('pause_between_steps', 1.0)
+        traces_dir      = vis_cfg_raw.get('traces_dir', None)
+        output_dir      = vis_cfg_raw.get('output_dir', './testlog/PHMVisualizerOSMS')
+
+        # ── (Re-)launch PHM ───────────────────────────────────────────
+        mgr = PHMProcessManager(install_path=phm_cfg['install_path'])
+        if not mgr.is_installed():
+            pytest.fail(
+                "PHM is not installed — cannot run Visualizer check. "
+                "Ensure test_02 ran successfully."
+            )
+        mgr.launch()
+        logger.info("[TEST_09] PHM process launched")
+
+        try:
+            cfg = VisualizerConfig(
+                host=host,
+                port=port,
+                api_port=api_port,
+                headless=headless,
+                pause_between_steps=pause,
+                save_output=True,
+            )
+            if traces_dir:
+                cfg.traces_base_dir = Path(traces_dir)
+            if output_dir:
+                cfg.output_dir = Path(output_dir)
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+            logger.info(
+                f"[TEST_09] Visualizer params: metric={metric_name}, "
+                f"device_filter={device_filter!r}, thresholds={thresholds}"
+            )
+
+            result = run_visualizer_check(
+                metric_name=metric_name,
+                device_filter=device_filter,
+                api_metric_name=api_metric_name,
+                thresholds=thresholds,
+                max_thresholds=max_thresholds,
+                config=cfg,
+            )
+        finally:
+            try:
+                mgr.terminate()
+                logger.info("[TEST_09] PHM process terminated")
+            except Exception as exc:
+                logger.warning(f"[TEST_09] PHM terminate error (non-fatal): {exc}")
+            try:
+                mgr.kill_by_name()
+                logger.info("[TEST_09] PHM force-kill by name executed")
+            except Exception as exc:
+                logger.warning(f"[TEST_09] PHM kill_by_name error (non-fatal): {exc}")
+
+        if not result.passed:
+            pytest.fail(
+                "OS Events / Modern Standby visualizer check failed:\n"
+                + "\n".join(str(v) for v in result.verdicts)
+            )
+        logger.info("[TEST_09] OS Events / Modern Standby visualizer check passed")
