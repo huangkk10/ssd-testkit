@@ -96,7 +96,7 @@ class VisualizerConfig:
         Write CSV and JSON summary files.  Set to ``False`` to skip.
     canvas_wait_seconds
         Maximum seconds to wait for the Visualizer canvas to render
-        before raising an error (default ``20``).
+        before raising an error (default ``90``).
     """
 
     host:                  str            = "localhost"
@@ -109,7 +109,7 @@ class VisualizerConfig:
     output_dir:            Optional[Path] = None   # resolved at runtime
     pause_between_steps:   float          = 1.0
     save_output:           bool           = True
-    canvas_wait_seconds:   int            = 60  # seconds; raised from 20
+    canvas_wait_seconds:   int            = 90  # seconds; raised from 60
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -658,7 +658,7 @@ class _VisualizerSession:
 
                 result = self._tree_expand(page, self._metric_name)
                 logger.debug("expand result: %s", result)
-                page.wait_for_timeout(1_500)
+                page.wait_for_timeout(2_000)
 
                 # ── Step 5: exclusive-select child (if device_filter set) ──
                 if self._device_filter:
@@ -669,19 +669,57 @@ class _VisualizerSession:
                     logger.info("Exclusive-select actions (%d):", len(actions))
                     for a in actions:
                         logger.info("    %s", a)
-                    page.wait_for_timeout(800)
+                    page.wait_for_timeout(1_500)
 
                     nvm_info = self._tree_item_info(page, self._device_filter)
                     logger.debug("Child final state: %s", nvm_info)
                     if nvm_info and not nvm_info["checked"]:
                         logger.warning("Child still unchecked — force-checking…")
                         self._tree_check(page, self._device_filter)
+
+                    # ── Re-trigger Angular change detection via native click ──
+                    # JavaScript .click() inside page.evaluate() may not trigger
+                    # Angular Zone.js change detection, causing the canvas to never render.
+                    # Use Playwright's native locator.click() to simulate a real mouse event,
+                    # forcing Angular to detect the tree-item state change and re-render the chart.
+                    logger.info("Re-triggering Angular change detection via native Playwright click…")
+                    try:
+                        _kept_rows = page.locator("tr.tree-grid-row").filter(
+                            has_text=self._device_filter
+                        )
+                        _kept_lbl = _kept_rows.locator("button.tree-label").first
+                        _kept_lbl.wait_for(state="visible", timeout=5_000)
+                        _kept_lbl.click()         # uncheck → Angular detects change
+                        page.wait_for_timeout(800)
+                        _kept_lbl.click()         # check again → triggers chart render
+                        page.wait_for_timeout(3_000)
+                        logger.info("Native re-click done — Angular should now render chart")
+                    except Exception as _e:
+                        logger.warning("Native re-click failed (non-fatal): %s — continuing", _e)
+                        page.wait_for_timeout(3_000)
                 else:
                     self._step(5, "No device_filter set — all children kept as-is")
 
+                    # ── Re-trigger Angular change detection (no device_filter) ──
+                    logger.info("Re-triggering Angular change detection (metric-level click)…")
+                    try:
+                        _metric_rows = page.locator("tr.tree-grid-row").filter(
+                            has_text=self._metric_name
+                        )
+                        _metric_lbl = _metric_rows.locator("button.tree-label").first
+                        _metric_lbl.wait_for(state="visible", timeout=5_000)
+                        _metric_lbl.click()       # uncheck
+                        page.wait_for_timeout(800)
+                        _metric_lbl.click()       # check again → triggers chart render
+                        page.wait_for_timeout(3_000)
+                        logger.info("Native re-click done")
+                    except Exception as _e:
+                        logger.warning("Native re-click (metric) failed (non-fatal): %s", _e)
+                        page.wait_for_timeout(3_000)
+
                 # ── Wait for canvas / SVG chart to render ──────────────────
                 # Give Angular time to process tree-item clicks before polling.
-                page.wait_for_timeout(1_500)
+                page.wait_for_timeout(3_000)
                 logger.info("Waiting for canvas to render…")
 
                 # Selector covers both canvas-based and SVG-based PHM charts.
