@@ -51,6 +51,7 @@ from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser, valid
 from lib.testtool.sleepstudy.history_cleaner import SleepHistoryCleaner
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.config import OsConfigProfile
+from lib.testtool.osconfig.state_manager import OsConfigStateManager
 from lib.logger import get_module_logger, clear_log_files
 from framework.reboot_manager import RebootManager
 
@@ -166,12 +167,39 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
 
         # Revert OS configuration changes applied in test_03 (best-effort, STC-547 specific)
         if cls._osconfig_controller is not None:
+            # Pre-Reboot path: controller is still alive in-process
             try:
-                logger.info("[TEARDOWN] Reverting OsConfig changes...")
+                logger.info("[TEARDOWN] Reverting OsConfig changes (pre-reboot path)...")
                 cls._osconfig_controller.revert_all()
                 logger.info("[TEARDOWN] OsConfig reverted successfully")
             except Exception as exc:
                 logger.warning(f"[TEARDOWN] OsConfig revert failed — {exc} (continuing)")
+        else:
+            # Post-Reboot path: _osconfig_controller was lost across the reboot;
+            # reconstruct the controller from config so revert_all() can load
+            # the snapshot that was persisted to disk before the reboot.
+            state_mgr = OsConfigStateManager()
+            if state_mgr.exists():
+                try:
+                    logger.info("[TEARDOWN] Post-reboot OsConfig revert — loading snapshot from disk")
+                    cfg = cls.config.get('osconfig', {})
+                    profile = OsConfigProfile(
+                        disable_search_index=cfg.get('disable_search_index', False),
+                        disable_onedrive=cfg.get('disable_onedrive', False),
+                        disable_onedrive_tasks=cfg.get('disable_onedrive_tasks', False),
+                        disable_edge_update_tasks=cfg.get('disable_edge_update_tasks', False),
+                        disable_defender=cfg.get('disable_defender', False),
+                    )
+                    controller = OsConfigController(
+                        profile=profile,
+                        state_manager=state_mgr,
+                    )
+                    controller.revert_all()
+                    logger.info("[TEARDOWN] OsConfig reverted successfully (post-reboot)")
+                except Exception as exc:
+                    logger.warning(f"[TEARDOWN] OsConfig post-reboot revert failed — {exc} (continuing)")
+            else:
+                logger.info("[TEARDOWN] No OsConfig snapshot on disk — skipping revert")
 
         cls._teardown_reboot_manager()
 
@@ -255,7 +283,10 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
             disable_defender=cfg.get('disable_defender', False),
         )
 
-        controller = OsConfigController(profile=profile)
+        controller = OsConfigController(
+            profile=profile,
+            state_manager=OsConfigStateManager(),
+        )
         controller.apply_all()
 
         # Cache for potential teardown revert (best-effort)
