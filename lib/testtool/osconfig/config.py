@@ -79,6 +79,12 @@ class OsConfigProfile:
         # ── Schedule ──────────────────────────────────────────────────────
         disable_defrag_schedule:    Disable scheduled disk defragmentation.
         disable_defender_scan_schedule: Disable Windows Defender scheduled scan.
+        disable_edge_update_tasks:  Disable Microsoft Edge update scheduled tasks
+                                    (MicrosoftEdgeUpdateTaskMachineCore,
+                                    MicrosoftEdgeUpdateTaskMachineUA).
+        disable_onedrive_tasks:     Disable OneDrive scheduled tasks
+                                    (Reporting / Standalone Update / Startup,
+                                    all SID variants discovered dynamically).
 
         # ── System ────────────────────────────────────────────────────────
         disable_system_restore:     Disable System Restore on C:\\.
@@ -131,6 +137,8 @@ class OsConfigProfile:
     # ── Schedule ──────────────────────────────────────────────────────────
     disable_defrag_schedule: bool = False
     disable_defender_scan_schedule: bool = False
+    disable_edge_update_tasks: bool = False
+    disable_onedrive_tasks: bool = False
 
     # ── System ────────────────────────────────────────────────────────────
     disable_system_restore: bool = False
