@@ -17,6 +17,7 @@ Test Flow:
     7. PHM Visualizer — PCIe LPM check; L1.2 >= threshold
     8. PHM Visualizer — PCIe LTR check; Min <= 50 ms
     9. PHM Visualizer — OS Events / Modern Standby; Entered >= 90%
+   10. PHM Visualizer — SoC S0ix Substates; s0i2.2 Residency >= 90%
 """
 
 import sys
@@ -761,3 +762,94 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
                 + "\n".join(str(v) for v in result.verdicts)
             )
         logger.info("[TEST_09] OS Events / Modern Standby visualizer check passed")
+
+    @pytest.mark.order(10)
+    @step(10, "PHM Visualizer — SoC S0ix Substates check")
+    def test_10_verify_soc_s0ix_substates(self, test_params):
+        """
+        Re-launch PHM, open the Visualizer page, select the SoC S0ix Substates
+        parent node and exclusively filter to the SoC S0ix Substrates child
+        item, then assert that the s0i2.2 Residency column meets the configured
+        lower-bound threshold (default >= 90%).
+
+        Mirrors the logic in
+        tests/verification/phm/smoke_phm_visualizer_soc_s0ix_substates.py.
+        """
+        logger.info("[TEST_10] SoC S0ix Substates visualizer check started")
+
+        phm_cfg = self.config['phm']
+        vis_cfg_raw = self.config.get('phm_visualizer_soc_s0ix', {})
+
+        metric_name     = vis_cfg_raw.get('metric_name', 'SoC S0ix Substates')
+        api_metric_name = vis_cfg_raw.get('api_metric_name', 'SoC S0ix Substates')
+        device_filter   = vis_cfg_raw.get('device_filter', 'SoC S0ix Substrates') or None
+        thresholds      = vis_cfg_raw.get('thresholds', {'s0i2.2 Residency': 90.0})
+        max_thresholds  = vis_cfg_raw.get('max_thresholds', {})
+        headless        = vis_cfg_raw.get('headless', False)
+        host            = vis_cfg_raw.get('host', 'localhost')
+        port            = vis_cfg_raw.get('port', 1337)
+        api_port        = vis_cfg_raw.get('api_port', 1338)
+        pause           = vis_cfg_raw.get('pause_between_steps', 1.0)
+        traces_dir      = vis_cfg_raw.get('traces_dir', None)
+        output_dir      = vis_cfg_raw.get('output_dir', './testlog/PHMVisualizerSocS0ix')
+
+        # ── (Re-)launch PHM ───────────────────────────────────────────
+        mgr = PHMProcessManager(install_path=phm_cfg['install_path'])
+        if not mgr.is_installed():
+            pytest.fail(
+                "PHM is not installed — cannot run Visualizer check. "
+                "Ensure test_02 ran successfully."
+            )
+        mgr.launch()
+        logger.info("[TEST_10] PHM process launched")
+
+        _ui = PHMUIMonitor(host=host, port=port)
+        _ui.wait_for_ready(timeout=60)
+        logger.info("[TEST_10] PHM server ready")
+
+        try:
+            cfg = VisualizerConfig(
+                host=host,
+                port=port,
+                api_port=api_port,
+                headless=headless,
+                pause_between_steps=pause,
+                save_output=True,
+            )
+            if traces_dir:
+                cfg.traces_base_dir = Path(traces_dir)
+            if output_dir:
+                cfg.output_dir = Path(output_dir)
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+            logger.info(
+                f"[TEST_10] Visualizer params: metric={metric_name}, "
+                f"device_filter={device_filter!r}, thresholds={thresholds}"
+            )
+
+            result = run_visualizer_check(
+                metric_name=metric_name,
+                device_filter=device_filter,
+                api_metric_name=api_metric_name,
+                thresholds=thresholds,
+                max_thresholds=max_thresholds,
+                config=cfg,
+            )
+        finally:
+            try:
+                mgr.terminate()
+                logger.info("[TEST_10] PHM process terminated")
+            except Exception as exc:
+                logger.warning(f"[TEST_10] PHM terminate error (non-fatal): {exc}")
+            try:
+                mgr.kill_by_name()
+                logger.info("[TEST_10] PHM force-kill by name executed")
+            except Exception as exc:
+                logger.warning(f"[TEST_10] PHM kill_by_name error (non-fatal): {exc}")
+
+        if not result.passed:
+            pytest.fail(
+                "SoC S0ix Substates visualizer check failed:\n"
+                + "\n".join(str(v) for v in result.verdicts)
+            )
+        logger.info("[TEST_10] SoC S0ix Substates visualizer check passed")
