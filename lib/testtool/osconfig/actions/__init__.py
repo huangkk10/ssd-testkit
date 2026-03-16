@@ -39,8 +39,8 @@ from .hibernation import HibernationAction, UnattendedSleepAction
 
 # ── Phase 4: Schedule Actions ─────────────────────────────────────────────
 from .defrag_schedule import DefragScheduleAction
-from .defender_scan_schedule import DefenderScanScheduleAction
-
+from .defender_scan_schedule import DefenderScanScheduleActionfrom .edge_update_tasks import EdgeUpdateTasksAction
+from .onedrive_tasks import OneDriveTasksAction
 # ── Phase 4: System Actions ───────────────────────────────────────────────
 from .system_restore import SystemRestoreAction
 from .fast_startup import FastStartupAction
@@ -81,6 +81,8 @@ __all__ = [
     # Phase 4 – Schedule
     "DefragScheduleAction",
     "DefenderScanScheduleAction",
+    "EdgeUpdateTasksAction",
+    "OneDriveTasksAction",
     # Phase 4 – System
     "SystemRestoreAction",
     "FastStartupAction",

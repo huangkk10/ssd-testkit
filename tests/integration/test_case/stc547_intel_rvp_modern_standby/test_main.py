@@ -250,6 +250,8 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         profile = OsConfigProfile(
             disable_search_index=cfg.get('disable_search_index', False),
             disable_onedrive=cfg.get('disable_onedrive', False),
+            disable_onedrive_tasks=cfg.get('disable_onedrive_tasks', False),
+            disable_edge_update_tasks=cfg.get('disable_edge_update_tasks', False),
             disable_defender=cfg.get('disable_defender', False),
         )
 

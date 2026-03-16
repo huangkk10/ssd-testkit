@@ -22,6 +22,8 @@
   "osconfig": {
     "disable_search_index": true,
     "disable_onedrive": true,
+    "disable_onedrive_tasks": true,
+    "disable_edge_update_tasks": true,
     "disable_defender": true
   },
 

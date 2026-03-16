@@ -71,6 +71,8 @@ from .actions import (
     # ── Phase 4: Schedule ─────────────────────────────────────────────────
     DefragScheduleAction,
     DefenderScanScheduleAction,
+    EdgeUpdateTasksAction,
+    OneDriveTasksAction,
     # ── Phase 4: System ───────────────────────────────────────────────────
     SystemRestoreAction,
     FastStartupAction,
@@ -157,6 +159,10 @@ def _build_action_list(
         actions.append(DefragScheduleAction(snapshot_store=s))
     if profile.disable_defender_scan_schedule:
         actions.append(DefenderScanScheduleAction(snapshot_store=s))
+    if profile.disable_edge_update_tasks:
+        actions.append(EdgeUpdateTasksAction(snapshot_store=s))
+    if profile.disable_onedrive_tasks:
+        actions.append(OneDriveTasksAction(snapshot_store=s))
 
     # ── System ────────────────────────────────────────────────────────────
     if profile.disable_system_restore:

@@ -214,6 +214,16 @@ CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "exclude_editions": [],
         "description": "Disable Windows Defender Scheduled Scan",
     },
+    "edge_update_tasks": {
+        "min_build": 0,
+        "exclude_editions": [],
+        "description": "Disable Microsoft Edge Update scheduled tasks (prefix match)",
+    },
+    "onedrive_tasks": {
+        "min_build": 0,
+        "exclude_editions": [],
+        "description": "Disable OneDrive scheduled tasks (prefix match, covers SID-suffixed names)",
+    },
     # ── System ───────────────────────────────────────────────────
     "system_restore": {
         "min_build": 0,

@@ -73,6 +73,41 @@ def run_command_with_output(command: str, timeout: int = 30) -> Tuple[int, str, 
     return result.returncode, result.stdout, result.stderr
 
 
+def query_tasks_by_prefix(prefix: str, timeout: int = 30) -> list:
+    """
+    Return a list of schtasks task names whose basename starts with *prefix*.
+
+    Uses ``schtasks /Query /FO CSV /NH`` which lists every scheduled task in
+    CSV format without a header row.  The first column is the full task path
+    (e.g. ``\\MicrosoftEdgeUpdateTaskMachineCore{GUID}``); the basename is
+    the last ``\\``-separated segment.
+
+    Args:
+        prefix:  Prefix string to match against the task basename.
+        timeout: Seconds before the schtasks query times out (default 30).
+
+    Returns:
+        List of task name strings (exactly as schtasks reports them).
+        Returns an empty list when the command fails or no tasks match.
+    """
+    rc, stdout, _ = run_command_with_output(
+        "schtasks /Query /FO CSV /NH", timeout=timeout
+    )
+    if rc != 0:
+        return []
+    results = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # CSV first field is the task name (quoted)
+        task_name = line.split('","')[0].strip('"')
+        basename = task_name.lstrip('\\').split('\\')[-1]
+        if basename.startswith(prefix):
+            results.append(task_name)
+    return results
+
+
 def run_powershell(command: str, timeout: int = 60) -> Tuple[int, str, str]:
     """
     Run a PowerShell command and return ``(returncode, stdout, stderr)``.

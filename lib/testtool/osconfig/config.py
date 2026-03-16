@@ -189,6 +189,8 @@ class OsConfigProfile:
             # Schedule
             disable_defrag_schedule=True,
             disable_defender_scan_schedule=True,
+            disable_edge_update_tasks=True,
+            disable_onedrive_tasks=True,
             # System
             disable_system_restore=True,
             disable_fast_startup=True,
