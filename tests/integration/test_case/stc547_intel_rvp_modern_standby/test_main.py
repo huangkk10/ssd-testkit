@@ -513,7 +513,7 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         metric_name   = vis_cfg_raw.get('metric_name', 'PCIeLPM')
         device_filter = vis_cfg_raw.get('device_filter', 'Standard NVM Express Controller') or None
         thresholds    = vis_cfg_raw.get('thresholds', {'L1.2': 90.0})
-        headless      = vis_cfg_raw.get('headless', True)
+        headless      = vis_cfg_raw.get('headless', False)
         host          = vis_cfg_raw.get('host', 'localhost')
         port          = vis_cfg_raw.get('port', 1337)
         api_port      = vis_cfg_raw.get('api_port', 1338)
@@ -598,7 +598,7 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         device_filter   = vis_cfg_raw.get('device_filter', 'Standard NVM Express Controller') or None
         thresholds      = vis_cfg_raw.get('thresholds', {})
         max_thresholds  = vis_cfg_raw.get('max_thresholds', {'Min': 50_000_000})
-        headless        = vis_cfg_raw.get('headless', True)
+        headless        = vis_cfg_raw.get('headless', False)
         host            = vis_cfg_raw.get('host', 'localhost')
         port            = vis_cfg_raw.get('port', 1337)
         api_port        = vis_cfg_raw.get('api_port', 1338)
@@ -685,7 +685,7 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         device_filter   = vis_cfg_raw.get('device_filter', 'Modern Standby') or None
         thresholds      = vis_cfg_raw.get('thresholds', {'Entered': 90.0})
         max_thresholds  = vis_cfg_raw.get('max_thresholds', {})
-        headless        = vis_cfg_raw.get('headless', True)
+        headless        = vis_cfg_raw.get('headless', False)
         host            = vis_cfg_raw.get('host', 'localhost')
         port            = vis_cfg_raw.get('port', 1337)
         api_port        = vis_cfg_raw.get('api_port', 1338)

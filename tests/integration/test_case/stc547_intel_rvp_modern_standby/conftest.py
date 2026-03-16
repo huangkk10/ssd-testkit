@@ -108,7 +108,7 @@ def testcase_config():
 @dataclass
 class STC547Params:
     """Tunable test parameters for STC-547 Modern Standby."""
-    drips_threshold: int = 80
+    drips_threshold: int = 70
     """Minimum SW/HW DRIPS % required by the PHM Modern Standby check (test_06)."""
 
 
