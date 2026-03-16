@@ -109,7 +109,7 @@ class VisualizerConfig:
     output_dir:            Optional[Path] = None   # resolved at runtime
     pause_between_steps:   float          = 1.0
     save_output:           bool           = True
-    canvas_wait_seconds:   int            = 20  # seconds; raised from 12
+    canvas_wait_seconds:   int            = 60  # seconds; raised from 20
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -679,29 +679,68 @@ class _VisualizerSession:
                 else:
                     self._step(5, "No device_filter set — all children kept as-is")
 
-                # ── Wait for canvas ────────────────────────────────────────
+                # ── Wait for canvas / SVG chart to render ──────────────────
                 # Give Angular time to process tree-item clicks before polling.
                 page.wait_for_timeout(1_500)
-                # Scroll the canvas element into view so the browser paints it.
-                page.evaluate("""() => {
-                    const c = document.querySelector('canvas#pageCanvas0, canvas');
-                    if (c) c.scrollIntoView({block:'center', inline:'center'});
-                }""")
-                page.wait_for_timeout(500)
                 logger.info("Waiting for canvas to render…")
+
+                # Selector covers both canvas-based and SVG-based PHM charts.
+                _CHART_SELECTOR = (
+                    "canvas#pageCanvas0, "
+                    "canvas, "
+                    "svg[class*='chart'], "
+                    "[class*='visualizer'] svg, "
+                    "[class*='chart-container'] svg"
+                )
                 canvas_ready = False
-                for _i in range(self._cfg.canvas_wait_seconds * 2):
-                    _bb = page.evaluate("""() => {
-                        const c = document.querySelector('canvas#pageCanvas0, canvas');
-                        if (!c) return null;
-                        const r = c.getBoundingClientRect();
-                        return {x: r.x, y: r.y, width: r.width, height: r.height};
-                    }""")
-                    if _bb and _bb["width"] > 0:
-                        logger.info("Canvas ready after %.1fs: %s", _i * 0.5, _bb)
-                        canvas_ready = True
-                        break
+                try:
+                    page.wait_for_selector(
+                        _CHART_SELECTOR,
+                        state="visible",
+                        timeout=self._cfg.canvas_wait_seconds * 1_000,
+                    )
+                    # Scroll into view now that the element exists.
+                    page.evaluate("""
+                        (sel) => {
+                            const c = document.querySelector(sel);
+                            if (c) c.scrollIntoView({block:'center', inline:'center'});
+                        }""", _CHART_SELECTOR)
                     page.wait_for_timeout(500)
+                    # Verify it has non-zero dimensions (canvas) or is in the DOM (SVG).
+                    _bb = page.evaluate("""
+                        (sel) => {
+                            const c = document.querySelector(sel);
+                            if (!c) return null;
+                            const r = c.getBoundingClientRect();
+                            return {x: r.x, y: r.y, width: r.width, height: r.height,
+                                    tag: c.tagName.toLowerCase()};
+                        }""", _CHART_SELECTOR)
+                    if _bb and (_bb["width"] > 0 or _bb["tag"] == "svg"):
+                        logger.info("Chart element ready: %s", _bb)
+                        canvas_ready = True
+                    else:
+                        logger.warning("Chart element found but zero-size: %s", _bb)
+                except PWTimeoutError:
+                    logger.warning(
+                        "wait_for_selector timed out after %ds — falling back to poll loop",
+                        self._cfg.canvas_wait_seconds,
+                    )
+
+                # Fallback: manual poll for canvas width > 0.
+                if not canvas_ready:
+                    for _i in range(self._cfg.canvas_wait_seconds * 2):
+                        _bb = page.evaluate("""() => {
+                            const c = document.querySelector('canvas#pageCanvas0, canvas');
+                            if (!c) return null;
+                            const r = c.getBoundingClientRect();
+                            return {x: r.x, y: r.y, width: r.width, height: r.height};
+                        }""")
+                        if _bb and _bb["width"] > 0:
+                            logger.info("Canvas ready after %.1fs (fallback poll): %s", _i * 0.5, _bb)
+                            canvas_ready = True
+                            break
+                        page.wait_for_timeout(500)
+
                 if not canvas_ready:
                     self._dump_debug(page, "canvas_wait_timeout")
                     raise AssertionError(
