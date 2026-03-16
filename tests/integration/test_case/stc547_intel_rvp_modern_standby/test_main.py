@@ -531,6 +531,10 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         mgr.launch()
         logger.info("[TEST_07] PHM process launched")
 
+        _ui = PHMUIMonitor(host=host, port=port)
+        _ui.wait_for_ready(timeout=60)
+        logger.info("[TEST_07] PHM server ready")
+
         try:
             cfg = VisualizerConfig(
                 host=host,
@@ -615,6 +619,10 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
             )
         mgr.launch()
         logger.info("[TEST_08] PHM process launched")
+
+        _ui = PHMUIMonitor(host=host, port=port)
+        _ui.wait_for_ready(timeout=60)
+        logger.info("[TEST_08] PHM server ready")
 
         try:
             cfg = VisualizerConfig(
@@ -702,6 +710,10 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
             )
         mgr.launch()
         logger.info("[TEST_09] PHM process launched")
+
+        _ui = PHMUIMonitor(host=host, port=port)
+        _ui.wait_for_ready(timeout=60)
+        logger.info("[TEST_09] PHM server ready")
 
         try:
             cfg = VisualizerConfig(
