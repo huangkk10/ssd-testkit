@@ -38,7 +38,7 @@
   },
 
   "phm_collector": {
-    "cycle_count": 1,
+    "cycle_count": 3,
     "delayed_start_seconds": 30,
     "scenario_duration_minutes": 15,
     "wait_for_server_seconds": 60,
