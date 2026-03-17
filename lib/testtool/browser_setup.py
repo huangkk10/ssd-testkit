@@ -79,7 +79,8 @@ def ensure_playwright_chromium(logger=None, force: bool = False) -> bool:
        If found, ``PLAYWRIGHT_BROWSERS_PATH`` is overridden to point there,
        enabling fully offline operation on target PCs.
     2. If ``force=True``, removes any existing ``chromium-*`` directories
-       inside the resolved path so that a clean reinstall is performed.
+       inside the resolved path (bundled or not) so that a clean reinstall
+       is always performed.
     3. Tries to launch Chromium headlessly to detect whether it is already
        installed (skipped when ``force=True``).
     4. If missing (or forced), invokes the *bundled* ``node.exe cli.js install
@@ -130,10 +131,8 @@ def ensure_playwright_chromium(logger=None, force: bool = False) -> bool:
         )
         return False
 
-    # ── Step 1 (force only, non-bundled only): remove existing Chromium ──
-    # Bundled browsers are pre-installed offline assets — never delete them.
-    # Only force-reinstall when using the persistent per-machine cache path.
-    if force and not using_bundled:
+    # ── Step 1 (force only): remove existing Chromium dirs ──────────────
+    if force:
         browsers_path_obj = Path(browsers_dir)
         removed = []
         if browsers_path_obj.exists():
@@ -147,8 +146,8 @@ def ensure_playwright_chromium(logger=None, force: bool = False) -> bool:
         else:
             _log_info("[browser_setup] No existing Chromium found — proceeding with fresh install")
 
-    # ── Step 2: quick launch check (skipped when force=True on non-bundled) ─
-    if not (force and not using_bundled):
+    # ── Step 2: quick launch check (skipped when force=True) ─────────────
+    if not force:
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
