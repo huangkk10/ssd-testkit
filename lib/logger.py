@@ -27,6 +27,7 @@ import os
 import logging
 import datetime
 import sys
+import traceback
 from typing import Optional, Dict
 from pathlib import Path
 
@@ -50,6 +51,39 @@ def _get_log_dir() -> Path:
         log_dir = Path('./log')
         log_dir.mkdir(parents=True, exist_ok=True)
         return log_dir
+
+
+class BriefFormatter(logging.Formatter):
+    """Log4j-style formatter: date + fixed-width level + short module name + func:line.
+
+    Output format:
+        2026-03-17 10:23:01.456 INFO  test_main      test_01_precondition : 45 - message
+    """
+
+    def formatTime(self, record, datefmt=None):
+        ct = datetime.datetime.fromtimestamp(record.created)
+        return ct.strftime('%Y-%m-%d %H:%M:%S.') + f'{ct.microsecond // 1000:03d}'
+
+    def format(self, record):
+        parts = record.name.split('.')
+        record.short_name = '.'.join(parts[-2:]) if len(parts) >= 2 else record.name
+        return super().format(record)
+
+
+def _write_session_header(log_file: str) -> None:
+    """Write a session start banner to a log file (called when a new handler is created)."""
+    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    header = (
+        '\n' +
+        '=' * 80 + '\n' +
+        f'  SESSION START: {now}\n' +
+        '=' * 80 + '\n'
+    )
+    try:
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(header)
+    except Exception:
+        pass
 
 
 class Logger:
@@ -119,8 +153,10 @@ class Logger:
         log_dir = _get_log_dir()
         log_dir_abs = log_dir.resolve()  # Get absolute path for comparison
         
-        # Formatter for log messages (includes logger name for module identification)
-        formatter = logging.Formatter('[%(levelname)s %(asctime)s] [%(name)s] %(message)s')
+        # Log4j-style formatter: date + level + short module + func:line
+        formatter = BriefFormatter(
+            fmt='%(asctime)s %(levelname)-5s %(short_name)-14s %(funcName)-20s:%(lineno)3d - %(message)s'
+        )
         
         # Configure root logger (so all child loggers inherit handlers)
         root_logger = logging.getLogger()
@@ -148,50 +184,41 @@ class Logger:
                 pass  # Ignore errors during handler removal
         
         # Check if we need to add file handlers
-        # Note: We always add our own FileHandlers (log.txt, log.err) even if pytest has its own
-        our_log_file = str(log_dir / "log.txt")
-        our_err_file = str(log_dir / "log.err")
-        
+        our_log_file = str(log_dir / "app.log")
+        our_err_file = str(log_dir / "error.log")
+
         has_our_log_handler = any(
-            isinstance(h, logging.FileHandler) and 
-            hasattr(h, 'baseFilename') and 
-            Path(h.baseFilename).name == "log.txt"
+            isinstance(h, logging.FileHandler) and
+            hasattr(h, 'baseFilename') and
+            Path(h.baseFilename).name == "app.log"
             for h in root_logger.handlers
         )
         has_our_err_handler = any(
-            isinstance(h, logging.FileHandler) and 
-            hasattr(h, 'baseFilename') and 
-            Path(h.baseFilename).name == "log.err"
+            isinstance(h, logging.FileHandler) and
+            hasattr(h, 'baseFilename') and
+            Path(h.baseFilename).name == "error.log"
             for h in root_logger.handlers
         )
-        has_console_handler = any(isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler) for h in root_logger.handlers)
-        
-        # Debug: print handler info
-        if not has_our_log_handler:
-            print(f"[Logger Debug] Adding log.txt handler to {log_dir}")
-        else:
-            print(f"[Logger Debug] log.txt handler already exists")
-            
-        if not has_our_err_handler:
-            print(f"[Logger Debug] Adding log.err handler to {log_dir}")
-        else:
-            print(f"[Logger Debug] log.err handler already exists")
-        
+        has_console_handler = any(
+            isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+            for h in root_logger.handlers
+        )
+
         if not has_our_log_handler:
             # INFO log file (append mode to preserve all test logs)
             file_handler = logging.FileHandler(our_log_file, mode='a', encoding='utf-8')
             file_handler.setLevel(logging.INFO)
             file_handler.setFormatter(formatter)
-            
             root_logger.addHandler(file_handler)
-        
+            _write_session_header(our_log_file)
+
         if not has_our_err_handler:
             # ERROR log file (append mode to preserve all test logs)
             err_handler = logging.FileHandler(our_err_file, mode='a', encoding='utf-8')
             err_handler.setLevel(logging.ERROR)
             err_handler.setFormatter(formatter)
-            
             root_logger.addHandler(err_handler)
+            _write_session_header(our_err_file)
         
         if not has_console_handler:
             # Console output
@@ -384,7 +411,7 @@ def LogResult(passed, message):
 
 def clear_log_files() -> None:
     """
-    Delete the logger's own log files (log.txt and log.err) so that the next
+    Delete the logger's own log files (app.log and error.log) so that the next
     test run starts with a clean log.
 
     On Windows, FileHandler keeps the file open as long as the handler exists,
@@ -400,7 +427,7 @@ def clear_log_files() -> None:
         Nothing — failures are printed as warnings so test execution continues.
     """
     log_dir = _get_log_dir()
-    target_names = {'log.txt', 'log.err'}
+    target_names = {'app.log', 'error.log'}
 
     # ── Step 1: close and detach FileHandlers that own these files ────────────
     root_logger = logging.getLogger()
@@ -447,3 +474,124 @@ def clear_log_files() -> None:
 
 # Note: Logger initialization happens automatically when getting a logger
 # Legacy code can still call logConfig() explicitly for backward compatibility
+
+
+# ============================================================================
+# Structured Log Helper Functions (P2 — Modern API)
+# ============================================================================
+
+_STEP_SEP = '─' * 60
+_PHASE_SEP = '━' * 60
+
+
+def log_step_begin(lgr: logging.Logger, step_no: int, desc: str,
+                   total: int = 0, phase: str = '') -> None:
+    """Output a step-start banner to the log.
+
+    Example output:
+        ────────────────────────────────────────────────────────────
+          [STEP 1/9] Precondition — cleanup and create log directories | Phase: PRE-REBOOT
+        ────────────────────────────────────────────────────────────
+    """
+    total_str = f'/{total}' if total else ''
+    phase_str = f' | Phase: {phase}' if phase else ''
+    lgr.info(_STEP_SEP)
+    lgr.info(f'  [STEP {step_no}{total_str}] {desc}{phase_str}')
+    lgr.info(_STEP_SEP)
+
+
+def log_step_end(lgr: logging.Logger, step_no: int, passed: bool,
+                 elapsed: float, total: int = 0) -> None:
+    """Output a step-end summary (PASS/FAIL + elapsed time) to the log.
+
+    Example output:
+          [STEP 1/9] PASS  |  Elapsed: 2.7s
+        ────────────────────────────────────────────────────────────
+    """
+    status = 'PASS' if passed else 'FAIL'
+    total_str = f'/{total}' if total else ''
+    lgr.info(f'  [STEP {step_no}{total_str}] {status}  |  Elapsed: {elapsed:.1f}s')
+    lgr.info(_STEP_SEP)
+
+
+def log_kv(lgr: logging.Logger, label: str, value, unit: str = '') -> None:
+    """Log a key-value metric in aligned format.
+
+    Example output:
+          SW DRIPS                       = 85.3 %
+          HW DRIPS                       = 91.2 %
+    """
+    unit_str = f' {unit}' if unit else ''
+    lgr.info(f'  {label:<30} = {value}{unit_str}')
+
+
+def log_table(lgr: logging.Logger, headers: list, rows: list) -> None:
+    """Log a structured ASCII table.
+
+    Example output:
+        ┌──────────┬───────────┬───────────┬──────┐
+        │ Session  │ SW DRIPS  │ HW DRIPS  │ PASS │
+        ├──────────┼───────────┼───────────┼──────┤
+        │ 1        │ 85.3%     │ 91.2%     │ PASS │
+        │ 2        │ 78.1%     │ 82.0%     │ FAIL │
+        └──────────┴───────────┴───────────┴──────┘
+    """
+    if not rows:
+        return
+    col_widths = [
+        max(len(str(h)), max((len(str(row[i])) for row in rows), default=0))
+        for i, h in enumerate(headers)
+    ]
+
+    def _row_line(cells):
+        return '│ ' + ' │ '.join(str(c).ljust(col_widths[i]) for i, c in enumerate(cells)) + ' │'
+
+    def _sep_line(left, mid, right):
+        return left + mid.join('─' * (w + 2) for w in col_widths) + right
+
+    lgr.info(_sep_line('┌', '┬', '┐'))
+    lgr.info(_row_line(headers))
+    lgr.info(_sep_line('├', '┼', '┤'))
+    for row in rows:
+        lgr.info(_row_line(row))
+    lgr.info(_sep_line('└', '┴', '┘'))
+
+
+def log_exception(lgr: logging.Logger, msg: str, exc: Exception,
+                  context: dict = None) -> None:
+    """Log an exception with optional context dict, including full traceback.
+
+    Designed to be called from within an ``except`` block so that
+    ``traceback.format_exc()`` captures the active exception.
+
+    Example usage:
+        try:
+            ctrl.install()
+        except Exception as e:
+            log_exception(logger, "PHM install failed", e,
+                          context={"install_path": cfg["install_path"], "step": "TEST_02"})
+            raise
+    """
+    lgr.error(f'{msg}: {type(exc).__name__}: {exc}')
+    if context:
+        for k, v in context.items():
+            lgr.error(f'  Context [{k}] = {v}')
+    tb = traceback.format_exc()
+    if tb and tb.strip() not in ('NoneType: None', 'None'):
+        for line in tb.rstrip().splitlines():
+            lgr.error(f'  {line}')
+
+
+def log_phase(lgr: logging.Logger, phase_name: str) -> None:
+    """Log a phase transition banner (e.g. PRE-REBOOT / POST-REBOOT).
+
+    Example output:
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          Phase: PRE-REBOOT
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    """
+    lgr.info('')
+    lgr.info(_PHASE_SEP)
+    lgr.info(f'  Phase: {phase_name}')
+    lgr.info(_PHASE_SEP)
+    lgr.info('')

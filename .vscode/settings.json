@@ -1,0 +1,40 @@
+{
+  "logFileHighlighter.customPatterns": [
+    // ── Level Keywords（裸字，直接匹配 Format B 輸出）──
+    { "pattern": "\\bERROR\\b",    "foreground": "#FF4C4C", "fontWeight": "bold" },
+    { "pattern": "\\bWARN\\b",     "foreground": "#FFA500", "fontWeight": "bold" },
+    { "pattern": "\\bINFO\\b",     "foreground": "#4FC3F7" },
+    { "pattern": "\\bDEBUG\\b",    "foreground": "#9E9E9E" },
+    { "pattern": "\\bCRITICAL\\b", "foreground": "#FF0000", "fontWeight": "bold", "fontStyle": "italic" },
+
+    // ── func:line 欄位（灰色，不搶眼但仍可辨識）──
+    { "pattern": "\\w+\\s*:\\s*\\d+\\s+-", "foreground": "#78909C" },
+
+    // ── Test Step Banners ──
+    { "pattern": "\\[STEP \\d+(/\\d+)?\\]", "foreground": "#B39DDB", "fontWeight": "bold" },
+    { "pattern": "\\bPASS\\b", "foreground": "#66BB6A", "fontWeight": "bold" },
+    { "pattern": "\\bFAIL\\b", "foreground": "#EF5350", "fontWeight": "bold" },
+    { "pattern": "✓",          "foreground": "#66BB6A" },
+    { "pattern": "✗",          "foreground": "#EF5350" },
+
+    // ── Phases & Session ──
+    { "pattern": "PRE-REBOOT|POST-REBOOT", "foreground": "#FFD54F", "fontWeight": "bold" },
+    { "pattern": "SESSION START",          "foreground": "#FFFFFF", "background": "#37474F", "fontWeight": "bold" },
+    { "pattern": "Phase:",                 "foreground": "#FFD54F" },
+
+    // ── Test Method Tags ──
+    { "pattern": "\\[TEST_0[0-9]\\]",          "foreground": "#80CBC4" },
+    { "pattern": "\\[SETUP\\]|\\[TEARDOWN\\]", "foreground": "#FFB74D" },
+
+    // ── Numeric Results ──
+    { "pattern": "\\d+\\.\\d+%",  "foreground": "#AED581" },
+    { "pattern": "timeout=\\d+",  "foreground": "#90CAF9" },
+    { "pattern": "Elapsed: [\\d.]+s", "foreground": "#CE93D8" }
+  ],
+
+  // 自動關聯 log 副檔名，讓 Log File Highlighter 對 .err 也生效
+  "files.associations": {
+    "*.log": "log",
+    "*.err": "log"
+  }
+}

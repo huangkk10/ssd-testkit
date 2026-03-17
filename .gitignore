@@ -124,7 +124,11 @@ dmypy.json
 .pyre/
 
 # IDE
-.vscode/
+# Ignore specific .vscode files, but allow settings.json
+.vscode/launch.json
+.vscode/extensions.json
+.vscode/tasks.json
+.vscode/c_cpp_properties.json
 .idea/
 *.swp
 *.swo
@@ -144,6 +148,7 @@ runner_info.json
 *.json
 !**/Config/Config.json
 !**/Config/*.json
+!.vscode/settings.json
 !requirements.txt
 
 # Ignore text files except specific ones
