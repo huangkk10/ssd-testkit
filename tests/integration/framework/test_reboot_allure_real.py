@@ -59,7 +59,6 @@ logger = get_module_logger(__name__)
 # Test class
 # ---------------------------------------------------------------------------
 
-@pytest.mark.hardware
 @pytest.mark.admin
 @pytest.mark.integration
 @pytest.mark.feature_power
