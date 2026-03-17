@@ -191,6 +191,19 @@ class TestRebootAllureReal(BaseTestCase):
         logger.info("[TEST_03] Pre-marking step before reboot")
         self.reboot_mgr.pre_mark_completed(request.node.name)
 
+        # Write a manual Allure result for this step BEFORE os._exit(0) kills
+        # the process.  allure-pytest's normal hook runs post-process and would
+        # never fire, so we force-flush the result file ourselves.
+        try:
+            import allure
+            allure.attach(
+                "Reboot triggered — Phase B will resume after system restart.",
+                name="Reboot Info",
+                attachment_type=allure.attachment_type.TEXT,
+            )
+        except ImportError:
+            pass
+
         logger.info("[TEST_03] Triggering real system reboot in 10 seconds...")
         self.reboot_mgr.setup_reboot(
             delay=10,

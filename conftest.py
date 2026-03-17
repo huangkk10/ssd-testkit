@@ -16,19 +16,29 @@ try:
 except ImportError:
     _ALLURE_AVAILABLE = False
 
-_REBOOT_STATE_FILE = Path("./pytest_reboot_state.json")
+_REBOOT_STATE_FILENAME = "pytest_reboot_state.json"
 
 
 def _is_post_reboot_recovery() -> bool:
-    """Read persisted reboot state to decide if this is a post-reboot resume."""
-    if not _REBOOT_STATE_FILE.exists():
-        return False
-    try:
-        import json
-        state = json.loads(_REBOOT_STATE_FILE.read_text())
-        return bool(state.get("is_recovering", False))
-    except Exception:
-        return False
+    """Search for any reboot state file under the project and return True if
+    any of them has is_recovering=True.
+
+    The state file is written relative to the test case directory (because
+    _setup_working_directory changes cwd), so we cannot rely on a fixed path
+    at the project root.  Instead we glob for the filename anywhere under the
+    current working directory (the project root when pytest_configure runs).
+    """
+    import json
+    # Check root-level first (fast path), then recurse into subdirectories
+    candidates = list(Path(".").glob(f"**/{_REBOOT_STATE_FILENAME}"))
+    for candidate in candidates:
+        try:
+            state = json.loads(candidate.read_text())
+            if state.get("is_recovering", False):
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def pytest_configure(config: pytest.Config) -> None:
