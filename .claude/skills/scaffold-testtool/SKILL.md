@@ -367,7 +367,7 @@ When a user asks about a known tool, read the corresponding reference file first
 - **Integration Test Reference**: `tests/integration/lib/testtool/test_cdi/` — canonical integration test
 - **Shared Integration Config**: `tests/integration/Config/Config.json` — per-tool path config
 - **Shared Integration conftest**: `tests/integration/conftest.py` — `TestCaseConfiguration` class
-- **Logger**: `lib/logger.py` — use `get_module_logger(__name__)` in all modules
+- **Logger**: `lib/logger.py` — format, file names, helper functions: `.claude/skills/scaffold-testtool/references/logger.md`
 - **Full Schema**: `.claude/skills/scaffold-testtool/references/tool_spec_schema.md`
 - **Burnin Example**: `.claude/skills/scaffold-testtool/references/burnin_example.md`
 - **Module Templates**: `.claude/skills/scaffold-testtool/references/module_templates.md`
@@ -458,7 +458,7 @@ def setup_test_class(self, request, testcase_config, runcard_params):
     cls.reboot_mgr = RebootManager(total_tests=cls._count_test_methods())
 
     phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
-    logger.info(f"[SETUP] Phase: {phase}")
+    log_phase(logger, phase)   # ← emits ━━━ Phase: PRE-REBOOT ━━━ banner
     logger.info(f"[SETUP] Test case: {testcase_config.case_id}  version: {testcase_config.case_version}")
     logger.info(f"[SETUP] Working directory: {test_dir}")
 
@@ -593,7 +593,7 @@ def setup_test_class(self, request, testcase_config, runcard_params):
     cls.reboot_mgr = RebootManager(total_tests=13)
 
     phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
-    logger.info(f"[SETUP] Phase: {phase}")
+    log_phase(logger, phase)   # ← emits ━━━ Phase: PRE-REBOOT ━━━ banner
 
     yield
 
@@ -804,7 +804,7 @@ self.reboot_mgr.loop_next(
 
 ## Important Notes
 
-- Always import logger with `from lib.logger import get_module_logger`
+- Always import logger with `from lib.logger import get_module_logger` — full API in `references/logger.md`
 - All controllers must be thread-safe: use `threading.Event` for stop signals
 - `status` property returns `None` while running, `True` on pass, `False` on fail
 - Use `sys.path.insert(0, str(Path(__file__).parent.parent.parent))` for imports
