@@ -622,22 +622,44 @@ class _VisualizerSession:
                 phm_link.click()
                 logger.info("Content.phm clicked")
                 page.wait_for_load_state("networkidle", timeout=30_000)
-                page.wait_for_timeout(2_000)
+                # Give PHM backend extra time to parse the trace into Angular
+                # scopes before interacting with the Visualizer tab.  In
+                # packaged/fast runs 2 s was insufficient; 5 s gives PHM's
+                # async parser more breathing room.
+                page.wait_for_timeout(5_000)
 
                 # ── Step 3: switch to Visualizer tab ──────────────────────
                 self._step(3, "Switch to the Visualizer tab")
-                vis_clicked = page.evaluate("""() => {
-                    const btn = [...document.querySelectorAll('button')]
-                        .find(b => b.title === 'Visualize metrics in a timeline');
-                    if (btn) { btn.click(); return btn.title; }
-                    const btn2 = [...document.querySelectorAll('button')]
-                        .find(b => (b.innerText || '').trim() === 'Visualizer');
-                    if (btn2) { btn2.click(); return 'Visualizer (by text)'; }
-                    return null;
-                }""")
-                assert vis_clicked, "Could not find Visualizer tab button."
-                logger.info("Visualizer tab: %s", vis_clicked)
-                page.wait_for_timeout(2_000)
+                # Use a native Playwright click (not page.evaluate) so that
+                # Angular's ng-click handler is triggered via a real browser
+                # event.  A synthetic JS .click() from evaluate() can silently
+                # no-op if Angular hasn't finished initialising the view yet.
+                _vis_selector = 'button[title="Visualize metrics in a timeline"]'
+                try:
+                    page.locator(_vis_selector).first.wait_for(
+                        state="visible", timeout=10_000
+                    )
+                    page.locator(_vis_selector).first.click()
+                    logger.info("Visualizer tab: Visualize metrics in a timeline (native click)")
+                except PWTimeoutError:
+                    # Fallback: try matching by inner text
+                    page.locator('button:has-text("Visualizer")').first.click(timeout=10_000)
+                    logger.info("Visualizer tab: Visualizer (text-match fallback)")
+
+                # Wait until the tree rows are actually present in the DOM —
+                # this confirms the Visualizer view has finished loading, not
+                # just that the tab button was clicked.
+                try:
+                    page.wait_for_selector(
+                        "tr.tree-grid-row", state="visible", timeout=15_000
+                    )
+                    logger.info("Visualizer tree rows visible — tab loaded successfully")
+                except PWTimeoutError:
+                    logger.warning(
+                        "Tree rows not visible after 15 s — Visualizer tab may not have "
+                        "switched.  Proceeding anyway."
+                    )
+                page.wait_for_timeout(1_000)
                 self._dump_debug(page, "after_visualizer_tab")
 
                 # ── Step 4: check metric + expand ─────────────────────────
@@ -677,45 +699,63 @@ class _VisualizerSession:
                         logger.warning("Child still unchecked — force-checking…")
                         self._tree_check(page, self._device_filter)
 
-                    # ── Re-trigger Angular change detection via native click ──
-                    # JavaScript .click() inside page.evaluate() may not trigger
-                    # Angular Zone.js change detection, causing the canvas to never render.
-                    # Use Playwright's native locator.click() to simulate a real mouse event,
-                    # forcing Angular to detect the tree-item state change and re-render the chart.
-                    logger.info("Re-triggering Angular change detection via native Playwright click…")
-                    try:
-                        _kept_rows = page.locator("tr.tree-grid-row").filter(
-                            has_text=self._device_filter
-                        )
-                        _kept_lbl = _kept_rows.locator("button.tree-label").first
-                        _kept_lbl.wait_for(state="visible", timeout=5_000)
-                        _kept_lbl.click()         # uncheck → Angular detects change
-                        page.wait_for_timeout(800)
-                        _kept_lbl.click()         # check again → triggers chart render
-                        page.wait_for_timeout(3_000)
-                        logger.info("Native re-click done — Angular should now render chart")
-                    except Exception as _e:
-                        logger.warning("Native re-click failed (non-fatal): %s — continuing", _e)
-                        page.wait_for_timeout(3_000)
+                    # ── Force Angular digest cycle via $rootScope.$apply() ────
+                    # page.evaluate() JS .click() may not reliably trigger Angular
+                    # Zone.js change detection (especially in packaged/fast runs).
+                    # Calling $rootScope.$apply() directly is the canonical way to
+                    # force Angular 1.x to process all pending scope changes and
+                    # re-render the chart canvas.
+                    # As a secondary measure, also fire a bubbling dispatchEvent on
+                    # the kept button so the Angular ng-click handler sees a real event.
+                    logger.info("Forcing Angular digest cycle via $rootScope.$apply()…")
+                    _apply_result = page.evaluate(
+                        """(keepText) => {
+                            // 1. dispatchEvent on the kept button to satisfy ng-click
+                            try {
+                                for (const row of document.querySelectorAll('tr.tree-grid-row')) {
+                                    const nb = row.querySelector('span.ng-binding');
+                                    if (!nb || !nb.innerText.includes(keepText)) continue;
+                                    const lbl = row.querySelector('button.tree-label');
+                                    if (lbl) {
+                                        const evt = new MouseEvent('click',
+                                            {bubbles: true, cancelable: true, view: window});
+                                        lbl.dispatchEvent(evt);
+                                    }
+                                    break;
+                                }
+                            } catch(e) { /* ignore */ }
+                            // 2. force Angular $rootScope.$apply()
+                            try {
+                                const inj = angular.element(document.body).injector();
+                                inj.get('$rootScope').$apply();
+                                return '$apply ok';
+                            } catch(e) {
+                                return '$apply error: ' + e.message;
+                            }
+                        }""",
+                        self._device_filter,
+                    )
+                    logger.info("Angular digest result: %s", _apply_result)
+                    page.wait_for_timeout(3_000)
                 else:
                     self._step(5, "No device_filter set — all children kept as-is")
 
-                    # ── Re-trigger Angular change detection (no device_filter) ──
-                    logger.info("Re-triggering Angular change detection (metric-level click)…")
-                    try:
-                        _metric_rows = page.locator("tr.tree-grid-row").filter(
-                            has_text=self._metric_name
-                        )
-                        _metric_lbl = _metric_rows.locator("button.tree-label").first
-                        _metric_lbl.wait_for(state="visible", timeout=5_000)
-                        _metric_lbl.click()       # uncheck
-                        page.wait_for_timeout(800)
-                        _metric_lbl.click()       # check again → triggers chart render
-                        page.wait_for_timeout(3_000)
-                        logger.info("Native re-click done")
-                    except Exception as _e:
-                        logger.warning("Native re-click (metric) failed (non-fatal): %s", _e)
-                        page.wait_for_timeout(3_000)
+                    # ── Force Angular digest cycle via $rootScope.$apply() ────
+                    logger.info("Forcing Angular digest cycle via $rootScope.$apply() (no device_filter)…")
+                    _apply_result = page.evaluate(
+                        """(metricText) => {
+                            try {
+                                const inj = angular.element(document.body).injector();
+                                inj.get('$rootScope').$apply();
+                                return '$apply ok';
+                            } catch(e) {
+                                return '$apply error: ' + e.message;
+                            }
+                        }""",
+                        self._metric_name,
+                    )
+                    logger.info("Angular digest result: %s", _apply_result)
+                    page.wait_for_timeout(3_000)
 
                 # ── Wait for canvas / SVG chart to render ──────────────────
                 # Give Angular time to process tree-item clicks before polling.
