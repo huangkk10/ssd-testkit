@@ -16,6 +16,33 @@ try:
 except ImportError:
     _ALLURE_AVAILABLE = False
 
+_REBOOT_STATE_FILE = Path("./pytest_reboot_state.json")
+
+
+def _is_post_reboot_recovery() -> bool:
+    """Read persisted reboot state to decide if this is a post-reboot resume."""
+    if not _REBOOT_STATE_FILE.exists():
+        return False
+    try:
+        import json
+        state = json.loads(_REBOOT_STATE_FILE.read_text())
+        return bool(state.get("is_recovering", False))
+    except Exception:
+        return False
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Clean allure-results only on a fresh run, not after a reboot recovery."""
+    allure_dir = Path("allure-results")
+    if not allure_dir.exists():
+        return
+    if _is_post_reboot_recovery():
+        # Post-reboot: keep Phase A results so the final report is complete
+        return
+    # Fresh run: wipe previous results (equivalent to --clean-alluredir)
+    import shutil
+    shutil.rmtree(allure_dir, ignore_errors=True)
+
 _HARDWARE_MARKS = {"real_bat", "real", "hardware"}
 
 
