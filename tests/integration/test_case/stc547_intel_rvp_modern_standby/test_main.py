@@ -53,7 +53,7 @@ from lib.testtool.sleepstudy.history_cleaner import SleepHistoryCleaner
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.config import OsConfigProfile
 from lib.testtool.osconfig.state_manager import OsConfigStateManager
-from lib.logger import get_module_logger, clear_log_files
+from lib.logger import get_module_logger, clear_log_files, log_phase, log_table
 from framework.reboot_manager import RebootManager
 
 logger = get_module_logger(__name__)
@@ -96,7 +96,7 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         Cleans:
         1. SleepStudy report  (testlog/sleepstudy-report.html)
         2. PHM traces         (testlog/PHMTraces/)
-        3. Test-specific log files  (log/STC-547/log.txt, log.err, ...)
+        3. Test-specific log files  (log/STC-547/app.log, error.log, ...)
         """
         logger.info("[_cleanup_test_logs] Starting test log cleanup")
 
@@ -126,8 +126,8 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         log_path = self.config.get('log_path', './log/STC-547')
         cleanup_directory(log_path, 'test log directory', logger)
 
-        # 3a. Clear the logger's own log files (lib/logger.py writes to ./log/log.txt
-        #     and ./log/log.err, separate from the test-specific log_path above).
+        # 3a. Clear the logger's own log files (lib/logger.py writes to ./log/app.log
+        #     and ./log/error.log, separate from the test-specific log_path above).
         clear_log_files()
         logger.info("[_cleanup_test_logs] Logger log files cleared")
 
@@ -154,7 +154,7 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         cls.reboot_mgr = RebootManager(total_tests=cls._count_test_methods())
 
         phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
-        logger.info(f"[SETUP] Phase: {phase}")
+        log_phase(logger, phase)
         logger.info(f"[SETUP] Test case: {testcase_config.case_id}  version: {testcase_config.case_version}")
         logger.info(f"[SETUP] Working directory: {test_dir}")
 
@@ -473,8 +473,12 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
                 f"{self._phm_start_time} and {self._phm_end_time}"
             )
         logger.info(f"[TEST_06] Found {len(sessions)} sleep session(s)")
-        for s in sessions:
-            logger.info(f"[TEST_06]   Session {s.session_id}: SW={s.sw_pct}%  HW={s.hw_pct}%")
+        log_table(logger,
+                  ["Session", "SW DRIPS", "HW DRIPS"],
+                  [[s.session_id,
+                    f"{s.sw_pct}%" if s.sw_pct is not None else "N/A",
+                    f"{s.hw_pct}%" if s.hw_pct is not None else "N/A"]
+                   for s in sessions])
 
         # Guard: if every session has None DRIPS values, there is no data to
         # validate.  validate_drips skips None entries by design (short /
