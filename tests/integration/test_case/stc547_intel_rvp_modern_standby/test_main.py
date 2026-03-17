@@ -239,8 +239,19 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
             Path(d).mkdir(parents=True, exist_ok=True)
             logger.info(f"[TEST_01] Directory ready: {d}")
 
-        # Step 4: Ensure playwright Chromium browser binary is installed.
-        ensure_playwright_chromium(logger)
+        # Step 4: Ensure Playwright Chromium is installed.
+        # force=True: removes any existing chromium-* dir first, then reinstalls
+        # from ./bin/playwright-browsers/ (bundled) or via online download.
+        if not ensure_playwright_chromium(logger, force=True):
+            pytest.fail(
+                "[TEST_01] Playwright Chromium is not installed and could not be set up.\n"
+                "Options to resolve:\n"
+                "  A) Bundle Chromium with the package:\n"
+                "       playwright install chromium\n"
+                "       xcopy /E /I %LOCALAPPDATA%\\playwright-browsers bin\\playwright-browsers\n"
+                "  B) Pre-install on the target PC before running (requires network):\n"
+                "       playwright install chromium"
+            )
 
         logger.info("[TEST_01] Precondition complete")
 
