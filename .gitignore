@@ -196,6 +196,10 @@ desktop.ini
 tests/unit/lib/testtool/test_smartcheck/smartcheck_custom_output
 packaging/release
 
+# Allure
+allure-results/
+allure-report/
+
 !requirements.txt
 
 # Ignore PHM trace folders created by smoke test runs

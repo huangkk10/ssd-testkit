@@ -1,16 +1,29 @@
 """
 Test Decorators - Provide test step management
 """
+import contextlib
 import functools
 import logging
 import time
 
 from lib.logger import log_step_begin, log_step_end
 
+try:
+    import allure as _allure
+
+    def _allure_step(title):
+        return _allure.step(title)
+
+except ImportError:
+    @contextlib.contextmanager
+    def _allure_step(title):
+        yield
+
 
 def step(step_number: int, description: str = ""):
     """
-    Test step decorator — emits structured step-begin / step-end banners.
+    Test step decorator — emits structured step-begin / step-end banners
+    and records the step in Allure report when allure-pytest is installed.
 
     Usage:
         @step(1, "Initialize test environment")
@@ -22,10 +35,12 @@ def step(step_number: int, description: str = ""):
         def wrapper(*args, **kwargs):
             lgr = logging.getLogger(func.__module__)
             desc = description or func.__name__
+            step_title = f"[STEP {step_number}] {desc}"
             log_step_begin(lgr, step_number, desc)
             start_time = time.time()
             try:
-                result = func(*args, **kwargs)
+                with _allure_step(step_title):
+                    result = func(*args, **kwargs)
                 elapsed = time.time() - start_time
                 log_step_end(lgr, step_number, passed=True, elapsed=elapsed)
                 return result

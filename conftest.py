@@ -8,6 +8,13 @@ To run them, pass --run-hardware on the command line:
 """
 
 import pytest
+from pathlib import Path
+
+try:
+    import allure as _allure
+    _ALLURE_AVAILABLE = True
+except ImportError:
+    _ALLURE_AVAILABLE = False
 
 _HARDWARE_MARKS = {"real_bat", "real", "hardware"}
 
@@ -35,3 +42,76 @@ def pytest_collection_modifyitems(
         item_marks = {m.name for m in item.iter_markers()}
         if item_marks & _HARDWARE_MARKS:
             item.add_marker(skip)
+
+
+# ---------------------------------------------------------------------------
+# Allure integration
+# ---------------------------------------------------------------------------
+
+_ALLURE_MARKER_MAP = {
+    # Client dimension
+    "client_lenovo":  ("tag",     "Client: Lenovo"),
+    "client_hp":      ("tag",     "Client: HP"),
+    "client_samsung": ("tag",     "Client: Samsung"),
+    "client_micron":  ("tag",     "Client: Micron"),
+    "client_asus":    ("tag",     "Client: ASUS"),
+    "client_acer":    ("tag",     "Client: Acer"),
+    # Interface dimension
+    "interface_pcie": ("tag",     "Interface: PCIe"),
+    "interface_sata": ("tag",     "Interface: SATA"),
+    "interface_nvme": ("tag",     "Interface: NVMe"),
+    # Project dimension
+    "project_storagedv": ("epic", "StorageDV"),
+    "project_ciq":       ("epic", "CIQ"),
+    "project_standard":  ("epic", "Standard"),
+    # Feature dimension
+    "feature_burnin":         ("feature", "BurnIN Stress"),
+    "feature_modern_standby": ("feature", "Modern Standby"),
+    "feature_power":          ("feature", "Power Management"),
+    "feature_storage":        ("feature", "Storage Stress"),
+}
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Store per-phase reports on the item so fixtures can read them."""
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, f"rep_{rep.when}", rep)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_setup(item):
+    """Map pytest markers to Allure Epic/Feature/Tag labels."""
+    if _ALLURE_AVAILABLE:
+        for marker in item.iter_markers():
+            entry = _ALLURE_MARKER_MAP.get(marker.name)
+            if entry is None:
+                continue
+            label_type, label_value = entry
+            if label_type == "epic":
+                _allure.dynamic.epic(label_value)
+            elif label_type == "feature":
+                _allure.dynamic.feature(label_value)
+            else:
+                _allure.dynamic.tag(label_value)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def attach_logs_on_failure(request):
+    """Attach app.log / error.log to Allure report when a test fails."""
+    yield
+    if not _ALLURE_AVAILABLE:
+        return
+    rep = getattr(request.node, "rep_call", None)
+    if rep is None or not rep.failed:
+        return
+    for log_name in ("app.log", "error.log"):
+        log_path = Path("log") / log_name
+        if log_path.exists():
+            _allure.attach.file(
+                str(log_path),
+                name=log_name,
+                attachment_type=_allure.attachment_type.TEXT,
+            )

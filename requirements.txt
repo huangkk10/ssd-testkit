@@ -23,3 +23,6 @@ WMI>=1.5.1
 async-timeout>=4.0.0
 
 PyYAML
+
+# Test reporting
+allure-pytest>=2.13.0

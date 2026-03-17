@@ -526,7 +526,7 @@ def log_kv(lgr: logging.Logger, label: str, value, unit: str = '') -> None:
 
 
 def log_table(lgr: logging.Logger, headers: list, rows: list) -> None:
-    """Log a structured ASCII table.
+    """Log a structured ASCII table, and attach it to Allure when available.
 
     Example output:
         ┌──────────┬───────────┬───────────┬──────┐
@@ -549,12 +549,23 @@ def log_table(lgr: logging.Logger, headers: list, rows: list) -> None:
     def _sep_line(left, mid, right):
         return left + mid.join('─' * (w + 2) for w in col_widths) + right
 
-    lgr.info(_sep_line('┌', '┬', '┐'))
-    lgr.info(_row_line(headers))
-    lgr.info(_sep_line('├', '┼', '┤'))
-    for row in rows:
-        lgr.info(_row_line(row))
-    lgr.info(_sep_line('└', '┴', '┘'))
+    lines = [
+        _sep_line('┌', '┬', '┐'),
+        _row_line(headers),
+        _sep_line('├', '┼', '┤'),
+        *[_row_line(row) for row in rows],
+        _sep_line('└', '┴', '┘'),
+    ]
+    table_str = '\n'.join(lines)
+    for line in lines:
+        lgr.info(line)
+
+    try:
+        import allure
+        allure.attach(table_str, name="Table",
+                      attachment_type=allure.attachment_type.TEXT)
+    except ImportError:
+        pass
 
 
 def log_exception(lgr: logging.Logger, msg: str, exc: Exception,
