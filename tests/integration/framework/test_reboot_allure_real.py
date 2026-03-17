@@ -124,7 +124,7 @@ class TestRebootAllureReal(BaseTestCase):
         Remove stale state from previous runs and create fresh directories.
         Runs only on the very first boot; subsequent boots skip it automatically.
         """
-        log_phase(logger, "PRE-REBOOT")
+        log_phase(logger, "PRE-REBOOT")  
         logger.info("[TEST_01] Precondition started")
 
         # Remove stale reboot state so the run starts clean
