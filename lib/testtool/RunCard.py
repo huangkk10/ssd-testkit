@@ -482,9 +482,9 @@ class Runcard:
             selected_disk = self._select_disk_by_type(config, disk_type)
             
             if not selected_disk:
-                error_msg = f"Error: Unable to find suitable {disk_type.name} disk"
-                logger.LogErr(error_msg)
-                self.error_message = error_msg
+                warn_msg = f"Warning: Unable to find suitable {disk_type.name} disk — DUT info will be incomplete"
+                logger.LogWarn(warn_msg)
+                self.error_message = warn_msg
                 return False
             
             disk_section, disk_id = selected_disk
@@ -1069,12 +1069,10 @@ class Runcard:
                 logger.LogErr(error_msg)
                 raise Exception(error_msg)
             
-            # Execute load_dut_info and check result
+            # Execute load_dut_info and check result (non-fatal — DUT info is best-effort)
             result = self.load_dut_info()
             if not result:
-                error_msg = 'load_dut_info fail'
-                logger.LogErr(error_msg)
-                raise Exception(error_msg)
+                logger.LogWarn('load_dut_info failed — DUT info will be missing from RunCard (continuing)')
             
         # Set both start and end time to current time simultaneously to avoid time inconsistency
         current_time = datetime.now()
