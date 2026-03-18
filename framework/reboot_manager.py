@@ -348,7 +348,11 @@ class RebootManager:
         user = getpass.getuser()
         bat_path = self.STARTUP_PATH.format(user)
 
-        current_dir = os.getcwd()
+        # Use project root (pytest.ini location) instead of os.getcwd().
+        # When setup_reboot() is called, _setup_working_directory already
+        # changed cwd to the test-case subdirectory, which would cause
+        # allure-results/ to be written there (separate from Phase A).
+        current_dir = self._find_project_root(test_file)
         is_frozen = getattr(sys, 'frozen', False)
 
         if is_frozen:
@@ -380,6 +384,19 @@ cd /d {current_dir}
         if test_file:
             print(f"[RebootManager] Will resume test file: {test_file}")
     
+    def _find_project_root(self, test_file=None) -> str:
+        """Return the project root directory (where pytest.ini lives).
+
+        Walks up from test_file (or cwd) until it finds pytest.ini.
+        Falls back to cwd if pytest.ini is not found.
+        """ 
+        # Start from test_file directory if provided, else cwd
+        start = Path(test_file).resolve().parent if test_file else Path(os.getcwd())
+        for directory in [start] + list(start.parents):
+            if (directory / 'pytest.ini').exists() or (directory / 'setup.cfg').exists():
+                return str(directory)
+        return os.getcwd()  # fallback
+
     def cleanup(self):
         """Remove persisted state and the auto-start script (if present)."""
         import logging
