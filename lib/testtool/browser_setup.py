@@ -27,9 +27,15 @@ resolves browser paths, both for the ``launch()`` check and for the
 **Bundled browser support**
 -------------------------------------
 When ``ensure_playwright_chromium()`` is called, it first checks for a bundled
-Chromium directory at ``<cwd>/bin/playwright-browsers/``.  If found, it
-overrides ``PLAYWRIGHT_BROWSERS_PATH`` to point there — enabling fully offline
-operation on target PCs without network access.
+Chromium directory at ``<app_dir>/bin/playwright-browsers/`` where
+``<app_dir>`` is resolved via ``path_manager.app_dir`` in packaged executables
+(safe at import time, ignores process cwd) or via ``Path(__file__).parents[2]``
+in development.  If found, ``PLAYWRIGHT_BROWSERS_PATH`` is overridden there —
+enabling fully offline operation on target PCs without network access.
+
+This resolution also runs at **module import time**, so post-reboot recovery
+runs where ``test_01_precondition`` is skipped still have the correct browser
+path in place before ``test_05`` calls ``open_browser()``.
 
 Priority order:
   1. ``<cwd>/bin/playwright-browsers/``  (shipped inside the release package)
@@ -53,11 +59,53 @@ _PERSISTENT_BROWSERS_DIR = os.path.join(
     os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
     "playwright-browsers",
 )
-# setdefault: only set if the caller hasn't already overridden it
-os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", _PERSISTENT_BROWSERS_DIR)
 
-# Relative path (from cwd) where a bundled Chromium may be pre-placed.
+# Sub-path (relative to the app/project root) where a bundled Chromium lives.
 _BUNDLED_BROWSERS_RELPATH = "bin/playwright-browsers"
+
+
+def _resolve_bundled_dir() -> Path:
+    """
+    Return the absolute path to the bundled browser directory.
+
+    In a PyInstaller-packaged exe ``path_manager.app_dir`` is the flat exe
+    directory regardless of the *process* cwd, so it is safe to call at any
+    time — including at module import time before the fixture has called
+    ``os.chdir()``.
+
+    In a development environment the project root is inferred from this
+    file's location (``lib/testtool/browser_setup.py`` → 2 parents up).
+    """
+    try:
+        from path_manager import path_manager as _pm  # type: ignore[import]
+        base = Path(_pm.app_dir)
+    except ImportError:
+        # Development environment — project root is 2 dirs above this file.
+        base = Path(__file__).resolve().parents[2]
+    return base / _BUNDLED_BROWSERS_RELPATH
+
+
+# ---------------------------------------------------------------------------
+# Module-level: resolve PLAYWRIGHT_BROWSERS_PATH immediately on import.
+#
+# This must happen at import time (not only inside ensure_playwright_chromium)
+# so that the correct path is in effect for EVERY process launch — including
+# post-reboot recovery runs where test_01_precondition (which calls
+# ensure_playwright_chromium) is skipped because it already completed.
+#
+# Using _resolve_bundled_dir() (absolute path via path_manager) rather than
+# a cwd-relative Path() avoids the pitfall where the auto-start BAT on
+# Windows launches the exe with an unpredictable cwd.
+#
+# Priority:
+#   1. <app_dir>/bin/playwright-browsers/  — bundled, offline-capable
+#   2. %LOCALAPPDATA%/playwright-browsers  — persistent per-machine cache
+# ---------------------------------------------------------------------------
+_bundled_at_import = _resolve_bundled_dir()
+if _bundled_at_import.exists():
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_bundled_at_import)
+else:
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", _PERSISTENT_BROWSERS_DIR)
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -113,7 +161,7 @@ def ensure_playwright_chromium(logger=None, force: bool = False) -> bool:
             logger.warning(msg)
 
     # ── Step 0: resolve browser path (bundled takes priority) ────────────
-    bundled_dir = Path(_BUNDLED_BROWSERS_RELPATH)
+    bundled_dir = _resolve_bundled_dir()
     using_bundled = bundled_dir.exists()
     if using_bundled:
         browsers_dir = str(bundled_dir.resolve())
