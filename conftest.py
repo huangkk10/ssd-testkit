@@ -80,6 +80,26 @@ def pytest_collection_modifyitems(
         if item_marks & _HARDWARE_MARKS:
             item.add_marker(skip)
 
+    # Deselect already-completed tests during post-reboot recovery so that
+    # allure-pytest does NOT generate a SKIPPED result that overwrites the
+    # PASSED result written during the pre-reboot session.
+    if _is_post_reboot_recovery():
+        import json
+        completed: set[str] = set()
+        for candidate in Path('.').glob(f'**/{_REBOOT_STATE_FILENAME}'):
+            try:
+                state = json.loads(candidate.read_text())
+                completed.update(state.get('completed_tests', []))
+            except Exception:
+                pass
+        if completed:
+            keep, deselect = [], []
+            for item in items:
+                (deselect if item.name in completed else keep).append(item)
+            if deselect:
+                config.hook.pytest_deselected(items=deselect)
+                items[:] = keep
+
 
 # ---------------------------------------------------------------------------
 # Allure integration
