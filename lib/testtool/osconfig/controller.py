@@ -134,7 +134,12 @@ def _build_action_list(
     if profile.disable_auto_reboot:
         actions.append(AutoRebootAction(snapshot_store=s))
     if profile.enable_auto_admin_logon:
-        actions.append(AutoAdminLogonAction(snapshot_store=s))
+        actions.append(AutoAdminLogonAction(
+            username=profile.auto_login_username or None,
+            password=profile.auto_login_password or None,
+            domain=profile.auto_login_domain or None,
+            snapshot_store=s,
+        ))
     if profile.set_small_memory_dump:
         actions.append(MemoryDumpAction(snapshot_store=s))
 
