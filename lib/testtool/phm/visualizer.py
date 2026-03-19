@@ -57,6 +57,7 @@ except ImportError:
     _PW_OK = False
 
 from lib.logger import get_module_logger
+from lib.testtool.browser_setup import ensure_playwright_chromium
 logger = get_module_logger(__name__)
 
 # ── Default paths ─────────────────────────────────────────────────────────────
@@ -560,6 +561,8 @@ class _VisualizerSession:
         latest_scenario = self._find_latest_scenario_dir()
         contents_cycl   = self._find_contents_cycl(latest_scenario)
         logger.info("Contents.cycl : %s", contents_cycl)
+
+        ensure_playwright_chromium(logger)
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=cfg.headless)
