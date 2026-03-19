@@ -161,7 +161,16 @@ def ensure_playwright_chromium(logger=None, force: bool = False) -> bool:
             logger.warning(msg)
 
     # ── Step 0: resolve browser path (bundled takes priority) ────────────
+    # _resolve_bundled_dir() is evaluated at import time and uses the project
+    # root, but each test case may keep its OWN bundled browser under its own
+    # directory (e.g. tests/.../stc547.../bin/playwright-browsers).  By the
+    # time this function is called, os.chdir() has already moved cwd into the
+    # test-case directory, so we also check the cwd-relative path and prefer
+    # it when it exists.
     bundled_dir = _resolve_bundled_dir()
+    cwd_bundled = Path.cwd() / _BUNDLED_BROWSERS_RELPATH
+    if cwd_bundled.exists():
+        bundled_dir = cwd_bundled
     using_bundled = bundled_dir.exists()
     if using_bundled:
         browsers_dir = str(bundled_dir.resolve())
