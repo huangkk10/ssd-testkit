@@ -410,7 +410,7 @@ class _VisualizerSession:
                     const lbl = rows[i].querySelector('button.tree-label');
                     if (!lbl) continue;
                     const nb = lbl.querySelector('span.ng-binding');
-                    if (nb && nb.innerText.trim() === parentText) {
+                    if (nb && nb.innerText.includes(parentText)) {
                         parentIdx = i;
                         break;
                     }
