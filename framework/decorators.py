@@ -3,6 +3,7 @@ Test Decorators - Provide test step management
 """
 import contextlib
 import functools
+import inspect
 import logging
 import time
 
@@ -49,6 +50,12 @@ def step(step_number: int, description: str = ""):
                 log_step_end(lgr, step_number, passed=False, elapsed=elapsed)
                 raise
 
+        # Explicitly copy the original function's signature so pytest can
+        # discover fixture parameters (e.g. `request`) even though the wrapper
+        # itself only declares (*args, **kwargs).
+        # pytest uses inspect.signature(func, follow_wrapped=False), which does
+        # NOT follow __wrapped__ but DOES respect an explicit __signature__.
+        wrapper.__signature__ = inspect.signature(func)
         return wrapper
     return decorator
 
