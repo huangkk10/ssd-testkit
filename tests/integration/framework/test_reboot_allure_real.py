@@ -44,6 +44,7 @@ import pytest
 from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.reboot_manager import RebootManager
+from lib.allure_helper import write_allure_result_before_exit
 from lib.logger import (
     get_module_logger,
     clear_log_files,
