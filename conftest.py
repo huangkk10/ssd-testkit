@@ -59,13 +59,14 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Remove spurious allure SKIPPED results written for already-completed
-    tests during Phase B.
+    """Clean up allure-results at the end of a post-reboot (Phase B) session.
 
-    When deselection fails for any reason, BaseTestCase.setup_teardown_function
-    calls ``pytest.skip("{name} already completed")`` which causes allure-pytest
-    to write a SKIPPED result that overwrites the Phase-A PASSED result.
-    This hook scans allure-results at session end and deletes those files.
+    Does two things:
+    1. Remove any SKIPPED results whose message contains "already completed"
+       (written by BaseTestCase.setup_teardown_function when deselection fails).
+    2. Deduplicate results with the same fullName — keeps the best-status /
+       latest result and deletes stale copies left by previous failed runs.
+       Priority: passed > failed > broken > skipped (then latest stop time).
     """
     if not _IS_POST_REBOOT_SESSION or not _ALLURE_AVAILABLE:
         return
@@ -74,7 +75,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         return
     import json
     removed = 0
-    for result_file in allure_dir.glob("*-result.json"):
+
+    # ── Pass 1: remove spurious "already completed" SKIP results ────────────
+    for result_file in list(allure_dir.glob("*-result.json")):
         try:
             result = json.loads(result_file.read_text(encoding="utf-8"))
         except Exception:
@@ -85,9 +88,38 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         if "already completed" in msg:
             result_file.unlink(missing_ok=True)
             removed += 1
+
+    # ── Pass 2: deduplicate by fullName ──────────────────────────────────────
+    # Collects all remaining result files, groups by fullName, and keeps only
+    # the "best" one (PASS preferred; then latest stop timestamp as tiebreaker).
+    _STATUS_RANK = {"passed": 0, "failed": 1, "broken": 2, "skipped": 3}
+    by_name: dict = {}
+    for result_file in allure_dir.glob("*-result.json"):
+        try:
+            result = json.loads(result_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        full_name = result.get("fullName") or result.get("name", "")
+        if not full_name:
+            continue
+        by_name.setdefault(full_name, []).append((result_file, result))
+
+    for full_name, entries in by_name.items():
+        if len(entries) <= 1:
+            continue
+        # Sort: best status first, then latest stop time first
+        entries.sort(key=lambda x: (
+            _STATUS_RANK.get(x[1].get("status", ""), 9),
+            -x[1].get("stop", 0),
+        ))
+        # Keep entries[0], delete the rest
+        for stale_file, _ in entries[1:]:
+            stale_file.unlink(missing_ok=True)
+            removed += 1
+
     if removed:
-        print(f"\n[conftest] Removed {removed} spurious 'already completed' "
-              "SKIP result(s) from allure-results")
+        print(f"\n[conftest] Cleaned {removed} duplicate/spurious result(s) "
+              "from allure-results")
 
 
 _HARDWARE_MARKS = {"real_bat", "real", "hardware"}
