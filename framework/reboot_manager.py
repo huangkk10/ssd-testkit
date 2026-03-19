@@ -14,6 +14,8 @@ from pathlib import Path
 import getpass
 import pytest
 
+_UNSET = object()  # sentinel for auto_login_config default
+
 class RebootManager:
     """
     Manage test reboot workflow
@@ -27,9 +29,10 @@ class RebootManager:
     STATE_FILE = "./pytest_reboot_state.json"
     STARTUP_PATH = r"C:\Users\{}\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\pytest_auto_run.bat"
     
-    def __init__(self, total_tests: int = 5):
+    def __init__(self, total_tests: int = 5, auto_login_config=None):
         self.state_file = self.STATE_FILE
         self.total_tests = total_tests
+        self._auto_login_config = auto_login_config if auto_login_config is not None else {}
         self.state = self._load_state()
     
     def _load_state(self):
@@ -287,7 +290,7 @@ class RebootManager:
         """Return True when the number of completed tests >= total_tests."""
         return len(self.state["completed_tests"]) >= self.total_tests
     
-    def setup_reboot(self, delay=10, reason="System reboot required", test_file=None):
+    def setup_reboot(self, delay=10, reason="System reboot required", test_file=None, auto_login_config=_UNSET):
         """
         Configure and trigger a system reboot.
 
@@ -298,6 +301,27 @@ class RebootManager:
                        the startup script so the packaged runner resumes the
                        right test file after the system boots).
         """
+        # Ensure auto-login is set so the system resumes the test after reboot
+        # Default: use the config supplied at __init__ time (pass None to skip).
+        if auto_login_config is _UNSET:
+            auto_login_config = self._auto_login_config
+        if auto_login_config is not None:
+            try:
+                from lib.testtool.osconfig.actions.auto_admin_logon import AutoAdminLogonAction
+                _al = AutoAdminLogonAction(
+                    username=auto_login_config.get('auto_login_username') or None,
+                    password=auto_login_config.get('auto_login_password') or None,
+                    domain=auto_login_config.get('auto_login_domain') or None,
+                )
+                if not _al.check():
+                    print('[RebootManager] Auto-login not enabled - applying AutoAdminLogon')
+                    _al.apply()
+                    print('[RebootManager] AutoAdminLogon applied')
+                else:
+                    print('[RebootManager] Auto-login already enabled - skipping')
+            except Exception as _exc:
+                print(f'[RebootManager] WARNING: auto-login check/apply failed: {_exc}')
+
         # Mark that we're about to reboot and persist state
         self.state["is_recovering"] = True
         self.state["reboot_count"] += 1

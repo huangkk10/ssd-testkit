@@ -63,6 +63,9 @@ class OsConfigProfile:
         disable_recovery:           Disable WinRE automatic recovery.
         disable_auto_reboot:        Disable automatic reboot after BSOD.
         enable_auto_admin_logon:    Enable auto-logon (AutoAdminLogon=1).
+        auto_login_username:        Username for auto-logon (sets DefaultUserName).
+        auto_login_password:        Password for auto-logon (sets DefaultPassword; lab only).
+        auto_login_domain:          Domain for auto-logon (sets DefaultDomainName).
         set_small_memory_dump:      Set crash dump to small/minidump type.
 
         # ── Power ──────────────────────────────────────────────────────────
@@ -123,6 +126,9 @@ class OsConfigProfile:
     disable_recovery: bool = False
     disable_auto_reboot: bool = False
     enable_auto_admin_logon: bool = False
+    auto_login_username: str = ""
+    auto_login_password: str = ""
+    auto_login_domain: str = ""
     set_small_memory_dump: bool = False
 
     # ── Power ──────────────────────────────────────────────────────────────
@@ -221,7 +227,8 @@ class OsConfigProfile:
         result = []
         for fname, fvalue in self.__dict__.items():
             if fname in ("pagefile_drive", "pagefile_min_mb", "pagefile_max_mb",
-                         "fail_on_unsupported"):
+                         "fail_on_unsupported",
+                         "auto_login_username", "auto_login_password", "auto_login_domain"):
                 continue
             if isinstance(fvalue, bool) and fvalue:
                 result.append((fname, fvalue))

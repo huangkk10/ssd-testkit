@@ -151,7 +151,10 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         cls.bin_path = testcase_config.bin_directory
 
         # ── RebootManager (must be after os.chdir) ────────────────────────────
-        cls.reboot_mgr = RebootManager(total_tests=cls._count_test_methods())
+        cls.reboot_mgr = RebootManager(
+            total_tests=cls._count_test_methods(),
+            auto_login_config=cls.config.get('osconfig', {}),
+        )
 
         phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
         log_phase(logger, phase)
