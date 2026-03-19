@@ -17,6 +17,8 @@ except ImportError:
     _ALLURE_AVAILABLE = False
 
 _REBOOT_STATE_FILENAME = "pytest_reboot_state.json"
+# Captured once in pytest_configure; used by pytest_sessionfinish
+_IS_POST_REBOOT_SESSION: bool = False
 
 
 def _is_post_reboot_recovery() -> bool:
@@ -43,15 +45,50 @@ def _is_post_reboot_recovery() -> bool:
 
 def pytest_configure(config: pytest.Config) -> None:
     """Clean allure-results only on a fresh run, not after a reboot recovery."""
+    global _IS_POST_REBOOT_SESSION
     allure_dir = Path("allure-results")
-    if not allure_dir.exists():
-        return
     if _is_post_reboot_recovery():
-        # Post-reboot: keep Phase A results so the final report is complete
+        # Post-reboot Phase B: keep Phase A results so the report is complete
+        _IS_POST_REBOOT_SESSION = True
+        return
+    if not allure_dir.exists():
         return
     # Fresh run: wipe previous results (equivalent to --clean-alluredir)
     import shutil
     shutil.rmtree(allure_dir, ignore_errors=True)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Remove spurious allure SKIPPED results written for already-completed
+    tests during Phase B.
+
+    When deselection fails for any reason, BaseTestCase.setup_teardown_function
+    calls ``pytest.skip("{name} already completed")`` which causes allure-pytest
+    to write a SKIPPED result that overwrites the Phase-A PASSED result.
+    This hook scans allure-results at session end and deletes those files.
+    """
+    if not _IS_POST_REBOOT_SESSION or not _ALLURE_AVAILABLE:
+        return
+    allure_dir = Path("allure-results")
+    if not allure_dir.exists():
+        return
+    import json
+    removed = 0
+    for result_file in allure_dir.glob("*-result.json"):
+        try:
+            result = json.loads(result_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if result.get("status") != "skipped":
+            continue
+        msg = str(result.get("statusDetails", {}).get("message", ""))
+        if "already completed" in msg:
+            result_file.unlink(missing_ok=True)
+            removed += 1
+    if removed:
+        print(f"\n[conftest] Removed {removed} spurious 'already completed' "
+              "SKIP result(s) from allure-results")
+
 
 _HARDWARE_MARKS = {"real_bat", "real", "hardware"}
 
