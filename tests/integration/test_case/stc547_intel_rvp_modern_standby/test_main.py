@@ -45,6 +45,7 @@ from lib.testtool.phm.process_manager import PHMProcessManager
 from lib.testtool.phm.ui_monitor import PHMUIMonitor
 from lib.testtool.phm.collector_session import CollectorSession
 from lib.testtool.browser_setup import ensure_playwright_chromium
+from lib.testtool.dotnet_installer import ensure_dotnet_runtime
 from lib.testtool.phm.scenarios.modern_standby_cycling import ModernStandbyCyclingParams
 from lib.testtool.phm.visualizer import VisualizerConfig, run_visualizer_check
 from lib.testtool.sleepstudy import SleepStudyController
@@ -79,6 +80,27 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _ensure_dotnet_runtime(self) -> None:
+        """
+        Ensure .NET 7.0 Runtime is installed on this machine.
+
+        GlitterMountain.exe (PHM's Modern Standby worker) requires .NET 7.0 x64.
+        The bundled installer is resolved relative to the current working directory
+        (test-case dir): bin/net_7_sdk/dotnet-sdk-7.0.410-win-x64.exe
+
+        Raises:
+            pytest.fail: if the runtime is absent and installation failed.
+        """
+        logger.info("[TEST_01] Ensuring .NET 7.0 Runtime is installed")
+        ok = ensure_dotnet_runtime()
+        if ok:
+            logger.info("[TEST_01] .NET 7.0 Runtime is ready")
+        else:
+            pytest.fail(
+                "[TEST_01] .NET 7.0 Runtime is not installed and could not be set up.\n"
+                "Place the installer at: bin/net_7_sdk/dotnet-sdk-7.0.410-win-x64.exe"
+            )
 
     def _remove_existing_phm(self) -> bool:
         """Ensure PHM is fully removed before a fresh install (delegates to PHMController.force_remove)."""
@@ -222,7 +244,8 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         1. Clean up leftover logs from previous runs
         2. Remove existing PHM installation (clean slate)
         3. Create fresh log directory structure
-        4. Ensure Playwright Chromium is installed
+        4. Ensure .NET 7.0 Runtime is installed (required by GlitterMountain.exe)
+        5. Ensure Playwright Chromium is installed
         """
         logger.info("[TEST_01] Precondition setup started")
 
@@ -242,7 +265,11 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
             Path(d).mkdir(parents=True, exist_ok=True)
             logger.info(f"[TEST_01] Directory ready: {d}")
 
-        # Step 4: Ensure Playwright Chromium is installed.
+        # Step 4: Ensure .NET 7.0 Runtime is installed.
+        # GlitterMountain.exe (PHM's Modern Standby worker) requires .NET 7.0 x64.
+        self._ensure_dotnet_runtime()
+
+        # Step 5: Ensure Playwright Chromium is installed.
         # force=True: removes any existing chromium-* dir first, then reinstalls
         # from ./bin/playwright-browsers/ (bundled) or via online download.
         if not ensure_playwright_chromium(logger, force=True):
@@ -394,7 +421,7 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
             logger.info(f"[TEST_05] Waiting for PHM server (timeout={wait_for_server_seconds}s)")
             ui.wait_for_ready(timeout=wait_for_server_seconds)
             logger.info("[TEST_05] PHM server ready — opening browser")
-            ui.open_browser(headless=False)
+            ui.open_browser(headless=headless)
 
             # ── Run the collector session ────────────────────────────
             TestSTC547IntelRVPModernStandby._phm_start_time = datetime.now().isoformat(timespec='seconds')
@@ -421,6 +448,10 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
                 logger.info(f"[TEST_05] Traces copied: {traces_src} -> {dest_dir}")
             except Exception as exc:
                 logger.warning(f"[TEST_05] Trace collection failed (non-fatal): {exc}")
+
+        except Exception as exc:
+            logger.error(f"[TEST_05] Collector session failed: {exc}", exc_info=True)
+            raise
 
         finally:
             try:
