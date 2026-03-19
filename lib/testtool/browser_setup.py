@@ -161,8 +161,18 @@ def ensure_playwright_chromium(logger=None, force: bool = False) -> bool:
             logger.warning(msg)
 
     # ── Step 0: resolve browser path (bundled takes priority) ────────────
+    # Priority:
+    #   1. <project_root>/bin/playwright-browsers  (via path_manager / __file__)
+    #   2. <cwd>/bin/playwright-browsers           (cwd may have been changed to
+    #      the test case dir by _setup_working_directory before this call)
+    #   3. %LOCALAPPDATA%/playwright-browsers      (persistent per-machine cache)
     bundled_dir = _resolve_bundled_dir()
     using_bundled = bundled_dir.exists()
+    if not using_bundled:
+        cwd_bundled = Path.cwd() / _BUNDLED_BROWSERS_RELPATH
+        if cwd_bundled.exists():
+            bundled_dir = cwd_bundled
+            using_bundled = True
     if using_bundled:
         browsers_dir = str(bundled_dir.resolve())
         os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browsers_dir
