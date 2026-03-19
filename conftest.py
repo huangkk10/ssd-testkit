@@ -150,41 +150,49 @@ def _expand_vscode_partial_selection(
     if not config.pluginmanager.hasplugin("vscode_pytest"):
         return
 
+    import inspect
     from collections import defaultdict
 
-    # Group collected items by (file, class-name)
+    # Group collected Function items by (file, class-name)
     by_class: dict = defaultdict(list)
     for item in items:
-        if item.cls is not None:
+        if isinstance(item, pytest.Function) and item.cls is not None:
             by_class[(str(item.fspath), item.cls.__name__)].append(item)
 
     extra: list[pytest.Item] = []
     for (fspath, cls_name), cls_items in by_class.items():
-        cls = cls_items[0].cls
-        # Only expand BaseTestCase subclasses (identified by the helper method)
-        if not hasattr(cls, "_count_test_methods"):
+        cls_obj = cls_items[0].cls
+        # Only expand BaseTestCase subclasses
+        if not hasattr(cls_obj, "_count_test_methods"):
             continue
 
         collected_names = {it.name for it in cls_items}
 
-        # Ask the Module collector for every test it knows about
-        module_collector = cls_items[0].getparent(pytest.Module)
-        if module_collector is None:
+        # Get the Class collector that pytest already created for this class
+        cls_collector = cls_items[0].getparent(pytest.Class)
+        if cls_collector is None:
             continue
 
-        for sub_item in module_collector.collect():
-            if (
-                hasattr(sub_item, "cls")
-                and sub_item.cls.__name__ == cls_name
-                and sub_item.name not in collected_names
-            ):
-                extra.append(sub_item)
+        # Find all test_* methods defined on the class (not inherited from base)
+        all_test_names = [
+            name for name, obj in inspect.getmembers(cls_obj, predicate=inspect.isfunction)
+            if name.startswith("test_")
+        ]
+
+        for method_name in all_test_names:
+            if method_name not in collected_names:
+                try:
+                    new_item = pytest.Function.from_parent(
+                        cls_collector, name=method_name
+                    )
+                    extra.append(new_item)
+                except Exception:
+                    pass
 
     if not extra:
         return
 
-    # Prepend the missing items and re-sort the combined list by
-    # @pytest.mark.order value (falling back to the method name).
+    # Sort all items within each class by @pytest.mark.order value
     def _order_key(item: pytest.Item) -> tuple:
         marker = item.get_closest_marker("order")
         if marker and marker.args:
@@ -194,33 +202,33 @@ def _expand_vscode_partial_selection(
                 pass
         return (9999, item.name)
 
-    # Build per-class sorted lists, keeping non-class items in original position
-    all_items = extra + [i for i in items]
-    # Re-sort only within each class; items from different classes keep their
-    # relative order by sorting stable on the class key first.
-    class_order: dict = {}
-    result: list[pytest.Item] = []
-    seen_classes: set = set()
+    # Merge extra into items, grouping by class and sorting within each group
+    from collections import defaultdict as _dd
+    class_groups: dict = _dd(list)
     plain: list[pytest.Item] = []
 
-    for item in all_items:
-        key = (str(item.fspath), item.cls.__name__) if item.cls else None
-        if key and key in by_class:
-            class_order.setdefault(key, []).append(item)
+    for item in items + extra:
+        if item.cls is not None:
+            key = (str(item.fspath), item.cls.__name__)
+            class_groups[key].append(item)
         else:
             plain.append(item)
 
-    # Emit each class's tests in @order order, then plain items
-    emitted_classes: set = set()
-    for item in all_items:
-        key = (str(item.fspath), item.cls.__name__) if item.cls else None
-        if key and key in by_class and key not in emitted_classes:
-            emitted_classes.add(key)
-            result.extend(sorted(class_order[key], key=_order_key))
-        elif key is None or key not in by_class:
-            result.append(item)
+    result: list[pytest.Item] = []
+    emitted: set = set()
+    for item in items + extra:
+        if item.cls is None:
+            if id(item) not in emitted:
+                emitted.add(id(item))
+                result.append(item)
+        else:
+            key = (str(item.fspath), item.cls.__name__)
+            if key not in emitted:
+                emitted.add(key)
+                result.extend(sorted(class_groups[key], key=_order_key))
 
     items[:] = result
+
 
 
 def pytest_collection_modifyitems(
