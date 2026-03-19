@@ -134,9 +134,103 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+def _expand_vscode_partial_selection(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """VS Code 'Debug Test' / 'Run Test' sends only the clicked test's node ID.
+
+    For BaseTestCase subclasses that contain a reboot sequence this means
+    test_01 … test_N-1 are missing and the prerequisite guard (require_after)
+    fires immediately.  This hook detects partial class-level selection under
+    VS Code and inserts the missing earlier tests so the full sequence runs.
+
+    Only activates when the vscode_pytest plugin is loaded (-p vscode_pytest).
+    Safe no-op for normal CLI runs.
+    """
+    if not config.pluginmanager.hasplugin("vscode_pytest"):
+        return
+
+    from collections import defaultdict
+
+    # Group collected items by (file, class-name)
+    by_class: dict = defaultdict(list)
+    for item in items:
+        if item.cls is not None:
+            by_class[(str(item.fspath), item.cls.__name__)].append(item)
+
+    extra: list[pytest.Item] = []
+    for (fspath, cls_name), cls_items in by_class.items():
+        cls = cls_items[0].cls
+        # Only expand BaseTestCase subclasses (identified by the helper method)
+        if not hasattr(cls, "_count_test_methods"):
+            continue
+
+        collected_names = {it.name for it in cls_items}
+
+        # Ask the Module collector for every test it knows about
+        module_collector = cls_items[0].getparent(pytest.Module)
+        if module_collector is None:
+            continue
+
+        for sub_item in module_collector.collect():
+            if (
+                hasattr(sub_item, "cls")
+                and sub_item.cls.__name__ == cls_name
+                and sub_item.name not in collected_names
+            ):
+                extra.append(sub_item)
+
+    if not extra:
+        return
+
+    # Prepend the missing items and re-sort the combined list by
+    # @pytest.mark.order value (falling back to the method name).
+    def _order_key(item: pytest.Item) -> tuple:
+        marker = item.get_closest_marker("order")
+        if marker and marker.args:
+            try:
+                return (int(marker.args[0]), item.name)
+            except (ValueError, TypeError):
+                pass
+        return (9999, item.name)
+
+    # Build per-class sorted lists, keeping non-class items in original position
+    all_items = extra + [i for i in items]
+    # Re-sort only within each class; items from different classes keep their
+    # relative order by sorting stable on the class key first.
+    class_order: dict = {}
+    result: list[pytest.Item] = []
+    seen_classes: set = set()
+    plain: list[pytest.Item] = []
+
+    for item in all_items:
+        key = (str(item.fspath), item.cls.__name__) if item.cls else None
+        if key and key in by_class:
+            class_order.setdefault(key, []).append(item)
+        else:
+            plain.append(item)
+
+    # Emit each class's tests in @order order, then plain items
+    emitted_classes: set = set()
+    for item in all_items:
+        key = (str(item.fspath), item.cls.__name__) if item.cls else None
+        if key and key in by_class and key not in emitted_classes:
+            emitted_classes.add(key)
+            result.extend(sorted(class_order[key], key=_order_key))
+        elif key is None or key not in by_class:
+            result.append(item)
+
+    items[:] = result
+
+
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
+    # When VS Code "Debug Test" sends only a subset of tests from a reboot-
+    # sequence class, expand the collection to include all class tests so
+    # the prerequisite guards (require_after) are satisfied.
+    _expand_vscode_partial_selection(config, items)
+
     # Deselect already-completed tests BEFORE the --run-hardware early return
     # so that Phase-B of a reboot cycle never generates a competing SKIPPED
     # result in Allure for tests that already PASSED in Phase A.
