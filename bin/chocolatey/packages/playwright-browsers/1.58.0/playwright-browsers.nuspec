@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>playwright-browsers</id>
+    <version>1.58.0</version>
+    <title>Playwright Browsers (1.58.0)</title>
+    <authors>SSD TestKit</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Portable offline Playwright browser binaries for Playwright 1.58.0.
+Includes: chromium-1208, chromium_headless_shell-1208, ffmpeg-1011, winldd-1007.
+Copies from bin/installers/playwright-browsers/ and sets PLAYWRIGHT_BROWSERS_PATH env var.
+Requires: SSD_TESTKIT_ROOT env var pointing to the ssd-testkit repo root.</description>
+    <tags>playwright chromium browsers portable offline</tags>
+  </metadata>
+</package>

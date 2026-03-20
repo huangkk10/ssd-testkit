@@ -1,0 +1,26 @@
+# lib/testtool/playwright_browsers/package_meta.yaml
+# Playwright browser binaries — Portable tool（直接複製目錄，無安裝程式）
+# 安裝後設定 PLAYWRIGHT_BROWSERS_PATH 機器層級環境變數，
+# Playwright 自動從該目錄讀取 browser binaries，無需額外設定。
+
+tool_name: playwright_browsers
+choco_package_id: playwright-browsers
+tool_type: portable              # portable: Copy-Item 整個目錄，不執行安裝程式
+
+versions:
+  - version: "1.58.0"            # Playwright Python 套件版本（pip show playwright）
+    source_dir: "bin/installers/playwright-browsers/1.58.0"
+    default: true
+
+install_dir: "C:\\tools\\playwright-browsers"
+env_var: "PLAYWRIGHT_BROWSERS_PATH"   # Playwright 讀取 browser 路徑的環境變數
+
+# 包含的 browser builds（Playwright 1.58.0）
+browser_builds:
+  - "chromium-1208"              # Chromium 145.x (chrome.exe + headless)
+  - "chromium_headless_shell-1208"
+  - "ffmpeg-1011"                # FFmpeg（video 支援）
+  - "winldd-1007"                # Windows dependency tracer
+
+binaries:
+  - "chromium-1208/chrome-win64/chrome.exe"
