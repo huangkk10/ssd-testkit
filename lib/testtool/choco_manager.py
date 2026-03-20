@@ -57,6 +57,13 @@ class ChocoManager:
     #: Chocolatey exit codes that indicate "reboot required" but otherwise OK
     REBOOT_REQUIRED_EXIT_CODES = {3010}
 
+    #: Override map: choco package id -> relative path from testtool dir
+    #: Used when package_meta.yaml lives in a different dir than the default mapping.
+    _META_PATH_OVERRIDES: dict = {
+        # smiwintools package_meta.yaml lives under smartcheck/ (same library)
+        "smiwintools": "smartcheck",
+    }
+
     def __init__(self, project_root: Optional[str] = None) -> None:
         """
         Args:
@@ -74,6 +81,7 @@ class ChocoManager:
 
         self._packages_dir = self._root / "bin" / "chocolatey" / "packages"
         self._testtool_dir = self._root / "lib" / "testtool"
+        self._choco = self._find_choco()
 
     # ── public API ─────────────────────────────────────────────────────────
 
@@ -95,7 +103,7 @@ class ChocoManager:
 
         env = self._build_env()
         cmd = [
-            "choco", "install", tool_id,
+            self._choco, "install", tool_id,
             "--source", str(source_dir),
             "--yes", "--no-progress", "--ignore-checksums",
         ]
@@ -110,7 +118,7 @@ class ChocoManager:
         """
         installed_version = self.get_installed_version(tool_id) or ""
         env = self._build_env()
-        cmd = ["choco", "uninstall", tool_id, "--yes", "--no-progress"]
+        cmd = [self._choco, "uninstall", tool_id, "--yes", "--no-progress"]
         return self._run(cmd, tool_id, installed_version, env)
 
     def is_installed(self, tool_id: str) -> bool:
@@ -125,7 +133,7 @@ class ChocoManager:
         """
         try:
             result = subprocess.run(
-                ["choco", "list"],
+                [self._choco, "list"],
                 capture_output=True, text=True, timeout=30,
             )
             for line in result.stdout.splitlines():
@@ -170,8 +178,9 @@ class ChocoManager:
 
     def _load_package_meta(self, tool_id: str) -> dict:
         """Load and parse the package_meta.yaml for the given tool."""
-        # Map choco package id  (e.g. "windows-adk")  ->  testtool dir name
-        meta_dir = self._testtool_dir / tool_id.replace("-", "_")
+        # Use override map first, else derive dir name from package id
+        dir_name = self._META_PATH_OVERRIDES.get(tool_id, tool_id.replace("-", "_"))
+        meta_dir = self._testtool_dir / dir_name
         meta_file = meta_dir / "package_meta.yaml"
 
         if not meta_file.is_file():
@@ -193,6 +202,19 @@ class ChocoManager:
         env = os.environ.copy()
         env["SSD_TESTKIT_ROOT"] = str(self._root)
         return env
+
+    @staticmethod
+    def _find_choco() -> str:
+        """Return the choco executable path, preferring the well-known install location
+        to avoid PATH issues when running inside a Python virtualenv."""
+        candidates = [
+            r"C:\ProgramData\chocolatey\bin\choco.exe",
+            r"C:\ProgramData\chocolatey\choco.exe",
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                return c
+        return "choco"  # fallback: rely on PATH
 
     def _run(
         self,

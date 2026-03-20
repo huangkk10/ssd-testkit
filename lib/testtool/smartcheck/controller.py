@@ -36,6 +36,16 @@ from .exceptions import (
 # Initialize module-level logger
 logger = get_module_logger(__name__)
 
+# Entry-point filenames
+_BAT_NAME = "SmartCheck.bat"
+_INI_NAME = "SmartCheck.ini"
+
+# Path under SSD_TESTKIT_ROOT (post-chocolatey layout)
+_REL_PATH_TESTKIT = os.path.join("bin", "installers", "SmiWinTools", "v20260213B", _BAT_NAME)
+
+# Legacy relative path (pre-chocolatey layout, kept for backward compatibility)
+_LEGACY_REL_BAT = os.path.join(".", "bin", "SmiWinTools", _BAT_NAME)
+
 
 class SmartCheckController(threading.Thread):
     """
@@ -64,11 +74,7 @@ class SmartCheckController(threading.Thread):
         status (bool): Execution status (True=success, False=failure)
     
     Example:
-        >>> controller = SmartCheckController(
-        ...     bat_path="./bin/SmiWinTools/SmartCheck.bat",
-        ...     cfg_ini_path="./bin/SmiWinTools/SmartCheck.ini",
-        ...     output_dir="./test_output"
-        ... )
+        >>> controller = SmartCheckController(output_dir="./test_output")
         >>> controller.set_config(total_time=60, dut_id="0")
         >>> controller.start()
         >>> controller.join(timeout=120)
@@ -78,18 +84,23 @@ class SmartCheckController(threading.Thread):
     
     def __init__(
         self,
-        bat_path: str,
-        cfg_ini_path: str,
-        output_dir: str,
+        bat_path: str = '',
+        cfg_ini_path: str = '',
+        output_dir: str = '',
         **kwargs
     ):
         """
         Initialize SmartCheck controller.
-        
+
         Args:
-            bat_path: Relative path to SmartCheck.bat
-            cfg_ini_path: Relative path to SmartCheck.ini
-            output_dir: Absolute path to output directory
+            bat_path: Path to SmartCheck.bat.  Empty string (default) triggers
+                auto-resolution in this order:
+                1. ``SMIWINTOOLS_PATH`` env var (set by Chocolatey install)
+                2. ``<SSD_TESTKIT_ROOT>\\bin\\installers\\SmiWinTools\\v20260213B\\SmartCheck.bat``
+                3. Legacy: ``./bin/SmiWinTools/SmartCheck.bat``
+            cfg_ini_path: Path to SmartCheck.ini.  Empty string (default) derives
+                the path from ``bat_path`` by replacing the ``.bat`` extension.
+            output_dir: Absolute path to output directory.
             **kwargs: Additional configuration parameters (optional)
                 - total_cycle: Total test cycles
                 - total_time: Total test time in minutes
@@ -97,18 +108,24 @@ class SmartCheckController(threading.Thread):
                 - timeout: Execution timeout in minutes
                 - check_interval: Status check interval in seconds
                 - etc.
-        
+
         Raises:
             SmartCheckConfigError: If required paths are invalid
         """
         super().__init__()
-        
-        # Validate and store paths
-        self.bat_path = bat_path
-        self.cfg_ini_path = cfg_ini_path
+
+        # Resolve bat_path
+        self.bat_path = bat_path if bat_path else self._resolve_bat_path()
+
+        # Derive cfg_ini_path from bat_path when not provided
+        if cfg_ini_path:
+            self.cfg_ini_path = cfg_ini_path
+        else:
+            self.cfg_ini_path = os.path.splitext(self.bat_path)[0] + '.ini'
+
         self.output_dir = output_dir
-        
-        # Validate bat_path and cfg_ini_path exist
+
+        # Validate resolved paths
         if not os.path.exists(self.bat_path):
             logger.error(f"SmartCheck.bat not found at: {self.bat_path}")
             raise SmartCheckConfigError(f"SmartCheck.bat not found at: {self.bat_path}")
@@ -142,8 +159,31 @@ class SmartCheckController(threading.Thread):
         if kwargs:
             self.set_config(**kwargs)
         
-        logger.info(f"SmartCheckController initialized with bat_path={bat_path}, output_dir={output_dir}")
-    
+        logger.info(f"SmartCheckController initialized with bat_path={self.bat_path}, output_dir={output_dir}")
+
+    # ------------------------------------------------------------------
+    # Bat path resolution
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_bat_path() -> str:
+        """Return absolute path to SmartCheck.bat following the resolution order:
+
+        1. ``SMIWINTOOLS_PATH`` environment variable (set by Chocolatey install) —
+           treated as the install directory; ``SmartCheck.bat`` is appended.
+        2. ``<SSD_TESTKIT_ROOT>\\bin\\installers\\SmiWinTools\\v20260213B\\SmartCheck.bat``
+        3. Legacy: ``./bin/SmiWinTools/SmartCheck.bat``
+        """
+        env_path = os.environ.get('SMIWINTOOLS_PATH')
+        if env_path:
+            return os.path.join(env_path, _BAT_NAME)
+
+        testkit_root = os.environ.get('SSD_TESTKIT_ROOT')
+        if testkit_root:
+            return os.path.join(testkit_root, _REL_PATH_TESTKIT)
+
+        return _LEGACY_REL_BAT
+
     def load_config_from_json(self, json_path: str) -> None:
         """
         Load configuration from JSON file.

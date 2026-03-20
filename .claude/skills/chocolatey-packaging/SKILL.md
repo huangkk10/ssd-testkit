@@ -270,6 +270,7 @@ Tests go in `tests/integration/lib/testtool/test_<toolname>/`.
 | `playwright-browsers` | portable | **1.58.0** | `lib/testtool/playwright_browsers/` | `bin/chocolatey/packages/playwright-browsers/1.58.0/` |
 | `net-7-sdk` | installer | **7.0.410** | `lib/testtool/net_7_sdk/` | `bin/chocolatey/packages/net-7-sdk/7.0.410/` |
 | `cdi` | portable | **8.17.13** | `lib/testtool/cdi/` | `bin/chocolatey/packages/cdi/8.17.13/` |
+| `smiwintools` | portable | **2026.2.13** | `lib/testtool/smartcheck/` | `bin/chocolatey/packages/smiwintools/2026.2.13/` |
 | `burnin` | installer | 9.2.1002, 9.3.1000 | 尚未建立 | 尚未建立 |
 | `pwrtest` | portable | 1.9.0 | 尚未建立 | 尚未建立 |
 
