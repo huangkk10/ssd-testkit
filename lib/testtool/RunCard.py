@@ -1,13 +1,11 @@
 import os
 import json
 import configparser
-import subprocess
-import time
-import pathlib
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Tuple
 import lib.logger as logger
+from lib.testtool.smicli import SmiCliController, SmiCliDiskType, SmiCliProtocolType
 
 try:
     import win32api
@@ -15,32 +13,9 @@ try:
 except ImportError:
     WIN32_AVAILABLE = False
 
-
-# SmiCli Disk Type Table
-class SmiCliDiskType:
-    """SmiCli Disk Type Definition"""
-    DISK_TYPE_HDD = 0x2
-    DISK_TYPE_SATA = 0x120
-    DISK_TYPE_NVME = 0x140
-    DISK_TYPE_UFD = 0x180
-    DISK_TYPE_SM2320 = 0x181
-    DISK_TYPE_UFD_NOT_SMI = 0x18F
-    DISK_TYPE_SATA_PWR_1 = 0x200
-    DISK_TYPE_SATA_PWR_2 = 0x201
-    DISK_TYPE_PCIE_PWR_1 = 0x202
-    DISK_TYPE_PCIE_PWR_2 = 0x203
-
-
-# SmiCli Protocol Type Table
-class SmiCliProtocolType:
-    """SmiCli Protocol Type Definition"""
-    PROTOCOL_TYPE_ATA_OVER_ATA = 0x10
-    PROTOCOL_TYPE_ATA_OVER_USB = 0x11
-    PROTOCOL_TYPE_ATA_OVER_CSMI = 0x12
-    PROTOCOL_TYPE_NVME_OVER_STORNVME = 0x20
-    PROTOCOL_TYPE_NVME_OVER_SCSIMINIPORT = 0x21
-    PROTOCOL_TYPE_NVME_OVER_IRST = 0x22
-    PROTOCOL_TYPE_SCSI = 0x40
+# SmiCliDiskType and SmiCliProtocolType are re-exported from lib.testtool.smicli
+# for backward compatibility with callers that import them from this module.
+__all__ = ["SmiCliDiskType", "SmiCliProtocolType"]
 
 
 class RuncardFormat(Enum):
@@ -174,101 +149,28 @@ class Runcard:
     
     @staticmethod
     def get_disk_type_name(disk_type_value: int) -> str:
-        """
-        Return disk type name based on disk_type value
-        
-        Args:
-            disk_type_value: Disk type value
-            
-        Returns:
-            str: Disk type name
-        """
-        disk_type_map = {
-            SmiCliDiskType.DISK_TYPE_HDD: "HDD",
-            SmiCliDiskType.DISK_TYPE_SATA: "SATA",
-            SmiCliDiskType.DISK_TYPE_NVME: "NVMe",
-            SmiCliDiskType.DISK_TYPE_UFD: "USB Flash Drive",
-            SmiCliDiskType.DISK_TYPE_SM2320: "SM2320",
-            SmiCliDiskType.DISK_TYPE_UFD_NOT_SMI: "USB Flash Drive (Non-SMI)",
-            SmiCliDiskType.DISK_TYPE_SATA_PWR_1: "SATA Power Board V1",
-            SmiCliDiskType.DISK_TYPE_SATA_PWR_2: "SATA Power Board V2",
-            SmiCliDiskType.DISK_TYPE_PCIE_PWR_1: "PCIe Power Board V1",
-            SmiCliDiskType.DISK_TYPE_PCIE_PWR_2: "PCIe Power Board V2"
-        }
-        return disk_type_map.get(disk_type_value, f"Unknown (0x{disk_type_value:X})")
-    
+        """Return disk type name based on disk_type value."""
+        return SmiCliController.get_disk_type_name(disk_type_value)
+
     @staticmethod
     def get_protocol_type_name(protocol_type_value: int) -> str:
-        """
-        Return protocol type name based on protocol_type value
-        
-        Args:
-            protocol_type_value: Protocol type value
-            
-        Returns:
-            str: Protocol type name
-        """
-        protocol_type_map = {
-            SmiCliProtocolType.PROTOCOL_TYPE_ATA_OVER_ATA: "ATA over ATA",
-            SmiCliProtocolType.PROTOCOL_TYPE_ATA_OVER_USB: "ATA over USB",
-            SmiCliProtocolType.PROTOCOL_TYPE_ATA_OVER_CSMI: "ATA over CSMI",
-            SmiCliProtocolType.PROTOCOL_TYPE_NVME_OVER_STORNVME: "NVMe over StorNVMe",
-            SmiCliProtocolType.PROTOCOL_TYPE_NVME_OVER_SCSIMINIPORT: "NVMe over SCSI Miniport",
-            SmiCliProtocolType.PROTOCOL_TYPE_NVME_OVER_IRST: "NVMe over iRST",
-            SmiCliProtocolType.PROTOCOL_TYPE_SCSI: "SCSI"
-        }
-        return protocol_type_map.get(protocol_type_value, f"Unknown (0x{protocol_type_value:X})")
-    
+        """Return protocol type name based on protocol_type value."""
+        return SmiCliController.get_protocol_type_name(protocol_type_value)
+
     @staticmethod
     def is_nvme_disk(disk_type_value: int) -> bool:
-        """
-        Determine if it's an NVMe disk
-        
-        Args:
-            disk_type_value: Disk type value
-            
-        Returns:
-            bool: Whether it's an NVMe disk
-        """
-        nvme_types = [SmiCliDiskType.DISK_TYPE_NVME]
-        return disk_type_value in nvme_types
-    
+        """Return True if the disk type represents an NVMe device."""
+        return SmiCliController.is_nvme_disk(disk_type_value)
+
     @staticmethod
     def is_usb_disk(disk_type_value: int) -> bool:
-        """
-        Determine if it's a USB disk
-        
-        Args:
-            disk_type_value: Disk type value
-            
-        Returns:
-            bool: Whether it's a USB disk
-        """
-        usb_types = [
-            SmiCliDiskType.DISK_TYPE_UFD,
-            SmiCliDiskType.DISK_TYPE_SM2320,
-            SmiCliDiskType.DISK_TYPE_UFD_NOT_SMI
-        ]
-        return disk_type_value in usb_types
-    
+        """Return True if the disk type represents a USB Flash Drive."""
+        return SmiCliController.is_usb_disk(disk_type_value)
+
     @staticmethod
     def is_power_board_disk(disk_type_value: int) -> bool:
-        """
-        Determine if it's a Power Board disk
-        
-        Args:
-            disk_type_value: Disk type value
-            
-        Returns:
-            bool: Whether it's a Power Board disk
-        """
-        power_board_types = [
-            SmiCliDiskType.DISK_TYPE_SATA_PWR_1,
-            SmiCliDiskType.DISK_TYPE_SATA_PWR_2,
-            SmiCliDiskType.DISK_TYPE_PCIE_PWR_1,
-            SmiCliDiskType.DISK_TYPE_PCIE_PWR_2
-        ]
-        return disk_type_value in power_board_types
+        """Return True if the disk type represents a Power Board device."""
+        return SmiCliController.is_power_board_disk(disk_type_value)
     
     def generate_dut_info(self, smicli_path: Optional[str] = None,
                          output_file: Optional[str] = None,
@@ -291,122 +193,25 @@ class Runcard:
         Returns:
             bool: Returns True if execution succeeds, False if it fails
         """
-        try:
-            # ── Resolve SmiCli2.exe path ──────────────────────────────────
-            if not smicli_path:
-                smicli_path = os.environ.get("SMICLI_PATH")
-            if not smicli_path:
-                testkit_root = os.environ.get("SSD_TESTKIT_ROOT")
-                if testkit_root:
-                    smicli_path = os.path.join(
-                        testkit_root, "bin", "installers", "SmiCli", "SmiCli2.exe"
-                    )
-            if not smicli_path:
-                smicli_path = ".\\bin\\SmiCli\\SmiCli2.exe"  # legacy default
+        if work_dir is None:
+            work_dir = os.getcwd()
 
-            # Set working directory
-            if work_dir is None:
-                work_dir = os.getcwd()
-            
-            # Set default output file path (in testlog directory)
-            if output_file is None:
-                output_file = os.path.join(self.path, "DUT_Info.ini")
-            
-            # Ensure absolute paths are used
-            if not os.path.isabs(smicli_path):
-                smicli_path = os.path.join(work_dir, smicli_path)
-            
-            if not os.path.isabs(output_file):
-                output_file = os.path.join(work_dir, output_file)
-                
-            # Check if SmiCli2.exe exists
-            if not os.path.exists(smicli_path):
-                error_msg = f"SmiCli2.exe not found: {smicli_path}"
-                logger.LogErr(error_msg)
-                self.error_message = error_msg
-                return False
-                
-            # Ensure output directory exists
-            output_dir = os.path.dirname(output_file)
-            if output_dir and not os.path.exists(output_dir):
-                pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
-            
-            # Build command
-            command = [smicli_path, "--info", f"--outfile={output_file}"]
-            
-            logger.LogEvt(f"Executing command: {' '.join(command)}")
-            logger.LogEvt(f"Working directory: {work_dir}")
-            
-            # Execute command and wait for completion
-            result = subprocess.run(
-                command,
-                cwd=work_dir,
-                capture_output=True,
-                text=True,
-                timeout=60  # 60 second timeout
-            )
-            
-            logger.LogEvt(f"Return code: {result.returncode}")
-            if result.stderr:
-                logger.LogErr(f"Error output: {result.stderr}")
-                
-            if result.returncode == 0:
-                # Wait for file to be completely written
-                time.sleep(2)
-                
-                if os.path.exists(output_file):
-                    try:
-                        # Read file content and check
-                        content = self._read_file_with_fallback_encoding(output_file)
-                        if content:
-                            logger.LogEvt(f"File content length: {len(content)}")
-                            
-                            # Check if it contains basic information structure
-                            if '[info]' in content or '[disk_' in content:
-                                logger.LogEvt(f"SmiCli2 executed successfully, output file created: {output_file}")
-                                return True
-                            else:
-                                error_msg = f"SmiCli2 completed but output file format is abnormal: {output_file}"
-                                logger.LogErr(error_msg)
-                                self.error_message = error_msg
-                                return False
-                        else:
-                            error_msg = f"SmiCli2 completed but unable to read output file: {output_file}"
-                            logger.LogErr(error_msg)
-                            self.error_message = error_msg
-                            return False
-                    except Exception as e:
-                        error_msg = f"SmiCli2 completed but error occurred while reading file: {str(e)}"
-                        logger.LogErr(error_msg)
-                        self.error_message = error_msg
-                        return False
-                else:
-                    error_msg = f"SmiCli2 completed but output file not found: {output_file}"
-                    logger.LogErr(error_msg)
-                    self.error_message = error_msg
-                    return False
-            else:
-                error_msg_detail = result.stderr.strip() if result.stderr else "Unknown error"
-                error_msg = f"SmiCli2 execution failed (return code: {result.returncode}): {error_msg_detail}"
-                logger.LogErr(error_msg)
-                self.error_message = error_msg
-                return False
-                
-        except subprocess.TimeoutExpired:
-            error_msg = "SmiCli2 execution timeout (60 seconds)"
-            logger.LogErr(error_msg)
-            self.error_message = error_msg
-            return False
-        except FileNotFoundError:
-            error_msg = f"SmiCli2.exe not found: {smicli_path}"
-            logger.LogErr(error_msg)
-            self.error_message = error_msg
-            return False
-        except Exception as e:
-            error_msg = f"Error occurred while executing SmiCli2: {str(e)}"
-            logger.LogErr(error_msg)
-            self.error_message = error_msg
-            return False
+        if output_file is None:
+            output_file = os.path.join(self.path, "DUT_Info.ini")
+
+        if not os.path.isabs(output_file):
+            output_file = os.path.join(work_dir, output_file)
+
+        controller = SmiCliController(
+            output_file=output_file,
+            smicli_path=smicli_path or '',
+            work_dir=work_dir,
+        )
+        controller.start()
+        controller.join(timeout=90)
+        if not controller.status:
+            self.error_message = controller.error_message
+        return bool(controller.status)
     
     def load_dut_info(self) -> bool:
         """
