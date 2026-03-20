@@ -18,7 +18,7 @@ Write-Host "Installer: $installer"
 
 $proc = Start-Process `
     -FilePath $installer `
-    -ArgumentList "/quiet /norestart /features OptionId.WindowsPerformanceToolkit" `
+    -ArgumentList "/quiet /norestart /features OptionId.WindowsPerformanceToolkit OptionId.WindowsAssessmentToolkit" `
     -Wait -PassThru
 
 # 3010 = reboot required (acceptable for ADK)
