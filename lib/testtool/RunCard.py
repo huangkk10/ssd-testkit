@@ -270,21 +270,40 @@ class Runcard:
         ]
         return disk_type_value in power_board_types
     
-    def generate_dut_info(self, smicli_path: str = ".\\bin\\SmiCli\\SmiCli2.exe", 
-                         output_file: Optional[str] = None, 
+    def generate_dut_info(self, smicli_path: Optional[str] = None,
+                         output_file: Optional[str] = None,
                          work_dir: Optional[str] = None) -> bool:
         """
         Execute SmiCli2.exe to get DUT information and generate DUT_Info.ini
-        
+
+        SmiCli2.exe path resolution order:
+          1. Explicit ``smicli_path`` argument
+          2. ``SMICLI_PATH`` environment variable (full path to SmiCli2.exe)
+          3. ``<SSD_TESTKIT_ROOT>\\bin\\installers\\SmiCli\\SmiCli2.exe``
+          4. Legacy default: ``.\\bin\\SmiCli\\SmiCli2.exe``
+
         Args:
-            smicli_path (str): Path to SmiCli2.exe, default is ".\\bin\\SmiCli\\SmiCli2.exe"
-            output_file (str): Output file name, default is "DUT_Info.ini" in testlog directory
-            work_dir (str): Working directory, if None uses current directory
-            
+            smicli_path: Path to SmiCli2.exe.  If None the resolution order
+                         above is used to locate the executable.
+            output_file: Output file name, default is "DUT_Info.ini" in testlog directory
+            work_dir: Working directory, if None uses current directory
+
         Returns:
             bool: Returns True if execution succeeds, False if it fails
         """
         try:
+            # ── Resolve SmiCli2.exe path ──────────────────────────────────
+            if not smicli_path:
+                smicli_path = os.environ.get("SMICLI_PATH")
+            if not smicli_path:
+                testkit_root = os.environ.get("SSD_TESTKIT_ROOT")
+                if testkit_root:
+                    smicli_path = os.path.join(
+                        testkit_root, "bin", "installers", "SmiCli", "SmiCli2.exe"
+                    )
+            if not smicli_path:
+                smicli_path = ".\\bin\\SmiCli\\SmiCli2.exe"  # legacy default
+
             # Set working directory
             if work_dir is None:
                 work_dir = os.getcwd()

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>smicli</id>
+    <version>2025.11.14</version>
+    <title>SmiCli2 (SmiWinTools_v20251114A)</title>
+    <authors>SSD TestKit</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Portable offline wrapper for SmiCli2.exe + kernel drivers (WinIo64.sys / WinIoEx.sys).
+Tool version: SmiWinTools_v20251114A
+Copies from bin/installers/SmiCli/v20251114A/ and sets SMICLI_PATH env var.
+Requires: SSD_TESTKIT_ROOT env var pointing to the ssd-testkit repo root.</description>
+    <tags>smicli smi portable offline</tags>
+  </metadata>
+</package>

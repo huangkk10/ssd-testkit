@@ -1,0 +1,24 @@
+# lib/testtool/smicli/package_meta.yaml
+# SmiCli2 — Portable 工具（exe + kernel drivers，無安裝程式，直接複製檔案）
+# 版本識別採用工具自身版本字串（SmiWinTools_vYYYYMMDDA）
+# 安裝後設定 SMICLI_PATH 機器層級環境變數，RunCard.generate_dut_info() 可免傳路徑。
+
+tool_name: smicli
+choco_package_id: smicli
+tool_type: portable             # portable: Copy-Item 複製，不執行安裝程式
+
+versions:
+  - version: "2025.11.14"       # NuGet 版本（X.Y.Z）
+    tool_version: "v20251114A"  # 工具自身版本（SmiCli2.exe --version）
+    source_dir: "bin/installers/SmiCli/v20251114A"   # 來源目錄（含版本子目錄）
+    default: true
+
+install_dir: "C:\\tools\\SmiCli"   # chocolateyInstall.ps1 的複製目的地
+env_var: "SMICLI_PATH"             # 安裝後設定，指向 install_dir\SmiCli2.exe
+
+binaries:
+  - "SmiCli2.exe"
+
+drivers:                # kernel driver，需與 SmiCli2.exe 同目錄
+  - "WinIo64.sys"
+  - "WinIoEx.sys"
