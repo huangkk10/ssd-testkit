@@ -39,6 +39,17 @@ from .scenarios import build_scenario_params
 
 logger = get_module_logger(__name__)
 
+# Installer filename
+_EXE_NAME = "phm_nda_V4.22.0_B25.02.06.02_H.exe"
+
+# Path under SSD_TESTKIT_ROOT (post-chocolatey layout)
+_REL_PATH_TESTKIT = os.path.join(
+    "bin", "installers", "PHM", "V4.22.0_B25.02.06.02_H", _EXE_NAME
+)
+
+# Legacy relative path (pre-chocolatey layout, kept for backward compatibility)
+_LEGACY_REL_PATH = os.path.join(".", "bin", "PHM", _EXE_NAME)
+
 
 class PHMController(threading.Thread):
     """
@@ -123,44 +134,37 @@ class PHMController(threading.Thread):
         self._config = PHMConfig.merge_config(self._config, kwargs)
 
     # ------------------------------------------------------------------
-    # Install helpers (convenience wrappers)
+    # Installer path resolution
     # ------------------------------------------------------------------
 
-    def is_installed(self) -> bool:
-        """Return True if PHM is already installed."""
-        return self._get_process_manager().is_installed()
+    def _resolve_installer_path(self) -> str:
+        """Return the absolute path to the PHM installer following the resolution order:
 
-    def install(self) -> bool:
+        1. ``installer_path`` config value (if non-empty) — explicit override
+        2. ``PHM_PATH`` environment variable — set by Chocolatey install
+        3. ``<SSD_TESTKIT_ROOT>\\bin\\installers\\PHM\\V4.22.0_B25.02.06.02_H\\<exe>``
+        4. Legacy: ``./bin/PHM/<exe>``
         """
-        Install PHM using the configured ``installer_path``.
+        cfg_path = self._config.get('installer_path', '')
+        if cfg_path:
+            return cfg_path
 
-        Returns:
-            True if installation succeeded.
+        env_path = os.environ.get('PHM_PATH')
+        if env_path:
+            # PHM_PATH may point to the exe or the install dir;
+            # we need the *installer* (the .exe in bin/installers), not the installed copy.
+            # Fall through to SSD_TESTKIT_ROOT resolution if set.
+            pass
 
-        Raises:
-            PHMInstallError: If ``installer_path`` is empty or install fails.
-        """
-        installer = self._config.get('installer_path', '')
-        if not installer:
-            raise PHMInstallError(
-                "installer_path is not set. "
-                "Pass installer_path=... to PHMController()"
-            )
-        return self._get_process_manager().install(
-            installer_path=installer,
-            timeout=int(self._config.get('timeout', 600)),
-        )
+        testkit_root = os.environ.get('SSD_TESTKIT_ROOT')
+        if testkit_root:
+            return os.path.join(testkit_root, _REL_PATH_TESTKIT)
 
-    def uninstall(self) -> bool:
-        """
-        Uninstall PHM.
+        return _LEGACY_REL_PATH
 
-        Returns:
-            True if uninstallation succeeded.
-        """
-        return self._get_process_manager().uninstall(
-            timeout=int(self._config.get('timeout', 120)),
-        )
+    # ------------------------------------------------------------------
+    # Install helpers
+    # ------------------------------------------------------------------
 
     def force_remove(self) -> bool:
         """
@@ -289,7 +293,7 @@ class PHMController(threading.Thread):
         # --- Step 1: Ensure PHM is installed ---
         pm = self._get_process_manager()
         if not pm.is_installed():
-            installer = cfg.get('installer_path', '')
+            installer = self._resolve_installer_path()
             if not installer:
                 raise PHMInstallError(
                     "PHM is not installed and installer_path is not configured."

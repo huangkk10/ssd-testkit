@@ -35,14 +35,11 @@ Usage:
         print(f"PHM FAILED: {controller.error_count} error(s)")
 
 Install-only usage:
-    from lib.testtool.phm import PHMController
+    from lib.testtool.choco_manager import ChocoManager
 
-    ctrl = PHMController(
-        installer_path='./bin/PHM/phm_nda_V4.22.0_B25.02.06.02_H.exe',
-        install_path='C:\\\\Program Files\\\\Intel\\\\Powerhouse Mountain',
-    )
-    if not ctrl.is_installed():
-        ctrl.install()
+    mgr = ChocoManager()
+    if not mgr.is_installed("phm"):
+        mgr.install("phm")
 
 Parse log only:
     from lib.testtool.phm import PHMLogParser

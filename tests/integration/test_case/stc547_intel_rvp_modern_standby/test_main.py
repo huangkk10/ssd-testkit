@@ -42,6 +42,7 @@ from framework.decorators import step
 from framework.test_utils import cleanup_directory
 from lib.testtool.phm import PHMController
 from lib.testtool.phm.process_manager import PHMProcessManager
+from lib.testtool.choco_manager import ChocoManager
 from lib.testtool.phm.ui_monitor import PHMUIMonitor
 from lib.testtool.phm.collector_session import CollectorSession
 from lib.testtool.browser_setup import ensure_playwright_chromium
@@ -264,18 +265,15 @@ class TestSTC547IntelRVPModernStandby(BaseTestCase):
         """Install Powerhouse Mountain (PHM) tool silently."""
         logger.info("[TEST_02] PHM install started")
 
-        cfg = self.config['phm']
-        ctrl = PHMController(
-            installer_path=cfg['installer'],
-            install_path=cfg['install_path'],
-        )
+        mgr = ChocoManager()
 
-        if ctrl.is_installed():
+        if mgr.is_installed("phm"):
             logger.info("[TEST_02] PHM already installed — skip install step")
         else:
-            ctrl.install()
+            result = mgr.install("phm")
+            assert result.success, f"PHM install failed: {result.output}"
 
-        assert ctrl.is_installed(), "PHM installation not detected after install"
+        assert mgr.is_installed("phm"), "PHM installation not detected after install"
         logger.info("[TEST_02] PHM install complete")
 
     @pytest.mark.order(3)

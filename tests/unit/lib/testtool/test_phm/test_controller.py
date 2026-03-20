@@ -145,26 +145,3 @@ class TestPHMController:
         ctrl.join(timeout=5)
         assert not ctrl.status
 
-    # ------------------------------------------------------------------
-    # is_installed / install helpers
-    # ------------------------------------------------------------------
-
-    @patch('lib.testtool.phm.controller.PHMProcessManager')
-    def test_is_installed_delegates(self, MockPM):
-        mock_pm = MockPM.return_value
-        mock_pm.is_installed.return_value = True
-
-        ctrl = PHMController(**self.valid_kwargs)
-        ctrl._process_manager = mock_pm
-
-        assert ctrl.is_installed()
-        mock_pm.is_installed.assert_called_once()
-
-    @patch('lib.testtool.phm.controller.PHMProcessManager')
-    def test_install_raises_when_no_installer_path(self, MockPM):
-        ctrl = PHMController(**self.valid_kwargs)
-        ctrl._config['installer_path'] = ''
-        with pytest.raises(PHMInstallError):
-            ctrl.install()
-
-

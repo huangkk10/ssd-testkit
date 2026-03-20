@@ -1,0 +1,19 @@
+# lib/testtool/phm/package_meta.yaml
+tool_name: phm
+choco_package_id: phm
+tool_type: installer
+
+versions:
+  - version: "4.22.0"                      # NuGet version (X.Y.Z)
+    tool_version: "V4.22.0_B25.02.06.02_H" # Tool's own version string
+    source_dir: "bin/installers/PHM/V4.22.0_B25.02.06.02_H"
+    installer_file: "phm_nda_V4.22.0_B25.02.06.02_H.exe"
+    default: true
+
+install_dir: "C:\\Program Files\\PowerhouseMountain"
+env_var: "PHM_PATH"     # Points to PHM executable (or install_dir if exe not found)
+install_args: "/S"
+uninstall_args: "/S /uninstall"
+notes: >
+  NDA software — do not distribute outside authorized recipients.
+  PHM_PATH set by Chocolatey install; pass to PHMController via installer_path config key.

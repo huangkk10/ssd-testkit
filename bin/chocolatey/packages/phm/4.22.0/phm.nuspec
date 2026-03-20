@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>phm</id>
+    <version>4.22.0</version>
+    <title>Powerhouse Mountain (V4.22.0_B25.02.06.02_H)</title>
+    <authors>SSD TestKit</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>
+      Offline installer for Intel Powerhouse Mountain (PHM) V4.22.0_B25.02.06.02_H.
+      Runs the silent installer and sets the PHM_PATH environment variable
+      pointing to the PHM installation directory.
+      Requires SSD_TESTKIT_ROOT environment variable to locate the installer.
+      NOTE: PHM is NDA software - do not distribute outside authorized recipients.
+    </description>
+    <tags>phm powerhouse-mountain intel offline</tags>
+  </metadata>
+</package>
