@@ -34,15 +34,10 @@ class TestBurnInController:
         # Create mock installer file
         self.mock_installer_exists = patch('pathlib.Path.exists', return_value=True)
         self.mock_installer_exists.start()
-        
-        # Mock logger
-        self.mock_logger = patch('lib.testtool.burnin.controller.logConfig')
-        self.mock_logger.start()
     
     def teardown_method(self):
         """Clean up after tests"""
         self.mock_installer_exists.stop()
-        self.mock_logger.stop()
     
     # ===== Initialization Tests =====
     
@@ -69,23 +64,22 @@ class TestBurnInController:
             executable_name=self.test_executable,
             test_duration_minutes=120,
             test_drive_letter="E",
-            timeout_seconds=7200
+            timeout_minutes=120
         )
-        
+
         assert controller.test_duration_minutes == 120
         assert controller.test_drive_letter == "E"
-        assert controller.timeout_seconds == 7200
+        assert controller.timeout_minutes == 120
     
     @patch('pathlib.Path.exists', return_value=False)
     def test_init_installer_not_found(self, mock_exists):
         """Test initialization with missing installer"""
-        with pytest.raises(BurnInConfigError):
+        with pytest.raises(BurnInConfigError) as ctx:
             BurnInController(
                 installer_path="nonexistent.exe",
                 install_path=self.test_install_path
             )
-        
-        assert "Installer not found" in str(ctx.exception)
+        assert "Installer not found" in str(ctx.value)
     
     def test_init_default_values(self):
         """Test initialization with default values"""
@@ -97,168 +91,6 @@ class TestBurnInController:
         assert controller.executable_name == "bit.exe"
         assert controller.test_duration_minutes == 1440
         assert controller.test_drive_letter == "D"
-    
-    # ===== Installation Tests =====
-    
-    @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_install_success(self, mock_manager_class):
-        """Test successful installation"""
-        mock_manager = Mock()
-        mock_manager.install.return_value = True
-        mock_manager_class.return_value = mock_manager
-        
-        controller = BurnInController(
-            installer_path=self.test_installer,
-            install_path=self.test_install_path
-        )
-        
-        result = controller.install()
-        
-        assert result
-        mock_manager.install.assert_called_once()
-    
-    @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_install_with_license(self, mock_manager_class):
-        """Test installation with license file"""
-        mock_manager = Mock()
-        mock_manager.install.return_value = True
-        mock_manager_class.return_value = mock_manager
-        
-        controller = BurnInController(
-            installer_path=self.test_installer,
-            install_path=self.test_install_path
-        )
-        
-        result = controller.install(license_path="C:\\test\\license.key")
-        
-        assert result
-        call_args = mock_manager.install.call_args
-        assert call_args[1]['license_path'] == "C:\\test\\license.key"
-    
-    @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_install_failure(self, mock_manager_class):
-        """Test installation failure"""
-        mock_manager = Mock()
-        mock_manager.install.return_value = False
-        mock_manager_class.return_value = mock_manager
-        
-        controller = BurnInController(
-            installer_path=self.test_installer,
-            install_path=self.test_install_path
-        )
-        
-        with pytest.raises(BurnInInstallError):
-            controller.install()
-    
-    @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_install_exception(self, mock_manager_class):
-        """Test installation with exception"""
-        mock_manager = Mock()
-        mock_manager.install.side_effect = Exception("Install error")
-        mock_manager_class.return_value = mock_manager
-        
-        controller = BurnInController(
-            installer_path=self.test_installer,
-            install_path=self.test_install_path
-        )
-        
-        with pytest.raises(BurnInInstallError):
-            controller.install()
-        
-        assert "Install error" in str(ctx.exception)
-    
-    # ===== Uninstallation Tests =====
-    
-    @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_uninstall_success(self, mock_manager_class):
-        """Test successful uninstallation"""
-        mock_manager = Mock()
-        mock_manager.is_running.return_value = False
-        mock_manager.uninstall.return_value = True
-        mock_manager_class.return_value = mock_manager
-        
-        controller = BurnInController(
-            installer_path=self.test_installer,
-            install_path=self.test_install_path
-        )
-        controller._process_manager = mock_manager
-        
-        result = controller.uninstall()
-        
-        assert result
-        mock_manager.uninstall.assert_called_once()
-    
-    @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_uninstall_with_running_process(self, mock_manager_class):
-        """Test uninstallation stops running process first"""
-        mock_manager = Mock()
-        mock_manager.is_running.return_value = True
-        mock_manager.stop_process.return_value = True
-        mock_manager.uninstall.return_value = True
-        mock_manager_class.return_value = mock_manager
-        
-        controller = BurnInController(
-            installer_path=self.test_installer,
-            install_path=self.test_install_path
-        )
-        controller._process_manager = mock_manager
-        
-        result = controller.uninstall()
-        
-        assert result
-        mock_manager.stop_process.assert_called_once()
-        mock_manager.uninstall.assert_called_once()
-    
-    @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_uninstall_failure(self, mock_manager_class):
-        """Test uninstallation failure"""
-        mock_manager = Mock()
-        mock_manager.is_running.return_value = False
-        mock_manager.uninstall.side_effect = Exception("Uninstall error")
-        mock_manager_class.return_value = mock_manager
-        
-        controller = BurnInController(
-            installer_path=self.test_installer,
-            install_path=self.test_install_path
-        )
-        controller._process_manager = mock_manager
-        
-        with pytest.raises(BurnInInstallError):
-            controller.uninstall()
-    
-    # ===== Installation Check Tests =====
-    
-    @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_is_installed_true(self, mock_manager_class):
-        """Test is_installed when software is installed"""
-        mock_manager = Mock()
-        mock_manager.is_installed.return_value = True
-        mock_manager_class.return_value = mock_manager
-        
-        controller = BurnInController(
-            installer_path=self.test_installer,
-            install_path=self.test_install_path
-        )
-        
-        result = controller.is_installed()
-        
-        assert result
-    
-    @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_is_installed_false(self, mock_manager_class):
-        """Test is_installed when software is not installed"""
-        mock_manager = Mock()
-        mock_manager.is_installed.return_value = False
-        mock_manager_class.return_value = mock_manager
-        
-        controller = BurnInController(
-            installer_path=self.test_installer,
-            install_path=self.test_install_path
-        )
-        
-        result = controller.is_installed()
-        
-        assert not result
     
     # ===== Configuration Tests =====
     
@@ -275,12 +107,12 @@ class TestBurnInController:
         controller.set_config(
             test_duration_minutes=120,
             test_drive_letter="E",
-            timeout_seconds=7200
+            timeout_minutes=120
         )
-        
+
         assert controller.test_duration_minutes == 120
         assert controller.test_drive_letter == "E"
-        assert controller.timeout_seconds == 7200
+        assert controller.timeout_minutes == 120
     
     @patch('lib.testtool.burnin.controller.BurnInConfig')
     def test_set_config_invalid(self, mock_config):
@@ -428,21 +260,19 @@ class TestBurnInController:
     def test_monitor_loop_passed(self, mock_monitor_class):
         """Test monitoring loop with PASSED status"""
         mock_monitor = Mock()
-        mock_monitor.read_status.return_value = "PASSED"
-        mock_monitor.get_error_count.return_value = 0
+        mock_monitor.read_status.return_value = {'test_result': 'passed', 'test_running': False, 'errors': 0}
         mock_monitor.take_screenshot.return_value = None
-        mock_monitor.handle_dialogs.return_value = None
         mock_monitor_class.return_value = mock_monitor
-        
+
         controller = BurnInController(
             installer_path=self.test_installer,
             install_path=self.test_install_path,
             check_interval_seconds=0.1
         )
         controller._ui_monitor = mock_monitor
-        
+
         controller._monitor_loop()
-        
+
         assert controller.status
         assert controller._test_result == "PASSED"
         assert controller.error_count == 0
@@ -451,22 +281,20 @@ class TestBurnInController:
     def test_monitor_loop_failed(self, mock_monitor_class):
         """Test monitoring loop with FAILED status"""
         mock_monitor = Mock()
-        mock_monitor.read_status.return_value = "FAILED"
-        mock_monitor.get_error_count.return_value = 5
+        mock_monitor.read_status.return_value = {'test_result': 'failed', 'test_running': False, 'errors': 5}
         mock_monitor.take_screenshot.return_value = None
-        mock_monitor.handle_dialogs.return_value = None
         mock_monitor_class.return_value = mock_monitor
-        
+
         controller = BurnInController(
             installer_path=self.test_installer,
             install_path=self.test_install_path,
             check_interval_seconds=0.1
         )
         controller._ui_monitor = mock_monitor
-        
+
         with pytest.raises(BurnInTestFailedError):
             controller._monitor_loop()
-        
+
         assert not controller.status
         assert controller._test_result == "FAILED"
         assert controller.error_count == 5
@@ -482,22 +310,21 @@ class TestBurnInController:
         mock_time_module.sleep.return_value = None
         
         mock_monitor = Mock()
-        mock_monitor.read_status.return_value = "RUNNING"
+        mock_monitor.read_status.return_value = {'test_result': 'running', 'test_running': True, 'errors': 0}
         mock_monitor.take_screenshot.return_value = None
-        mock_monitor.handle_dialogs.return_value = None
         mock_monitor_class.return_value = mock_monitor
-        
+
         controller = BurnInController(
             installer_path=self.test_installer,
             install_path=self.test_install_path,
-            timeout_seconds=100,
+            timeout_minutes=1,
             check_interval_seconds=0.1
         )
         controller._ui_monitor = mock_monitor
-        
+
         with pytest.raises(BurnInTimeoutError):
             controller._monitor_loop()
-        
+
         assert not controller.status
     
     @patch('lib.testtool.burnin.controller.BurnInUIMonitor')
@@ -507,13 +334,11 @@ class TestBurnInController:
         # First call raises error, then returns status
         mock_monitor.read_status.side_effect = [
             BurnInUIError("Connection lost"),
-            "PASSED"
+            {'test_result': 'passed', 'test_running': False, 'errors': 0},
         ]
         mock_monitor.is_connected.return_value = False
         mock_monitor.connect.return_value = True
-        mock_monitor.get_error_count.return_value = 0
         mock_monitor.take_screenshot.return_value = None
-        mock_monitor.handle_dialogs.return_value = None
         mock_monitor_class.return_value = mock_monitor
         
         controller = BurnInController(
@@ -617,13 +442,17 @@ class TestBurnInController:
     
     # ===== Status Tests =====
     
+    @patch('lib.testtool.burnin.controller.ChocoManager')
     @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_get_status(self, mock_manager_class):
+    def test_get_status(self, mock_manager_class, mock_choco_class):
         """Test get_status method"""
+        mock_choco = Mock()
+        mock_choco.is_installed.return_value = True
+        mock_choco_class.return_value = mock_choco
+
         mock_manager = Mock()
-        mock_manager.is_installed.return_value = True
         mock_manager.is_running.return_value = True
-        
+
         controller = BurnInController(
             installer_path=self.test_installer,
             install_path=self.test_install_path
@@ -633,9 +462,9 @@ class TestBurnInController:
         controller.status = True
         controller._test_result = "PASSED"
         controller.error_count = 0
-        
+
         status = controller.get_status()
-        
+
         assert status['running']
         assert status['status']
         assert status['test_result'] == "PASSED"
@@ -699,10 +528,8 @@ class TestBurnInController:
         
         mock_monitor = Mock()
         mock_monitor.connect.return_value = True
-        mock_monitor.read_status.return_value = "PASSED"
-        mock_monitor.get_error_count.return_value = 0
+        mock_monitor.read_status.return_value = {'test_result': 'passed', 'test_running': False, 'errors': 0}
         mock_monitor.take_screenshot.return_value = None
-        mock_monitor.handle_dialogs.return_value = None
         mock_monitor_class.return_value = mock_monitor
         
         controller = BurnInController(
@@ -736,20 +563,20 @@ class TestBurnInController:
     
     # ===== Repr Tests =====
     
-    @patch('lib.testtool.burnin.controller.BurnInProcessManager')
-    def test_repr(self, mock_manager_class):
+    @patch('lib.testtool.burnin.controller.ChocoManager')
+    def test_repr(self, mock_choco_class):
         """Test string representation"""
-        mock_manager = Mock()
-        mock_manager.is_installed.return_value = True
-        
+        mock_choco = Mock()
+        mock_choco.is_installed.return_value = True
+        mock_choco_class.return_value = mock_choco
+
         controller = BurnInController(
             installer_path=self.test_installer,
             install_path=self.test_install_path
         )
-        controller._process_manager = mock_manager
-        
+
         repr_str = repr(controller)
-        
+
         assert "BurnInController" in repr_str
         assert "installed=True" in repr_str
         assert "running=False" in repr_str

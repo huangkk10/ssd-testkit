@@ -22,6 +22,7 @@ from typing import Optional, Dict, Any, Tuple
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from lib.logger import get_module_logger
+from lib.testtool.choco_manager import ChocoManager
 from .config import BurnInConfig
 from .script_generator import BurnInScriptGenerator
 from .process_manager import BurnInProcessManager
@@ -38,6 +39,17 @@ from .exceptions import (
 
 # Initialize module-level logger
 logger = get_module_logger(__name__)
+
+# Installer filename
+_EXE_NAME = "bitwindows.exe"
+
+# Path under SSD_TESTKIT_ROOT (post-chocolatey layout)
+_REL_PATH_TESTKIT = os.path.join(
+    "bin", "installers", "BurnIn", "10.2.1004", _EXE_NAME
+)
+
+# Legacy relative path (pre-chocolatey layout, kept for backward compatibility)
+_LEGACY_REL_PATH = os.path.join(".", "bin", "BurnIn", _EXE_NAME)
 
 
 class BurnInController(threading.Thread):
@@ -97,7 +109,7 @@ class BurnInController(threading.Thread):
     
     def __init__(
         self,
-        installer_path: str,
+        installer_path: str = '',
         install_path: str = "C:\\Program Files\\BurnInTest",
         executable_name: str = "bit.exe",
         **kwargs
@@ -136,15 +148,16 @@ class BurnInController(threading.Thread):
             ... )
         """
         super().__init__()
-        
-        # Validate installer path
-        installer = Path(installer_path)
-        if not installer.exists():
-            logger.error(f"Installer not found at: {installer_path}")
-            raise BurnInConfigError(f"Installer not found at: {installer_path}")
+
+        # Validate installer path only when explicitly provided
+        if installer_path:
+            installer = Path(installer_path)
+            if not installer.exists():
+                logger.error(f"Installer not found at: {installer_path}")
+                raise BurnInConfigError(f"Installer not found at: {installer_path}")
         
         # Store basic paths
-        self.installer_path = installer_path
+        self.installer_path = installer_path  # explicit override; '' = auto-resolve
         self.install_path = install_path
         self.executable_name = executable_name
         
@@ -228,11 +241,9 @@ class BurnInController(threading.Thread):
             >>> controller.install()
         """
         # Extract required parameters
-        installer_path = config_dict.get(installer_key)
+        installer_path = config_dict.get(installer_key, '')
         install_path = config_dict.get(install_path_key)
-        
-        if not installer_path:
-            raise BurnInConfigError(f"Required key '{installer_key}' not found in config")
+
         if not install_path:
             raise BurnInConfigError(f"Required key '{install_path_key}' not found in config")
         
@@ -267,118 +278,35 @@ class BurnInController(threading.Thread):
         
         logger.info(f"BurnInController created from config dict with {len(optional_params)} additional parameters")
         return controller
-    
-    def install(self, license_path: Optional[str] = None) -> bool:
+
+    # ------------------------------------------------------------------
+    # Installer path resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_installer_path(self) -> str:
+        """Return the absolute path to the BurnInTest installer.
+
+        Resolution order:
+        1. ``self.installer_path`` (if non-empty) — explicit override passed to __init__
+        2. ``BURNIN_PATH`` environment variable — set by Chocolatey install
+        3. ``<SSD_TESTKIT_ROOT>\\bin\\installers\\BurnIn\\10.2.1004\\bitwindows.exe``
+        4. Legacy: ``./bin/BurnIn/bitwindows.exe``
         """
-        Install BurnIN software.
-        
-        Args:
-            license_path: Optional path to license file
-        
-        Returns:
-            True if installation successful
-        
-        Raises:
-            BurnInInstallError: If installation fails
-        
-        Example:
-            >>> controller = BurnInController(installer_path="./setup.exe")
-            >>> controller.install(license_path="./license.key")
-        """
-        logger.info("Starting BurnIN installation...")
-        
-        try:
-            # Create process manager if not exists
-            if self._process_manager is None:
-                self._process_manager = BurnInProcessManager(
-                    install_path=self.install_path,
-                    executable_name=self.executable_name
-                )
-            
-            # Use provided license or stored license
-            lic_path = license_path or self.license_path
-            
-            # Perform installation
-            success = self._process_manager.install(
-                installer_path=self.installer_path,
-                license_path=lic_path,
-                timeout=300  # 5 minutes for installation
-            )
-            
-            if success:
-                logger.info("BurnIN installation completed successfully")
-            else:
-                logger.error("BurnIN installation failed")
-                raise BurnInInstallError("Installation failed")
-            
-            return success
-            
-        except Exception as e:
-            logger.error(f"BurnIN installation error: {e}")
-            raise BurnInInstallError(f"Installation failed: {e}")
-    
-    def uninstall(self) -> bool:
-        """
-        Uninstall BurnIN software.
-        
-        Returns:
-            True if uninstallation successful
-        
-        Raises:
-            BurnInInstallError: If uninstallation fails
-        
-        Example:
-            >>> controller.uninstall()
-        """
-        logger.info("Starting BurnIN uninstallation...")
-        
-        try:
-            if self._process_manager is None:
-                logger.warning("Process manager not initialized, creating new one")
-                self._process_manager = BurnInProcessManager(
-                    install_path=self.install_path,
-                    executable_name=self.executable_name,
-                    installer_path=self.installer_path
-                )
-            
-            # Stop any running process first
-            if self.is_running():
-                logger.warning("BurnIN process still running, stopping it first")
-                self.stop()
-            
-            # Perform uninstallation
-            success = self._process_manager.uninstall(timeout=300)
-            
-            if success:
-                logger.info("BurnIN uninstallation completed successfully")
-            else:
-                logger.error("BurnIN uninstallation failed")
-            
-            return success
-            
-        except Exception as e:
-            logger.error(f"BurnIN uninstallation error: {e}")
-            raise BurnInInstallError(f"Uninstallation failed: {e}")
-    
-    def is_installed(self) -> bool:
-        """
-        Check if BurnIN is installed.
-        
-        Returns:
-            True if BurnIN is installed
-        
-        Example:
-            >>> if controller.is_installed():
-            ...     print("BurnIN is installed")
-        """
-        if self._process_manager is None:
-            self._process_manager = BurnInProcessManager(
-                install_path=self.install_path,
-                executable_name=self.executable_name
-            )
-        
-        return self._process_manager.is_installed()
-    
+        if self.installer_path:
+            return self.installer_path
+
+        env_path = os.environ.get('BURNIN_PATH')
+        if env_path:
+            # BURNIN_PATH points to the install dir, not the installer;
+            # fall through to SSD_TESTKIT_ROOT for the installer binary.
+            pass
+
+        testkit_root = os.environ.get('SSD_TESTKIT_ROOT')
+        if testkit_root:
+            return os.path.join(testkit_root, _REL_PATH_TESTKIT)
+
+        return _LEGACY_REL_PATH
+
     def ensure_clean_state(self) -> bool:
         """
         Ensure no existing BurnIN installation before proceeding.
@@ -399,11 +327,17 @@ class BurnInController(threading.Thread):
             ...     print("Failed to prepare clean state")
         """
         logger.info("Checking for existing BurnIN installation...")
-        
-        if self.is_installed():
+
+        mgr = ChocoManager()
+        if mgr.is_installed("burnin"):
             logger.info("Existing BurnIN installation found, removing...")
             try:
-                self.uninstall()
+                if self.is_running():
+                    self.stop()
+                result = mgr.uninstall("burnin")
+                if not result.success:
+                    logger.error(f"ChocoManager uninstall failed: {result.output}")
+                    return False
                 logger.info("Old BurnIN installation removed successfully")
             except Exception as e:
                 logger.error(f"Failed to remove old BurnIN installation: {e}")
@@ -1001,7 +935,7 @@ class BurnInController(threading.Thread):
             'status': self.status,
             'test_result': self._test_result,
             'error_count': self.error_count,
-            'installed': self.is_installed(),
+            'installed': ChocoManager().is_installed('burnin'),
             'process_running': self.is_running(),
         }
     
@@ -1009,7 +943,7 @@ class BurnInController(threading.Thread):
         """String representation of controller."""
         return (
             f"BurnInController("
-            f"installed={self.is_installed()}, "
+            f"installed={ChocoManager().is_installed('burnin')}, "
             f"running={self._running}, "
             f"status={self.status})"
         )

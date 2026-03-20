@@ -1,0 +1,13 @@
+tool_name: BurnInTest
+choco_package_id: burnin
+tool_type: installer
+
+versions:
+  - version: "10.2.1004"
+    tool_version: "10.2.1004"
+    source_dir: "bin/installers/BurnIn/10.2.1004"
+    installer_exe: "bitwindows.exe"
+    install_path: "C:\\Program Files\\BurnInTest"
+    env_var: BURNIN_PATH
+    default: true
+    notes: "PassMark BurnInTest. Silent flags: /SILENT /SUPPRESSMSGBOXES /NORESTART /DIR=..."

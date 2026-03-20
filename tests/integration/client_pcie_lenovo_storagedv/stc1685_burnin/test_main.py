@@ -27,6 +27,7 @@ from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.test_utils import cleanup_directory
 from lib.testtool.burnin import BurnInController  # New lib
+from lib.testtool.choco_manager import ChocoManager
 from lib.testtool import RunCard as RC
 import lib.testtool.DiskPrd as DiskPrd
 from lib.testtool.smartcheck import SmartCheckController
@@ -50,18 +51,17 @@ class TestSTC1685BurnIN(BaseTestCase):
     def _remove_existing_burnin(self):
         """
         Remove existing BurnIN installation if present.
-        
-        Uses BurnInController.ensure_clean_state() from library.
+
+        Uses ChocoManager for install/uninstall; BurnInController.ensure_clean_state()
+        for residual directory cleanup.
         Returns:
             bool: True if no existing installation or removal successful, False otherwise
         """
         burnin_cfg = self.config['burnin']
         burnin_controller = BurnInController(
-            installer_path=burnin_cfg['installer'],
             install_path=burnin_cfg['install_path']
         )
-        
-        # Use library method for clean state check
+
         return burnin_controller.ensure_clean_state()
     def _cleanup_test_logs(self):
         """
@@ -215,12 +215,10 @@ class TestSTC1685BurnIN(BaseTestCase):
         """
         logger.info("[TEST_02] BurnIN installation started")
         
-        # Create BurnInController instance from config
-        burnin = BurnInController.from_config_dict(self.config['burnin'])
-        
-        # Install BurnIN
-        burnin.install()
-        
+        mgr = ChocoManager()
+        result = mgr.install("burnin")
+        assert result.success, f"BurnIN install failed: {result.output}"
+
         logger.info("[TEST_02] BurnIN installation completed")
     
     @pytest.mark.order(3)

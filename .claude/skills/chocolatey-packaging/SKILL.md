@@ -272,7 +272,7 @@ Tests go in `tests/integration/lib/testtool/test_<toolname>/`.
 | `cdi` | portable | **8.17.13** | `lib/testtool/cdi/` | `bin/chocolatey/packages/cdi/8.17.13/` |
 | `smiwintools` | portable | **2026.2.13** | `lib/testtool/smartcheck/` | `bin/chocolatey/packages/smiwintools/2026.2.13/` |
 | `phm` | installer | **4.22.0** | `lib/testtool/phm/` | `bin/chocolatey/packages/phm/4.22.0/` |
-| `burnin` | installer | 9.2.1002, 9.3.1000 | 尚未建立 | 尚未建立 |
+| `burnin` | installer | **10.2.1004** | `lib/testtool/burnin/` | `bin/chocolatey/packages/burnin/10.2.1004/` |
 | `pwrtest` | portable | 1.9.0 | 尚未建立 | 尚未建立 |
 
 **已完成工具的完整範例**：see `references/packaging_templates.md`

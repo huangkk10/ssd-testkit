@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>burnin</id>
+    <version>10.2.1004</version>
+    <title>BurnInTest (v10.2.1004)</title>
+    <authors>PassMark Software / SSD TestKit</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>
+      PassMark BurnInTest - SSD endurance and stress testing tool.
+      Installer-based package. Requires SSD_TESTKIT_ROOT env var pointing
+      to the ssd-testkit root directory.
+    </description>
+    <tags>burnin passmark stress-test offline</tags>
+  </metadata>
+</package>
