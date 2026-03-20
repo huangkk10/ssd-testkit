@@ -189,8 +189,34 @@ desktop.ini
 *.pyc
 *.pyo
 
-# Ignore all bin directories
+# Ignore bin/ everywhere (tests/integration/bin etc.) but re-include root bin/
+# so that specific chocolatey scripts, configs and .gitkeep can be tracked.
 **/bin/
+!/bin/
+
+# ── Chocolatey 離線套件管理 ───────────────────────────────────────────────────
+# 腳本與設定檔：追蹤（文字檔、可審查）
+!bin/chocolatey/
+!bin/chocolatey/scripts/
+!bin/chocolatey/scripts/*.ps1
+!bin/chocolatey/installer/
+!bin/chocolatey/installer/bootstrap.ps1
+!bin/chocolatey/config/
+!bin/chocolatey/config/packages.config
+!bin/chocolatey/config/sources.config
+!bin/chocolatey/config/environment.config
+
+# 二進位套件檔：不追蹤（體積大、不適合放 git）
+bin/chocolatey/installer/*.nupkg
+bin/chocolatey/packages/**/*.nupkg
+bin/chocolatey/packages/**/*.sha256
+
+# packages 目錄結構
+!bin/chocolatey/packages/
+!bin/chocolatey/packages/.gitkeep
+
+# ── 廠商大型安裝檔 ────────────────────────────────────────────────────────────
+bin/installers/
 
 # tests
 tests/unit/lib/testtool/test_smartcheck/smartcheck_custom_output
