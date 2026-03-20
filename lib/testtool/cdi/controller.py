@@ -36,6 +36,15 @@ from .ui_monitor import CDIUIMonitor
 
 logger = get_module_logger(__name__)
 
+# Executable filename
+_EXE_NAME = "DiskInfo64.exe"
+
+# Path under SSD_TESTKIT_ROOT (post-chocolatey layout)
+_REL_PATH_TESTKIT = os.path.join("bin", "installers", "CrystalDiskInfo", "8.17.13", _EXE_NAME)
+
+# Legacy relative path (pre-chocolatey layout, kept for backward compatibility)
+_LEGACY_REL_PATH = os.path.join(".", "bin", "CrystalDiskInfo", _EXE_NAME)
+
 
 # ---------------------------------------------------------------------------
 # ReadMode enum  (used by CDILogParser)
@@ -374,6 +383,32 @@ class CDIController(threading.Thread):
         self._stop_event.set()
 
     # ------------------------------------------------------------------
+    # Exe path resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_exe_path(self) -> str:
+        """Return absolute path to DiskInfo64.exe following the resolution order:
+
+        1. ``executable_path`` config value (if non-empty) — explicit override
+        2. ``CDI_PATH`` environment variable — set by Chocolatey install
+        3. ``<SSD_TESTKIT_ROOT>\\bin\\installers\\CrystalDiskInfo\\8.17.13\\DiskInfo64.exe``
+        4. Legacy: ``./bin/CrystalDiskInfo/DiskInfo64.exe``
+        """
+        exe_path = self._config.get('executable_path', '')
+        if exe_path:
+            return exe_path
+
+        env_path = os.environ.get('CDI_PATH')
+        if env_path:
+            return env_path
+
+        testkit_root = os.environ.get('SSD_TESTKIT_ROOT')
+        if testkit_root:
+            return os.path.join(testkit_root, _REL_PATH_TESTKIT)
+
+        return _LEGACY_REL_PATH
+
+    # ------------------------------------------------------------------
     # Thread body
     # ------------------------------------------------------------------
 
@@ -406,7 +441,7 @@ class CDIController(threading.Thread):
         cfg = self._config
         log_path = cfg['log_path']
         prefix = cfg['log_prefix']
-        exe_path = cfg['executable_path']
+        exe_path = self._resolve_exe_path()
 
         txt_name = cfg['diskinfo_txt_name']
         json_name = cfg['diskinfo_json_name']

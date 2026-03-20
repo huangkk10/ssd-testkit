@@ -16,13 +16,16 @@ class CDIConfig:
 
     Example:
         >>> config = CDIConfig.get_default_config()
-        >>> CDIConfig.validate_config({'executable_path': './bin/CrystalDiskInfo/DiskInfo64.exe'})
+        >>> CDIConfig.validate_config({'executable_path': r'C:\tools\CrystalDiskInfo\DiskInfo64.exe'})
         True
     """
 
     DEFAULT_CONFIG: Dict[str, Any] = {
-        # Executable location
-        'executable_path': './bin/CrystalDiskInfo/DiskInfo64.exe',
+        # Executable location — empty string triggers auto-resolution in CDIController:
+        # 1. CDI_PATH env var (set by Chocolatey install)
+        # 2. SSD_TESTKIT_ROOT\bin\installers\CrystalDiskInfo\8.17.13\DiskInfo64.exe
+        # 3. legacy: ./bin/CrystalDiskInfo/DiskInfo64.exe
+        'executable_path': '',
         # Log output directory
         'log_path': './testlog',
         # Filename prefix applied to all output files

@@ -1,0 +1,18 @@
+# lib/testtool/cdi/package_meta.yaml
+tool_name: cdi
+choco_package_id: cdi
+tool_type: portable
+
+versions:
+  - version: "8.17.13"
+    source_dir: "bin/installers/CrystalDiskInfo/8.17.13"
+    default: true
+
+install_dir: "C:\\tools\\CrystalDiskInfo"
+env_var: "CDI_PATH"
+binaries:
+  - "DiskInfo64.exe"
+  - "DiskInfo32.exe"
+notes: >
+  CrystalDiskInfo 8.17.13 portable. CDI_PATH points to DiskInfo64.exe.
+  Pass CDI_PATH to CDIController via executable_path config key.
