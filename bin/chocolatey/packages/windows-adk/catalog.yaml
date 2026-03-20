@@ -1,0 +1,15 @@
+# bin/chocolatey/packages/windows-adk/catalog.yaml
+# Build Number → Windows 版本對照表
+# 目的：讓人看就知道哪個目錄對應哪個 Windows 版本
+# 注意：本目錄的 nupkg 為薄包裝層，實際安裝檔位於 bin/installers/WindowsADK/<build>/
+
+build_number_map:
+  "19041": { os_name: "Windows 10 2004",       release: "20H1" }
+  "22000": { os_name: "Windows 11 21H2",        release: "21H2" }
+  "22621": { os_name: "Windows 11 22H2/23H2",   release: "23H2", default: true }
+  "26100": { os_name: "Windows 11 24H2",        release: "24H2" }
+
+notes: >
+  22621 同時涵蓋 22H2 與 23H2，兩者使用相同第一次發行版安裝檔。
+  可透過 [System.Environment]::OSVersion.Version.Build 取得目標機的 Build Number。
+  chocolateyInstall.ps1 透過 SSD_TESTKIT_ROOT 環境變數找到實際 adksetup.exe。

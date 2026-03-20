@@ -1,0 +1,39 @@
+# lib/testtool/windows_adk/package_meta.yaml
+# Windows Assessment and Deployment Kit — 套件資訊
+# Chocolatey 套件版本以 Build Number 作為版本識別碼。
+# 實際安裝檔位於 bin/installers/WindowsADK/<build>/adksetup.exe（不進 git，體積大）。
+
+tool_name: windows_adk
+choco_package_id: windows-adk
+version_id_type: build_number           # 版本號為 Windows Build Number（整數字串）
+
+versions:
+  - version: "19041"
+    os_name: "Windows 10 2004"
+    installer: "bin/installers/WindowsADK/19041/adksetup.exe"
+    default: false
+
+  - version: "22000"
+    os_name: "Windows 11 21H2"
+    installer: "bin/installers/WindowsADK/22000/adksetup.exe"
+    default: false
+
+  - version: "22621"
+    os_name: "Windows 11 22H2/23H2"
+    installer: "bin/installers/WindowsADK/22621/adksetup.exe"
+    default: true                       # 目前主力測試版本
+
+  - version: "26100"
+    os_name: "Windows 11 24H2"
+    installer: "bin/installers/WindowsADK/26100/adksetup.exe"
+    default: false
+
+# 安裝參數：只裝 Windows Performance Toolkit（WPT），足夠 xbootmgr / wpr / wpa
+install_args: "/quiet /norestart /features OptionId.WindowsPerformanceToolkit"
+
+# 安裝後路徑（安裝完成後的工具位置）
+install_dir: "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit"
+binaries:
+  - "wpr.exe"
+  - "wpa.exe"
+  - "xbootmgr.exe"

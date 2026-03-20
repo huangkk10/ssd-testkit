@@ -33,12 +33,17 @@ if (-not $packages) {
     exit 0
 }
 
-# ── Determine --source parameter ─────────────────────────────────────────────
-$chocoArgs = @("install", "--yes", "--no-progress", "--ignore-checksums")
-if ($Source -ne "") {
-    $chocoArgs += "--source"
-    $chocoArgs += $Source
-}
+# ── Set SSD_TESTKIT_ROOT so nupkg install scripts can locate large installers ──
+# Scripts are at bin/chocolatey/scripts/ -> project root is 3 levels up
+$env:SSD_TESTKIT_ROOT = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..\")).Path
+Write-Host "[INFO] SSD_TESTKIT_ROOT=$env:SSD_TESTKIT_ROOT"
+
+# ── Resolve base packages directory (for per-package source resolution) ──────
+# When $Source is not overridden, packages are stored at:
+#   <project_root>/bin/chocolatey/packages/<id>/<version>/
+# Chocolatey local folder source must point to the folder containing the nupkg;
+# it does NOT recurse into subdirectories.
+$packagesBaseDir = Join-Path $env:SSD_TESTKIT_ROOT "bin\chocolatey\packages"
 
 # ── Install each package in order ───────────────────────────────────────────
 $failed = @()
@@ -47,7 +52,21 @@ foreach ($pkg in $packages) {
     $ver = $pkg.version
     Write-Host "`n[PKG] Installing $id $ver ..."
 
-    $args = $chocoArgs + @($id, "--version", $ver)
+    # Resolve the source: explicit override > per-package version folder > base dir
+    if ($Source -ne "") {
+        $pkgSource = $Source
+    } else {
+        $pkgSource = Join-Path $packagesBaseDir "$id\$ver"
+        if (-not (Test-Path $pkgSource)) {
+            Write-Warning "[WARN] Package source dir not found: $pkgSource"
+            $failed += "$id@$ver"
+            continue
+        }
+    }
+
+    # NuGet normalises bare integers: e.g. "22621" -> "22621.0.0"
+    # Pass the version as-is; choco will resolve it against what's in the nupkg.
+    $args = @("install", $id, "--source", $pkgSource, "--yes", "--no-progress", "--ignore-checksums")
     & choco @args
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "[WARN] $id $ver installation returned exit code $LASTEXITCODE"
