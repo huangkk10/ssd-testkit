@@ -268,10 +268,10 @@ Tests go in `tests/integration/lib/testtool/test_<toolname>/`.
 | `windows-adk` | installer | 19041, 22000, **22621**, 26100 | `lib/testtool/windows_adk/` | `bin/chocolatey/packages/windows-adk/22621/` |
 | `smicli` | portable | **2025.11.14** | `lib/testtool/smicli/` | `bin/chocolatey/packages/smicli/2025.11.14/` |
 | `playwright-browsers` | portable | **1.58.0** | `lib/testtool/playwright_browsers/` | `bin/chocolatey/packages/playwright-browsers/1.58.0/` |
+| `net-7-sdk` | installer | **7.0.410** | `lib/testtool/net_7_sdk/` | `bin/chocolatey/packages/net-7-sdk/7.0.410/` |
 | `burnin` | installer | 9.2.1002, 9.3.1000 | 尚未建立 | 尚未建立 |
 | `cdi` | installer | 8.1.0 | 尚未建立 | 尚未建立 |
 | `pwrtest` | portable | 1.9.0 | 尚未建立 | 尚未建立 |
-| `dotnet` | installer | 8.0.0 | 尚未建立 | 尚未建立 |
 
 **已完成工具的完整範例**：see `references/packaging_templates.md`
 

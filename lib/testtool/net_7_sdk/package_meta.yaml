@@ -1,0 +1,19 @@
+# lib/testtool/net_7_sdk/package_meta.yaml
+tool_name: net_7_sdk
+choco_package_id: net-7-sdk
+tool_type: installer
+
+versions:
+  - version: "7.0.410"
+    source_dir: "bin/installers/net_7_sdk/7.0.410"
+    installer_file: "dotnet-sdk-7.0.410-win-x64.exe"
+    default: true
+
+install_args: "/install /quiet /norestart"
+uninstall_args: "/uninstall /quiet /norestart"
+binaries:
+  - "dotnet.exe"
+notes: >
+  .NET 7 SDK x64. Required by testtool libraries that target net7.0.
+  After installation, 'dotnet' CLI is available on PATH automatically.
+  Exit code 3010 = reboot required (treated as success).

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>net-7-sdk</id>
+    <version>7.0.410</version>
+    <title>.NET 7 SDK (7.0.410)</title>
+    <authors>SSD TestKit</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>
+      Offline installer for .NET 7 SDK (7.0.410) x64 for Windows.
+      Installs the .NET 7 SDK runtime and CLI tools required by testtool libraries.
+      Requires SSD_TESTKIT_ROOT environment variable to locate the installer.
+    </description>
+    <tags>dotnet net7 sdk offline</tags>
+  </metadata>
+</package>
