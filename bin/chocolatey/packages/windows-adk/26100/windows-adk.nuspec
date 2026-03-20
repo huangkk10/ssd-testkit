@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>windows-adk</id>
+    <version>26100.0.0</version>
+    <title>Windows ADK Build 26100 (Win11 24H2)</title>
+    <authors>SSD TestKit</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Thin offline wrapper. Calls adksetup.exe via SSD_TESTKIT_ROOT env var.
+Installer location: bin/installers/WindowsADK/26100/adksetup.exe</description>
+    <tags>windows-adk adk offline wpt</tags>
+  </metadata>
+</package>

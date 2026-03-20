@@ -21,12 +21,12 @@ versions:
   - version: "22621"
     os_name: "Windows 11 22H2/23H2"
     installer: "bin/installers/WindowsADK/22621/adksetup.exe"
-    default: true                       # 目前主力測試版本
+    default: false
 
   - version: "26100"
     os_name: "Windows 11 24H2"
     installer: "bin/installers/WindowsADK/26100/adksetup.exe"
-    default: false
+    default: true                       # 最新版本，Windows 11 24H2
 
 # 安裝參數：只裝 Windows Performance Toolkit（WPT），足夠 xbootmgr / wpr / wpa
 install_args: "/quiet /norestart /features OptionId.WindowsPerformanceToolkit"
