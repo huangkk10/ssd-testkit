@@ -223,6 +223,51 @@ class TestBPFSWorkflow(BaseTestCase):
         except Exception as exc:
             logger.warning(f"[TEST_01] Wake timer check failed (non-fatal): {exc}")
 
+        # ── Ensure ETW-dependent services are running ───────────────────────
+        # BPFS relies on an ETW boot autologger session that stays alive for
+        # ~120 s after Fast Startup resume.  Two services maintain that session:
+        #   SysMain  (Superfetch) — manages boot profiling / ETW boot session
+        #   DiagTrack             — Connected User Experiences and Telemetry
+        # If either is stopped/disabled the ETW session can disappear during the
+        # 120-second post-boot tracing window, causing WAC error 0xC0040477.
+        for svc in ("SysMain", "DiagTrack"):
+            try:
+                status_result = subprocess.run(
+                    ["sc", "query", svc],
+                    capture_output=True, text=True,
+                )
+                if "RUNNING" in status_result.stdout:
+                    logger.info(f"[TEST_01] Service '{svc}' is running")
+                else:
+                    logger.warning(f"[TEST_01] Service '{svc}' is not running — attempting to start")
+                    start_result = subprocess.run(
+                        ["sc", "start", svc],
+                        capture_output=True, text=True,
+                    )
+                    if start_result.returncode == 0:
+                        logger.info(f"[TEST_01] Service '{svc}' started successfully")
+                    else:
+                        logger.warning(
+                            f"[TEST_01] Could not start '{svc}': {start_result.stderr.strip()} "
+                            f"(BPFS ETW session may expire mid-assessment)"
+                        )
+                # Also ensure the service start type is not Disabled
+                config_result = subprocess.run(
+                    ["sc", "qc", svc],
+                    capture_output=True, text=True,
+                )
+                if "DISABLED" in config_result.stdout:
+                    logger.warning(
+                        f"[TEST_01] Service '{svc}' start type is DISABLED — "
+                        f"setting to DEMAND_START so it survives reboots"
+                    )
+                    subprocess.run(
+                        ["sc", "config", svc, "start=", "demand"],
+                        capture_output=True,
+                    )
+            except Exception as exc:
+                logger.warning(f"[TEST_01] Service check for '{svc}' failed (non-fatal): {exc}")
+
     # ------------------------------------------------------------------
     # Step 2 — Apply OS configuration
     # ------------------------------------------------------------------
