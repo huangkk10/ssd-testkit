@@ -241,6 +241,115 @@ class UIRunner:
             title="Run", auto_id=_AID_QUICKRUN_RUN_BTN, control_type="Button"
         ).click()
 
+    def select_bpfs_configured_job(self, num_iters: int = 1, auto_boot: bool = True) -> None:
+        """Select BPFS via Run Individual Assessments, configure it, set job Overview, then click Run.
+
+        UI steps performed:
+            1. Click 'Run Individual Assessments' in the left panel.
+            2. Select 'Boot performance (Fast Startup)' and click Configure.
+            3. In the Configure job page — select the BPFS card on the left:
+               - Uncheck 'Use recommended settings'
+               - Set 'Number of Iterations' to *num_iters*
+               - Ensure 'Use wake timers to automate boot' matches *auto_boot*
+            4. Click 'Overview' in the left panel:
+               - Ensure 'Stop this job if an error occurs' is checked
+            5. Click 'Run' to submit the job.
+        """
+        self._open_quickrun_panel()
+
+        # Select BPFS in the Quick Run list
+        ctrl = self._session.window.child_window(
+            title="Boot performance (Fast Startup)",
+            auto_id=_AID_ASSESSMENT["bpfs"],
+            control_type="ListItem",
+        )
+        ctrl.select()
+
+        # Click "Configure" hyperlink → opens the Configure Job tab
+        self._session.window.child_window(
+            title="Configure",
+            auto_id="AID_QuickRun_ConfigureAndRun",
+            control_type="Hyperlink",
+        ).invoke()
+        time.sleep(1)
+
+        # In the Configure Job left panel, select the BPFS assessment card
+        self._session.window.child_window(
+            title="Boot performance (Fast Startup)",
+            auto_id=_AID_ASSESSMENT["bpfs"],
+            control_type="ListItem",
+        ).select()
+        time.sleep(0.5)
+
+        # Uncheck "Use recommended settings" (if currently checked)
+        use_recommended = self._session.window.child_window(
+            title="Use recommended settings",
+            auto_id="AID_AssessmentView_BenchmarkMode",
+            control_type="CheckBox",
+        )
+        if use_recommended.get_toggle_state() == 1:
+            use_recommended.click_input()
+
+        # Set Number of Iterations
+        iter_ctrl = self._session.window.child_window(
+            auto_id="AID_Parameter_Value_Iterations",
+            control_type="Edit",
+        )
+        iter_ctrl.set_edit_text(str(num_iters))
+
+        # Set "Use wake timers to automate boot" to match auto_boot
+        wake_timer = self._session.window.child_window(
+            title="Use wake timers to automate boot (if supported)",
+            auto_id="AID_Parameter_Value_waketimersupport",
+            control_type="CheckBox",
+        )
+        state = wake_timer.get_toggle_state()
+        if auto_boot and state == 0:
+            wake_timer.click_input()
+        elif not auto_boot and state == 1:
+            wake_timer.click_input()
+
+        # Click Overview in the left panel to reach job-level settings
+        self._configure_job_overview_stop_on_error()
+
+        # Click Run to submit
+        self._session.window.child_window(
+            title="Run", auto_id=_AID_JOBVIEW_RUN_BTN, control_type="Button"
+        ).click()
+
+    def _configure_job_overview_stop_on_error(self) -> None:
+        """Click 'Overview' in the Configure Job left panel and ensure
+        'Stop this job if an error occurs' is checked."""
+        self._session.window.child_window(
+            title="Overview",
+            control_type="ListItem",
+        ).select()
+        time.sleep(0.5)
+        stop_cb = self._session.window.child_window(
+            title="Stop this job if an error occurs",
+            control_type="CheckBox",
+        )
+        if stop_cb.get_toggle_state() == 0:
+            stop_cb.click_input()
+
+    def save_custom_job(self, name: str) -> None:
+        """Fill in the 'Save Custom Job' dialog that appears after clicking Run
+        in the Configure Job page, then confirm with OK.
+
+        Args:
+            name: The job name to enter (replaces the default 'New job N' text).
+        """
+        time.sleep(1)
+        ctrl = self._session.window.child_window(
+            auto_id=_AID_NAME_TEXTBOX,
+            control_type="Edit",
+        )
+        ctrl.set_edit_text(name)
+        self._session.window.child_window(
+            title="OK", control_type="Button"
+        ).click()
+        time.sleep(1)
+
     # ------------------------------------------------------------------
     # Job name dialog (appears after Run is clicked in some assessments)
     # ------------------------------------------------------------------

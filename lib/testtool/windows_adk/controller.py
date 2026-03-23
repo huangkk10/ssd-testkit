@@ -95,10 +95,11 @@ class ADKController(threading.Thread):
             **kwargs: Extra options forwarded to the UI runner
                       (e.g. num_iters=5, auto_boot=False for bpfs_num_iters).
         """
-        if name not in _ASSESSMENTS and name != "bpfs_num_iters":
+        _extra = ["bpfs_num_iters", "bpfs_configured"]
+        if name not in _ASSESSMENTS and name not in _extra:
             raise ADKError(
                 f"Unknown assessment: '{name}'. "
-                f"Valid options: {sorted(list(_ASSESSMENTS.keys()) + ['bpfs_num_iters'])}"
+                f"Valid options: {sorted(list(_ASSESSMENTS.keys()) + _extra)}"
             )
         self._assessment_name = name
         self._assessment_kwargs = kwargs
@@ -215,6 +216,26 @@ class ADKController(threading.Thread):
             ok, msg = self._check_finish_result()
             self.save_result()
             self.take_screenshot()
+            self._ui.close()
+            return ok, msg
+
+        if name == "bpfs_configured":
+            num_iters = self._assessment_kwargs.get("num_iters", 1)
+            auto_boot = self._assessment_kwargs.get("auto_boot", True)
+            job_name  = self._assessment_kwargs.get("job_name", "BPFS_Test")
+            self._ui.select_bpfs_configured_job(num_iters, auto_boot)
+            self._ui.save_custom_job(job_name)
+            self._ui.connect_launcher()
+            self._ui.read_job_info(log_path)
+            await self._ui_click_start_async()
+            ok, msg = await self._scan_finished()
+            if not ok:
+                return False, msg
+            ok, msg = self._check_finish_result()
+            self.save_result()
+            self.take_screenshot()
+            if ok and self._config["check_result_spec"]:
+                ok, msg = self._check_spec_bpfs()
             self._ui.close()
             return ok, msg
 
