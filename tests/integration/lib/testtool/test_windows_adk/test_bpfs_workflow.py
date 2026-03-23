@@ -36,6 +36,7 @@ import os
 import subprocess
 import sys
 import time
+import winreg
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[5]
@@ -166,6 +167,62 @@ class TestBPFSWorkflow(BaseTestCase):
         ctrl.cleanup_dirs()
         logger.info("[TEST_01] WAC directories cleaned")
 
+        # ── Verify + auto-fix Fast Startup (HiberbootEnabled) ─────────────
+        # BPFS assessment requires the system to resume from hibernate via
+        # Fast Startup.  If Fast Startup is disabled the OS performs a cold
+        # boot instead and the ETW boot-trace session is never written,
+        # which causes WAC error 0xC0040477 after the reboot.
+        try:
+            key = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SYSTEM\CurrentControlSet\Control\Session Manager\Power",
+                access=winreg.KEY_READ | winreg.KEY_WRITE,
+            )
+            hiberboot, _ = winreg.QueryValueEx(key, "HiberbootEnabled")
+            if hiberboot != 1:
+                logger.warning("[TEST_01] Fast Startup disabled — enabling now (HiberbootEnabled=1)")
+                winreg.SetValueEx(key, "HiberbootEnabled", 0, winreg.REG_DWORD, 1)
+                logger.info("[TEST_01] Fast Startup enabled")
+            else:
+                logger.info("[TEST_01] Fast Startup already enabled")
+            winreg.CloseKey(key)
+        except PermissionError:
+            pytest.fail(
+                "[TEST_01] Cannot write HiberbootEnabled — run pytest as Administrator."
+            )
+        except FileNotFoundError:
+            logger.warning("[TEST_01] HiberbootEnabled registry key not found — skipping check")
+
+        # ── Verify + auto-fix Wake Timers in the active power plan ─────────
+        # WAC needs to schedule a wake timer so the system resumes from
+        # hibernate automatically.  If wake timers are disabled the machine
+        # stays asleep and pytest never gets to Step 4.
+        try:
+            result = subprocess.run(
+                ["powercfg", "/query", "SCHEME_CURRENT", "SUB_SLEEP", "RTCWAKE"],
+                capture_output=True, text=True,
+            )
+            if "0x00000001" in result.stdout:
+                logger.info("[TEST_01] Wake timers enabled in active power plan")
+            else:
+                logger.warning("[TEST_01] Wake timers disabled — enabling for AC and DC")
+                # RTCWAKE: 0 = Disabled, 1 = Enabled
+                for index in ("0x1", "0x0"):  # AC then DC
+                    subprocess.run(
+                        ["powercfg", "/setacvalueindex", "SCHEME_CURRENT",
+                         "SUB_SLEEP", "RTCWAKE", "1"],
+                        capture_output=True,
+                    )
+                    subprocess.run(
+                        ["powercfg", "/setdcvalueindex", "SCHEME_CURRENT",
+                         "SUB_SLEEP", "RTCWAKE", "1"],
+                        capture_output=True,
+                    )
+                subprocess.run(["powercfg", "/setactive", "SCHEME_CURRENT"], capture_output=True)
+                logger.info("[TEST_01] Wake timers enabled")
+        except Exception as exc:
+            logger.warning(f"[TEST_01] Wake timer check failed (non-fatal): {exc}")
+
     # ------------------------------------------------------------------
     # Step 2 — Apply OS configuration
     # ------------------------------------------------------------------
@@ -261,6 +318,43 @@ class TestBPFSWorkflow(BaseTestCase):
         """
         timeout = int(os.getenv("ADK_BPFS_TIMEOUT", "7200"))
         ctrl = ADKController(config={"log_path": self.log_path})
+
+        # ── Verify this was a Fast Startup resume, not a cold boot ────────
+        # If the system did a cold boot instead of a hibernate resume the ETW
+        # boot-trace session won't exist and WAC will report 0xC0040477.
+        # We detect this early via Kernel-Power Event ID 1 in the System log.
+        # Event ID 1 data[0]=1  → Fast Startup resume (hibernate)
+        # Event ID 1 data[0]=2  → Cold boot
+        # (absent entirely = still booting, treat as unknown)
+        try:
+            ps_check = subprocess.run(
+                [
+                    "powershell", "-NoProfile", "-Command",
+                    "Get-WinEvent -LogName System -MaxEvents 300 "
+                    "| Where-Object { $_.Id -eq 1 -and $_.ProviderName -eq "
+                    "'Microsoft-Windows-Kernel-Power' } "
+                    "| Select-Object -First 1 -ExpandProperty Properties "
+                    "| Select-Object -First 1 -ExpandProperty Value",
+                ],
+                capture_output=True, text=True, timeout=30,
+            )
+            boot_type = ps_check.stdout.strip()
+            if boot_type == "2":
+                pytest.fail(
+                    "[TEST_04] System performed a COLD BOOT instead of a Fast Startup resume.\n"
+                    "The ETW boot-trace session will not exist and WAC will fail with 0xC0040477.\n"
+                    "Probable causes:\n"
+                    "  - Fast Startup was disabled at boot time\n"
+                    "  - Wake timer did not fire (machine was powered on manually)\n"
+                    "  - Hibernate file was discarded by the firmware\n"
+                    "Re-run from Step 1 to retry."
+                )
+            elif boot_type == "1":
+                logger.info("[TEST_04] Boot type confirmed: Fast Startup resume (hibernate)")
+            else:
+                logger.warning(f"[TEST_04] Boot type unknown (value={boot_type!r}) — proceeding")
+        except Exception as exc:
+            logger.warning(f"[TEST_04] Boot-type check failed (non-fatal): {exc}")
 
         # debug_enumerate=True logs all UI element IDs on first run.
         # Flip to False once auto_ids are confirmed on this build.
