@@ -329,7 +329,7 @@ class UIRunner:
 
         # --- DEBUG: enumerate all Edit controls to find correct Iterations field ---
         try:
-            all_edits = self._session.window.children(control_type="Edit")
+            all_edits = self._session.window.descendants(control_type="Edit")
             for idx, ctrl in enumerate(all_edits):
                 try:
                     info = ctrl.element_info
