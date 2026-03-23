@@ -288,30 +288,21 @@ class UIRunner:
         logger.debug("select_bpfs_configured_job: num_iters=%d auto_boot=%s", num_iters, auto_boot)
         self._open_quickrun_panel()
 
-        # Select BPFS in the Quick Run list.
-        # NOTE: auto_id is intentionally omitted here — the GUID-based auto_id
-        # was only verified on build 22621 and may differ on 26100+.
-        # Title-only matching is reliable enough for uniquely-titled items.
-        logger.debug("select_bpfs_configured_job: clicking 'Boot performance (Fast Startup)' in Quick Run list")
+        # Double-click BPFS in the Quick Run list to enter the Configure Job page.
+        # WAC shows "Double-click an assessment from the list to continue." — this is
+        # the reliable cross-build way to open the Configure page without needing to
+        # locate the separate "Configure" button (whose control_type/auto_id differs
+        # between build 22621 and 26100).
+        logger.debug("select_bpfs_configured_job: double-clicking 'Boot performance (Fast Startup)' to open Configure page")
         ctrl = self._session.window.child_window(
             title="Boot performance (Fast Startup)",
             control_type="ListItem",
         )
-        ctrl.click_input()
-        time.sleep(1)
-
-        # Click "Configure" button (bottom-right of Quick Run panel) → opens Configure Job tab
-        logger.debug("select_bpfs_configured_job: clicking Configure button")
-        self._session.window.child_window(
-            title="Configure",
-            control_type="Button",
-        ).click()
+        ctrl.double_click_input()
         logger.debug("select_bpfs_configured_job: waiting for Configure Job page to load")
         time.sleep(2)
 
         # In the Configure Job left panel, click the BPFS assessment card to show settings.
-        # Again, omit auto_id — the card in the Configure Job panel uses a different
-        # hierarchy than the Quick Run list.
         logger.debug("select_bpfs_configured_job: clicking BPFS card in Configure Job left panel")
         self._session.window.child_window(
             title="Boot performance (Fast Startup)",
