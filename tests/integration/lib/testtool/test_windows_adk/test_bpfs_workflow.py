@@ -268,6 +268,31 @@ class TestBPFSWorkflow(BaseTestCase):
             except Exception as exc:
                 logger.warning(f"[TEST_01] Service check for '{svc}' failed (non-fatal): {exc}")
 
+        # ── Refresh the hibernate file ────────────────────────────────
+        # A stale hibernate file from a previous WAC run can leave ETW
+        # autologger entries in a partial state.  On the next hibernate this
+        # causes the boot-trace session to disappear mid-assessment
+        # (0xC0040477).  Disabling and re-enabling hibernate forces Windows
+        # to create a fresh hiberfil.sys and clears any stale session state.
+        try:
+            subprocess.run(["powercfg", "/hibernate", "off"], capture_output=True, check=True)
+            subprocess.run(["powercfg", "/hibernate", "on"],  capture_output=True, check=True)
+            logger.info("[TEST_01] Hibernate file refreshed (off/on)")
+        except Exception as exc:
+            logger.warning(f"[TEST_01] Hibernate refresh failed (non-fatal): {exc}")
+
+        # ── Log active ETW autologger sessions (diagnostic) ────────────────
+        # This output helps identify left-over sessions from previous runs
+        # that might conflict with WAC's own autologger registration.
+        try:
+            al_result = subprocess.run(
+                ["logman", "query", "autologgers"],
+                capture_output=True, text=True, timeout=15,
+            )
+            logger.info("[TEST_01] Active autologger sessions:\n%s", al_result.stdout.strip())
+        except Exception as exc:
+            logger.warning(f"[TEST_01] logman query autologgers failed (non-fatal): {exc}")
+
     # ------------------------------------------------------------------
     # Step 2 — Apply OS configuration
     # ------------------------------------------------------------------
@@ -340,8 +365,21 @@ class TestBPFSWorkflow(BaseTestCase):
         ctrl._ui.click_start()
 
         # Fallback wait in case hibernate is delayed (e.g. dry-run environment).
+        # Wall-clock detection: if the 120-second sleep actually takes >>120 s
+        # of real time, the machine hibernated and resumed mid-sleep.  In that
+        # case a second pytest process has already been started by the startup
+        # BAT.  Exit this (original) process to prevent duplicate test_04
+        # execution which can interfere with WAC's UI automation.
         logger.info("[TEST_03] Waiting for hibernate...")
+        _t_click = time.time()
         time.sleep(120)
+        _wall = time.time() - _t_click
+        if _wall > 300:
+            logger.info(
+                "[TEST_03] Hibernate detected (wall time=%.0fs) — "
+                "exiting so startup BAT handles test_04+", _wall
+            )
+            os._exit(0)
 
     # ------------------------------------------------------------------
     # Step 4 — Wait for assessment result (runs after reboot)

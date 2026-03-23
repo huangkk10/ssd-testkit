@@ -14,8 +14,9 @@ playwright>=1.40.0
 # Image processing (for screenshots)
 Pillow>=9.0.0
 
-# JSON handling
+# JSON / XML handling
 jsonschema>=4.0.0
+xmltodict>=0.13.0
 
 # Utilities
 psutil>=5.8.0
