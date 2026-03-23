@@ -20,7 +20,7 @@ import pyperclip
 from pywinauto import Application, findwindows, keyboard, timings
 
 from lib.logger import get_module_logger
-from .exceptions import ADKUIError, ADKProcessError
+from .exceptions import ADKUIError, ADKProcessError, ADKTimeoutError
 from .result_reader import WACRunResult, wait_for_view_results, debug_enumerate_view_results
 
 logger = get_module_logger(__name__)
@@ -503,26 +503,54 @@ class UIRunner:
         timeout: int = 7200,
         debug_enumerate: bool = False,
     ) -> WACRunResult:
-        """Connect (or reconnect) to WAC and wait for the View Results page.
+        """Wait for WAC to start, then wait for View Results page.
 
-        Call this after BPFS has been started and the machine has rebooted.
-        WAC will show View Results once the assessment is complete.
+        After a BPFS-triggered reboot, pytest may start before WAC has
+        relaunched its window.  This method retries the connect() call
+        for the full *timeout* period so the assessment has time to finish.
 
         Args:
-            timeout:         Max seconds to wait (default 7200 = 2 hours).
-            debug_enumerate: Set True on first bring-up to log all UI element
-                             IDs — helps confirm auto_ids on a new build.
+            timeout:         Max seconds to wait for WAC + View Results
+                             (default 7200 = 2 hours).
+            debug_enumerate: Set True to log all UI element IDs once the
+                             View Results page appears (auto_id discovery).
 
         Returns:
             WACRunResult with errors, warnings, result_path, etc.
-        """
-        # Ensure we have a live window reference
-        if self._session.app is None or self._session.window is None:
-            self.connect()
 
+        Raises:
+            ADKTimeoutError: WAC did not appear within *timeout* seconds.
+        """
+        _connect_poll = 10   # seconds between connect retries
+        deadline = time.monotonic() + timeout
+
+        # Phase 1: wait for WAC window to be available
+        while True:
+            try:
+                if self._session.app is None or self._session.window is None:
+                    self.connect()
+                break   # connected
+            except Exception as exc:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ADKTimeoutError(
+                        f"WAC did not start within {timeout}s: {exc}"
+                    ) from exc
+                logger.info(
+                    "[ViewResults] WAC not available yet (%s) — "
+                    "retrying in %ds (remaining=%.0fs)",
+                    type(exc).__name__, _connect_poll, remaining,
+                )
+                # Reset session so connect() tries a fresh attach next time
+                self._session.app = None
+                self._session.window = None
+                time.sleep(_connect_poll)
+
+        # Phase 2: wait for View Results page (assessment may still be running)
+        remaining_timeout = max(int(deadline - time.monotonic()), 1)
         return wait_for_view_results(
             self._session.window,
-            timeout=timeout,
+            timeout=remaining_timeout,
             debug_enumerate=debug_enumerate,
         )
 
