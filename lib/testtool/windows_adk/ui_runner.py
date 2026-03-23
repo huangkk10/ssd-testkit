@@ -326,6 +326,23 @@ class UIRunner:
         # Set Number of Iterations.
         # WAC's Edit control does not support IValueProvider.SetValue() (COMError
         # -2146233079), so we focus the field and use keyboard input instead.
+
+        # --- DEBUG: enumerate all Edit controls to find correct Iterations field ---
+        try:
+            all_edits = self._session.window.children(control_type="Edit")
+            for idx, ctrl in enumerate(all_edits):
+                try:
+                    info = ctrl.element_info
+                    logger.debug(
+                        "select_bpfs_configured_job: Edit[%d] title=%r auto_id=%r value=%r",
+                        idx, info.name, info.automation_id, ctrl.get_value(),
+                    )
+                except Exception as _e:
+                    logger.debug("select_bpfs_configured_job: Edit[%d] inspect error: %s", idx, _e)
+        except Exception as _e:
+            logger.debug("select_bpfs_configured_job: enumerate Edit controls error: %s", _e)
+        # -------------------------------------------------------------------------
+
         logger.debug("select_bpfs_configured_job: setting Iterations = %d via keyboard", num_iters)
         iter_ctrl = self._session.window.child_window(
             control_type="Edit",
@@ -423,7 +440,7 @@ class UIRunner:
         """Click the Start button in the Assessment Launcher dialog."""
         logger.debug("click_start: clicking Start button in Assessment Launcher")
         self._session.window.child_window(
-            title="Start", auto_id=_AID_START_BTN, control_type="Button"
+            title="Start", control_type="Button"
         ).click()
         logger.debug("click_start: Start clicked")
 
