@@ -213,118 +213,116 @@ def _click_first_result_item(window) -> None:
         logger.debug("[ViewResults] _click_first_result_item error (non-fatal): %s", exc)
 
 
-def _read_run_information(window, result: WACRunResult) -> None:
-    """Populate result.errors / warnings / analysis_complete from the DataGrid."""
+def _read_treeitem_value(window, auto_id: str) -> str:
+    """Return the value text of a TreeItem row identified by its auto_id.
+
+    WAC View Results Tree structure (confirmed on build 26100):
+        TreeItem  aid="Total errors:"
+            Custom  aid=""  name=""        ← empty placeholder
+            Custom  aid=""  name="2"       ← THE VALUE  (first non-empty child)
+            Image                          ← error/warning icon (optional)
+            Text    aid="HeaderText"  name="Total errors:"   ← label repeat
+    """
     try:
-        all_ctrls = window.descendants()
+        item = window.child_window(auto_id=auto_id, control_type="TreeItem")
+        for child in item.children():
+            try:
+                ct = (child.element_info.control_type or "").lower()
+                name = _safe_name(child).strip()
+                if ct == "custom" and name and name != auto_id.strip():
+                    return name
+            except Exception:
+                pass
     except Exception as exc:
-        logger.debug("[ViewResults] descendants() error: %s", exc)
+        logger.debug("[ViewResults] _read_treeitem_value(%r) error: %s", auto_id, exc)
+    return ""
+
+
+def _parse_flow_document(window) -> dict:
+    """Parse the right-side FlowDocument (aid=AID_FlowDocumentScrollViewer).
+
+    The Document's value is a tab-separated key\\tvalue block, e.g.:
+        System information\\r\\nName\\tPC-SSD-6646\\r\\n...Results\\tC:\\Data\\...\\r\\n
+
+    Returns a dict of {field_name: value_string}.
+    """
+    try:
+        doc = window.child_window(
+            auto_id="AID_FlowDocumentScrollViewer",
+            control_type="Document",
+        )
+        text = _safe_value(doc)
+        if not text:
+            logger.debug("[ViewResults] FlowDocument value is empty")
+            return {}
+        fields: dict = {}
+        for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+            if "\t" in line:
+                key, _, val = line.partition("\t")
+                fields[key.strip()] = val.strip()
+        logger.debug("[ViewResults] FlowDocument fields: %s", list(fields.keys()))
+        return fields
+    except Exception as exc:
+        logger.debug("[ViewResults] _parse_flow_document error: %s", exc)
+    return {}
+
+
+def _read_run_information(window, result: WACRunResult) -> None:
+    """Populate result.errors / warnings / analysis_complete from the Tree."""
+    # Primary: direct TreeItem lookup by auto_id (confirmed on build 26100)
+    errors_raw   = _read_treeitem_value(window, "Total errors:")
+    warnings_raw = _read_treeitem_value(window, "Total warnings:")
+    analysis_raw = _read_treeitem_value(window, "Analysis complete")
+
+    if errors_raw or warnings_raw:
+        result.errors   = _int_from_text(errors_raw)
+        result.warnings = _int_from_text(warnings_raw)
+        result.analysis_complete = _bool_from_text(analysis_raw)
+        logger.debug(
+            "[ViewResults] run-info from TreeItem: errors=%d warnings=%d analysis=%s",
+            result.errors, result.warnings, result.analysis_complete,
+        )
         return
 
-    # Build a flat list of (name, value) pairs from DataItem / Text controls.
-    # We look for a label whose name contains the target string, then take the
-    # next sibling's value as the number.
+    # Fallback: scan all TreeItem descendants (build-agnostic)
+    logger.debug("[ViewResults] TreeItem direct lookup returned nothing — scanning all TreeItems")
+    try:
+        for item in window.descendants(control_type="TreeItem"):
+            try:
+                name = _safe_name(item).strip().lower()
+                val  = ""
+                for child in item.children():
+                    ct = (child.element_info.control_type or "").lower()
+                    cn = _safe_name(child).strip()
+                    if ct == "custom" and cn:
+                        val = cn
+                        break
 
-    prev_name = ""
-    for ctrl in all_ctrls:
-        try:
-            ct = (ctrl.element_info.control_type or "").lower()
-            name = _safe_name(ctrl).strip()
-            val = _safe_value(ctrl).strip()
-
-            if ct == "dataitem":
-                # DataItem rows often embed the label and value as children
-                try:
-                    children = ctrl.children()
-                    texts = [_safe_value(c) or _safe_name(c) for c in children]
-                    row_text = " ".join(texts)
-                except Exception:
-                    row_text = name + " " + val
-
-                row_lower = row_text.lower()
-                if "total errors" in row_lower:
-                    result.errors = _int_from_text(row_text)
-                    logger.debug("[ViewResults] total errors row: %r → %d", row_text, result.errors)
-                elif "total warnings" in row_lower:
-                    result.warnings = _int_from_text(row_text)
-                    logger.debug("[ViewResults] total warnings row: %r → %d", row_text, result.warnings)
-                elif "analysis complete" in row_lower:
-                    result.analysis_complete = _bool_from_text(row_text.split()[-1] if row_text else "")
-                    logger.debug("[ViewResults] analysis_complete row: %r → %s", row_text, result.analysis_complete)
-
-            elif ct == "text":
-                # Consecutive Text pairs: label then value
-                name_lower = name.lower()
-                if "total errors" in name_lower:
-                    result.errors = _int_from_text(val or name)
-                elif "total warnings" in name_lower:
-                    result.warnings = _int_from_text(val or name)
-                elif prev_name.lower() in ("total errors",):
-                    result.errors = _int_from_text(name or val)
-                elif prev_name.lower() in ("total warnings",):
-                    result.warnings = _int_from_text(name or val)
-                prev_name = name
-
-        except Exception as exc:
-            logger.debug("[ViewResults] row parse error: %s", exc)
+                if "total errors" in name:
+                    result.errors = _int_from_text(val)
+                elif "total warnings" in name:
+                    result.warnings = _int_from_text(val)
+                elif name == "analysis complete":
+                    result.analysis_complete = _bool_from_text(val)
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.debug("[ViewResults] fallback TreeItem scan error: %s", exc)
 
 
 def _read_system_information(window, result: WACRunResult) -> None:
-    """Populate result.result_path / machine_name / run_time from the right panel."""
-    try:
-        all_ctrls = window.descendants()
-    except Exception as exc:
-        logger.debug("[ViewResults] _read_system_information descendants error: %s", exc)
-        return
+    """Populate result.result_path / machine_name / run_time from FlowDocument."""
+    fields = _parse_flow_document(window)
 
-    prev_name = ""
-    for ctrl in all_ctrls:
-        try:
-            ct = (ctrl.element_info.control_type or "").lower()
-            name = _safe_name(ctrl).strip()
-            val  = _safe_value(ctrl).strip()
-            aid  = (ctrl.element_info.automation_id or "").lower()
+    # Extract well-known fields (keys match WAC tab-separated block)
+    result.result_path  = fields.get("Results", "")
+    result.machine_name = fields.get("Name", "")
+    result.run_time     = fields.get("Start time", "")
 
-            # Auto_id based match (highest confidence if IDs are known)
-            if "result" in aid and ("path" in aid or "value" in aid or aid.endswith("result")):
-                if val and not result.result_path:
-                    result.result_path = val
-                    logger.debug("[ViewResults] result_path via auto_id=%r: %r", aid, val)
-                    continue
-
-            if ct in ("text", "hyperlink", "edit"):
-                name_lower = name.lower()
-                prev_lower = prev_name.lower()
-
-                # "Results" label followed by its value
-                if name_lower == "results" and not val:
-                    prev_name = name
-                    continue
-                if prev_lower == "results" and (val or name):
-                    candidate = val or name
-                    if candidate and "\\" in candidate:  # looks like a path
-                        result.result_path = candidate
-                        logger.debug("[ViewResults] result_path from label pair: %r", candidate)
-
-                # "Name" → machine name (first occurrence before "Results")
-                if name_lower == "name" and not val:
-                    prev_name = name
-                    continue
-                if prev_lower == "name" and (val or name) and not result.machine_name:
-                    result.machine_name = val or name
-                    logger.debug("[ViewResults] machine_name: %r", result.machine_name)
-
-                prev_name = name
-
-            # Hyperlink: WAC renders the Results path as a clickable link
-            if ct == "hyperlink":
-                candidate = val or name
-                if candidate and "\\" in candidate and not result.result_path:
-                    result.result_path = candidate
-                    logger.debug("[ViewResults] result_path from Hyperlink: %r", candidate)
-
-        except Exception as exc:
-            logger.debug("[ViewResults] system info parse error: %s", exc)
+    if result.result_path:
+        logger.debug("[ViewResults] result_path from FlowDocument: %r", result.result_path)
+    else:
+        logger.debug("[ViewResults] FlowDocument fields available: %s", list(fields.keys()))
 
 
 # ---------------------------------------------------------------------------

@@ -223,23 +223,20 @@ class TestBPFSWorkflow(BaseTestCase):
         """Assert expected result files exist using the path reported by WAC."""
         wac_result = getattr(TestBPFSWorkflow, "_wac_result", None)
 
-        # Primary: use the WAC-reported Results path (most reliable)
-        if wac_result and wac_result.result_path:
-            result_dir = Path(wac_result.result_path)
-            logger.info(f"[TEST_04] Verifying WAC result path: {result_dir}")
-        else:
-            # Fallback: scan the known Assessment Results directory
-            result_dir = None
-            base = Path(self.adapter.get_result_dir())
-            if base.is_dir():
-                subdirs = [p for p in base.iterdir() if p.is_dir()]
-                if subdirs:
-                    result_dir = subdirs[0]
-            assert result_dir, (
-                f"No result path from WAC and no subdirectory found under "
-                f"{self.adapter.get_result_dir()}"
-            )
-            logger.info(f"[TEST_04] Fallback result path: {result_dir}")
+        assert wac_result is not None, (
+            "test_03_wait_result did not store a WACRunResult — "
+            "ensure test_03 ran and passed before test_04."
+        )
+        assert wac_result.result_path, (
+            f"WAC did not report a Results path. "
+            f"errors={wac_result.errors}  warnings={wac_result.warnings}\n"
+            "Check app.log for [ViewResults DEBUG] entries to diagnose."
+        )
+
+        result_dir = Path(wac_result.result_path)
+        assert result_dir.is_dir(), (
+            f"WAC Results directory does not exist: {result_dir}"
+        )
 
         axelog = result_dir / "AxeLog.txt"
         assert axelog.exists(), f"AxeLog.txt not found in {result_dir}"
