@@ -38,7 +38,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 # ── 4. Run install script ───────────────────────────────────────────────────
 $installScript = Join-Path $tempDir "tools\chocolateyInstall.ps1"
 if (-not (Test-Path $installScript)) {
-    Write-Error "解壓後找不到安裝腳本：$installScript"
+    Write-Error "Install script not found after extraction: $installScript"
     exit 1
 }
 
