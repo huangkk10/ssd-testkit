@@ -18,7 +18,6 @@ Usage example:
     ok, msg = ctrl.get_result()
 """
 
-import asyncio
 import os
 import shutil
 import subprocess
@@ -161,24 +160,20 @@ class ADKController(threading.Thread):
         """Execute the configured assessment synchronously on this thread."""
         if not self._assessment_name:
             raise ADKError("No assessment set — call set_assessment() first")
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            result = loop.run_until_complete(self._run_assessment())
+            result = self._run_assessment()
             with self._lock:
                 self._result = result
         except Exception as exc:
             logger.error(traceback.format_exc())
             with self._lock:
                 self._result = (False, str(exc))
-        finally:
-            loop.close()
 
     # ------------------------------------------------------------------
     # Internal assessment flows
     # ------------------------------------------------------------------
 
-    async def _run_assessment(self) -> Tuple[bool, str]:
+    def _run_assessment(self) -> Tuple[bool, str]:
         """Dispatch to the correct assessment flow."""
         name = self._assessment_name
         log_path = self._config["log_path"]
@@ -191,8 +186,9 @@ class ADKController(threading.Thread):
             self._ui.select_bpfs()
             self._ui.connect_launcher()
             self._ui.read_job_info(log_path)
-            await self._ui_click_start_async()
-            ok, msg = await self._scan_finished()
+            self._ui.click_start()
+            time.sleep(1)
+            ok, msg = self._scan_finished()
             if not ok:
                 return False, msg
             ok, msg = self._check_finish_result()
@@ -209,8 +205,9 @@ class ADKController(threading.Thread):
             self._ui.select_bpfs_num_iters(num_iters, auto_boot)
             self._ui.connect_launcher()
             self._ui.read_job_info(log_path)
-            await self._ui_click_start_async()
-            ok, msg = await self._scan_finished()
+            self._ui.click_start()
+            time.sleep(1)
+            ok, msg = self._scan_finished()
             if not ok:
                 return False, msg
             ok, msg = self._check_finish_result()
@@ -227,8 +224,9 @@ class ADKController(threading.Thread):
             self._ui.save_custom_job(job_name)
             self._ui.connect_launcher()
             # Custom/saved jobs do not expose a "Copy details" button in Assessment Launcher
-            await self._ui_click_start_async()
-            ok, msg = await self._scan_finished()
+            self._ui.click_start()
+            time.sleep(1)
+            ok, msg = self._scan_finished()
             if not ok:
                 return False, msg
             ok, msg = self._check_finish_result()
@@ -243,8 +241,9 @@ class ADKController(threading.Thread):
             self._ui.select_bpfb()
             self._ui.connect_launcher()
             self._ui.read_job_info(log_path)
-            await self._ui_click_start_async()
-            ok, msg = await self._scan_finished()
+            self._ui.click_start()
+            time.sleep(1)
+            ok, msg = self._scan_finished()
             if not ok:
                 return False, msg
             ok, msg = self._check_finish_result()
@@ -257,11 +256,12 @@ class ADKController(threading.Thread):
             getattr(self._ui, _ASSESSMENTS[name][1])()
             self._ui.connect_launcher()
             self._ui.read_job_info(log_path)
-            await self._ui_click_start_async()
-            ok, msg = await self._scan_finished()
+            self._ui.click_start()
+            time.sleep(1)
+            ok, msg = self._scan_finished()
             if not ok:
                 return False, msg
-            await self._scan_title_after_reboot()
+            self._scan_title_after_reboot()
             ok, msg = self._check_finish_result()
             self.save_result()
             self.take_screenshot()
@@ -274,11 +274,12 @@ class ADKController(threading.Thread):
             self._ui.select_hibernate()
             self._ui.connect_launcher()
             self._ui.read_job_info(log_path)
-            await self._ui_click_start_async()
-            ok, msg = await self._scan_finished()
+            self._ui.click_start()
+            time.sleep(1)
+            ok, msg = self._scan_finished()
             if not ok:
                 return False, msg
-            await self._scan_title_after_reboot()
+            self._scan_title_after_reboot()
             ok, msg = self._check_finish_result()
             self.save_result()
             self.take_screenshot()
@@ -287,11 +288,7 @@ class ADKController(threading.Thread):
 
         raise ADKError(f"Unhandled assessment: {name}")
 
-    async def _ui_click_start_async(self) -> None:
-        self._ui.click_start()
-        await asyncio.sleep(1)
-
-    async def _scan_finished(self) -> Tuple[bool, str]:
+    def _scan_finished(self) -> Tuple[bool, str]:
         """Poll the in-flight test dir until WAC finalises the result directory."""
         test_dir = self._adapter.get_test_dir()
         result_dir = self._adapter.get_result_dir()
@@ -304,7 +301,7 @@ class ADKController(threading.Thread):
             if items:
                 self._result_dir_name = items[0]
                 break
-            await asyncio.sleep(1)
+            time.sleep(1)
         else:
             return False, "Timed out waiting for test result directory"
 
@@ -322,9 +319,9 @@ class ADKController(threading.Thread):
                 logger.error(msg)
                 return False, msg
             logger.info("Waiting for assessment to finish…")
-            await asyncio.sleep(interval)
+            time.sleep(interval)
 
-    async def _scan_title_after_reboot(self) -> None:
+    def _scan_title_after_reboot(self) -> None:
         """Wait for WAC window to reappear after a reboot."""
         self._ui.reconnect_wac_after_reboot()
 

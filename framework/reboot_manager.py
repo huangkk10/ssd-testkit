@@ -138,6 +138,32 @@ class RebootManager:
             self.state["completed_tests"].append(test_name)
         self._save_state()
 
+    def prepare_for_external_reboot(self, step_name: str, test_file: str = None) -> None:
+        """Prepare state for a reboot triggered externally (e.g. WAC BPFS hibernate).
+
+        Unlike setup_reboot(), this method does NOT schedule a shutdown command
+        and does NOT call os._exit().  The caller is responsible for triggering
+        the reboot (e.g. clicking Start in WAC).  This method only persists state
+        and writes the auto-start BAT so pytest resumes after the system boots.
+
+        Call this BEFORE the action that triggers hibernate/reboot.
+
+        Args:
+            step_name: The current test function name.  Will be pre-marked as
+                       completed so it is skipped on the next pytest run.
+            test_file: Pass __file__ so the auto-start BAT relaunches the
+                       correct test file after the system boots.
+        """
+        self.state["is_recovering"] = True
+        self.state["reboot_count"] += 1
+        if step_name not in self.state["completed_tests"]:
+            self.state["completed_tests"].append(step_name)
+        self._save_state()
+        self._setup_auto_start(test_file)
+        print(f"\n[RebootManager] prepare_for_external_reboot: step='{step_name}'")
+        print(f"[RebootManager] State persisted — reboot_count={self.state['reboot_count']}")
+        print(f"[RebootManager] Auto-start BAT written (will resume after reboot)")
+
     # ------------------------------------------------------------------
     # Multi-reboot API
     # ------------------------------------------------------------------
