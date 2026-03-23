@@ -7,6 +7,7 @@ uninstall integration tests.
 
 import os
 import subprocess
+import sys
 import pytest
 from pathlib import Path
 from typing import Any, Dict
@@ -53,27 +54,63 @@ def adk_env(test_root) -> Dict[str, Any]:
     }
 
 
-@pytest.fixture(scope="session")
-def check_environment(adk_env):
-    """
-    Session-scoped guard: skip the suite when Chocolatey is unavailable.
-
-    Does NOT require Windows ADK to be pre-installed; installation is part
-    of the tests themselves.
-    """
-    choco_candidates = [
+def _find_choco() -> str | None:
+    """Return the choco executable path, or None if not found."""
+    candidates = [
         r"C:\ProgramData\chocolatey\bin\choco.exe",
         r"C:\ProgramData\chocolatey\choco.exe",
     ]
-    choco_found = any(Path(c).is_file() for c in choco_candidates)
-    if not choco_found:
+    for c in candidates:
+        if Path(c).is_file():
+            return c
+    try:
+        subprocess.run(["choco", "--version"], capture_output=True, timeout=10, check=True)
+        return "choco"
+    except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
+        return None
+
+
+def _install_choco(test_root: Path) -> None:
+    """
+    Install Chocolatey offline using the bundled install_choco.ps1 script.
+    Raises RuntimeError if the installation fails.
+    """
+    install_script = test_root / "bin" / "chocolatey" / "scripts" / "install_choco.ps1"
+    if not install_script.is_file():
+        raise RuntimeError(f"install_choco.ps1 not found: {install_script}")
+
+    print(f"\n[check_environment] Chocolatey not found — installing via {install_script} ...")
+    result = subprocess.run(
+        ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", str(install_script)],
+        capture_output=False,   # stream output so progress is visible
+        timeout=120,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"install_choco.ps1 exited with code {result.returncode}. "
+            "Check the output above for details."
+        )
+    print("[check_environment] Chocolatey installed successfully.")
+
+
+@pytest.fixture(scope="session")
+def check_environment(test_root, adk_env):
+    """
+    Session-scoped guard: ensure Chocolatey is available before any test runs.
+
+    If Chocolatey is not found, installs it automatically using the bundled
+    offline installer at bin/chocolatey/scripts/install_choco.ps1.
+    Raises pytest.fail() if the auto-install also fails.
+    """
+    if _find_choco() is None:
         try:
-            subprocess.run(
-                ["choco", "--version"],
-                capture_output=True,
-                timeout=10,
-            )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pytest.skip(
-                "Chocolatey (choco) not found — skipping Windows ADK integration tests"
+            _install_choco(test_root)
+        except RuntimeError as exc:
+            pytest.fail(str(exc))
+
+        # Confirm choco is now reachable after install
+        if _find_choco() is None:
+            pytest.fail(
+                "Chocolatey installation appeared to succeed but choco.exe is still not found. "
+                "You may need to restart the shell to refresh PATH."
             )
