@@ -320,15 +320,21 @@ class UIRunner:
         if state_rec == 1:
             logger.debug("select_bpfs_configured_job: unchecking 'Use recommended settings'")
             use_recommended.click_input()
-        time.sleep(0.5)
+        # Wait for the settings pane to become editable after unchecking recommended
+        time.sleep(1)
 
-        # Set Number of Iterations
-        logger.debug("select_bpfs_configured_job: setting Iterations = %d", num_iters)
+        # Set Number of Iterations.
+        # WAC's Edit control does not support IValueProvider.SetValue() (COMError
+        # -2146233079), so we focus the field and use keyboard input instead.
+        logger.debug("select_bpfs_configured_job: setting Iterations = %d via keyboard", num_iters)
         iter_ctrl = self._session.window.child_window(
             control_type="Edit",
             found_index=0,          # first editable field in the settings pane
         )
-        iter_ctrl.set_edit_text(str(num_iters))
+        iter_ctrl.click_input()
+        keyboard.send_keys("^a")    # select all existing text
+        keyboard.send_keys(str(num_iters))
+        logger.debug("select_bpfs_configured_job: Iterations entered")
 
         # Set "Use wake timers to automate boot" to match auto_boot
         wake_timer = self._session.window.child_window(
