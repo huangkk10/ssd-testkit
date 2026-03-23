@@ -450,7 +450,7 @@ class UIRunner:
         logger.debug("read_job_info: clicking 'Copy details' to capture job info")
         pyperclip.copy("")
         self._session.window.child_window(
-            title="Copy details", auto_id=_AID_COPY_DETAILS_BTN, control_type="Button"
+            title="Copy details", control_type="Button"
         ).click()
         content = pyperclip.waitForPaste()
         job_info_path = os.path.join(log_path, "JobInfo.log")
