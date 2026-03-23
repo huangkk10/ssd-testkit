@@ -46,7 +46,7 @@ import pytest
 from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.reboot_manager import RebootManager
-from lib.logger import get_module_logger
+from lib.logger import get_module_logger, clear_log_files
 from lib.testtool.windows_adk import ADKController
 from lib.testtool.windows_adk.config import WAC_EXE, get_build_number
 from lib.testtool.windows_adk.result_parser import parse_axelog
@@ -111,6 +111,19 @@ class TestBPFSWorkflow(BaseTestCase):
             subprocess.run(["taskkill", "/f", "/im", proc],
                            capture_output=True)
         time.sleep(1)
+
+        # Clear log files so this run starts with a clean app.log.
+        # On Phase B (post-reboot) this step is skipped — Phase B logs
+        # will be appended to the same app.log written during Phase A.
+        clear_log_files()
+        Path(self.log_path).mkdir(parents=True, exist_ok=True)
+
+        # Remove stale reboot state so a re-run always starts fresh.
+        state_file = Path(RebootManager.STATE_FILE)
+        if state_file.exists():
+            state_file.unlink()
+            self.reboot_mgr.state = self.reboot_mgr._load_state()
+            logger.info(f"[TEST_01] Removed stale reboot state: {state_file}")
 
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl.cleanup_dirs()
