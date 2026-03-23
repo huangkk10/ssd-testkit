@@ -20,14 +20,6 @@
       "${workspaceFolder}/lib",
       "${workspaceFolder}/framework"
   ],
-  "remote.extensionKind": {
-      "GitHub.copilot": [
-          "ui"
-      ],
-      "GitHub.copilot-chat": [
-          "ui"
-      ]
-  },
   "logFileHighlighter.customPatterns": [
     // ── Level Keywords（裸字，直接匹配 Format B 輸出）──
     { "pattern": "\\bERROR\\b",    "foreground": "#FF4C4C", "fontWeight": "bold" },
