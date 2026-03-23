@@ -205,9 +205,11 @@ class Logger:
         )
 
         if not has_our_log_handler:
-            # INFO log file (append mode to preserve all test logs)
+            # Log file level: controlled by LOG_LEVEL env var (default INFO).
+            # Set LOG_LEVEL=DEBUG to capture debug-level messages in app.log.
+            _log_level = getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO)
             file_handler = logging.FileHandler(our_log_file, mode='a', encoding='utf-8')
-            file_handler.setLevel(logging.INFO)
+            file_handler.setLevel(_log_level)
             file_handler.setFormatter(formatter)
             root_logger.addHandler(file_handler)
             _write_session_header(our_log_file)
