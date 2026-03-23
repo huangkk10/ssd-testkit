@@ -21,6 +21,7 @@ from pywinauto import Application, findwindows, keyboard, timings
 
 from lib.logger import get_module_logger
 from .exceptions import ADKUIError, ADKProcessError
+from .result_reader import WACRunResult, wait_for_view_results, debug_enumerate_view_results
 
 logger = get_module_logger(__name__)
 
@@ -496,6 +497,34 @@ class UIRunner:
                 break
             logger.debug("reconnect_wac_after_reboot: WAC not yet visible, retrying in 10s")
             time.sleep(10)
+
+    def read_view_results(
+        self,
+        timeout: int = 7200,
+        debug_enumerate: bool = False,
+    ) -> WACRunResult:
+        """Connect (or reconnect) to WAC and wait for the View Results page.
+
+        Call this after BPFS has been started and the machine has rebooted.
+        WAC will show View Results once the assessment is complete.
+
+        Args:
+            timeout:         Max seconds to wait (default 7200 = 2 hours).
+            debug_enumerate: Set True on first bring-up to log all UI element
+                             IDs — helps confirm auto_ids on a new build.
+
+        Returns:
+            WACRunResult with errors, warnings, result_path, etc.
+        """
+        # Ensure we have a live window reference
+        if self._session.app is None or self._session.window is None:
+            self.connect()
+
+        return wait_for_view_results(
+            self._session.window,
+            timeout=timeout,
+            debug_enumerate=debug_enumerate,
+        )
 
     def take_screenshot(self, log_path: str, result_dir_name: str) -> None:
         """Capture a full-screen screenshot and save it to log_path."""

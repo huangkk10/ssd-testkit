@@ -49,7 +49,7 @@ from framework.reboot_manager import RebootManager
 from lib.logger import get_module_logger, clear_log_files
 from lib.testtool.windows_adk import ADKController
 from lib.testtool.windows_adk.config import WAC_EXE, get_build_number
-from lib.testtool.windows_adk.result_parser import parse_axelog
+from lib.testtool.windows_adk.result_reader import WACRunResult
 from lib.testtool.windows_adk.version_adapter import VersionAdapter
 
 logger = get_module_logger(__name__)
@@ -65,6 +65,9 @@ class TestBPFSWorkflow(BaseTestCase):
     Inherits BaseTestCase so that setup_teardown_function (autouse) handles
     skip-completed logic automatically on every recovery boot.
     """
+
+    # Class-level state: populated by test_03, consumed by test_04
+    _wac_result: "WACRunResult | None" = None
 
     # ------------------------------------------------------------------
     # Class-level fixture — overrides BaseTestCase.setup_teardown_class
@@ -174,37 +177,41 @@ class TestBPFSWorkflow(BaseTestCase):
     @step(3, "Wait for WAC assessment result")
     def test_03_wait_result(self, adk_env, check_environment):
         """
-        Poll the WAC result directory until the assessment completes.
+        Connect to WAC after the post-BPFS reboot and wait for the
+        View Results page to appear.
 
-        WAC auto-resumes the assessment on wakeup; when finished it moves
-        the in-flight directory to the final Assessment Results directory.
+        WAC auto-resumes the assessment on wakeup; when finished it
+        switches to the View Results page.  We read:
+          - Total errors / warnings from the Run information grid
+          - The Results filesystem path from the System information panel
+
+        Pass criteria: errors == 0.
         """
-        result_dir = self.adapter.get_result_dir()
         timeout = int(os.getenv("ADK_BPFS_TIMEOUT", "7200"))
-        deadline = time.time() + timeout
-        result_subdir = None
+        ctrl = ADKController(config={"log_path": self.log_path})
 
-        while time.time() < deadline:
-            if os.path.isdir(result_dir):
-                subdirs = [
-                    d for d in os.listdir(result_dir)
-                    if os.path.isdir(os.path.join(result_dir, d))
-                ]
-                if subdirs:
-                    result_subdir = subdirs[0]
-                    break
-            logger.info("[TEST_03] Waiting for WAC result directory...")
-            time.sleep(10)
-
-        assert result_subdir, (
-            f"Timed out after {timeout}s waiting for WAC result in {result_dir}"
+        # debug_enumerate=True logs all UI element IDs on first run.
+        # Flip to False once auto_ids are confirmed on this build.
+        wac_result = ctrl._ui.read_view_results(
+            timeout=timeout,
+            debug_enumerate=True,
         )
-        logger.info(f"[TEST_03] Result directory: {result_subdir}")
 
-        axelog = os.path.join(result_dir, result_subdir, "AxeLog.txt")
-        ok, msg = parse_axelog(axelog)
-        assert ok, f"BPFS assessment failed: {msg}"
-        logger.info(f"[TEST_03] Assessment passed: {msg}")
+        logger.info(
+            "[TEST_03] errors=%d  warnings=%d  analysis_complete=%s",
+            wac_result.errors, wac_result.warnings, wac_result.analysis_complete,
+        )
+        logger.info("[TEST_03] machine      : %s", wac_result.machine_name)
+        logger.info("[TEST_03] run_time     : %s", wac_result.run_time)
+        logger.info("[TEST_03] result_path  : %s", wac_result.result_path)
+
+        # Store for step 4 verification
+        TestBPFSWorkflow._wac_result = wac_result
+
+        assert wac_result.errors == 0, (
+            f"BPFS assessment completed with {wac_result.errors} error(s). "
+            f"Results path: {wac_result.result_path}"
+        )
 
     # ------------------------------------------------------------------
     # Step 4 — Verify result artefacts
@@ -213,12 +220,28 @@ class TestBPFSWorkflow(BaseTestCase):
     @pytest.mark.order(4)
     @step(4, "Verify result artefacts")
     def test_04_verify(self, adk_env, check_environment):
-        """Assert that expected result files exist in the WAC result directory."""
-        result_dir = Path(self.adapter.get_result_dir())
-        subdirs = [p for p in result_dir.iterdir() if p.is_dir()] if result_dir.is_dir() else []
-        assert subdirs, f"No result subdirectory found under {result_dir}"
+        """Assert expected result files exist using the path reported by WAC."""
+        wac_result = getattr(TestBPFSWorkflow, "_wac_result", None)
 
-        axelog = subdirs[0] / "AxeLog.txt"
-        assert axelog.exists(), f"AxeLog.txt not found in {subdirs[0]}"
+        # Primary: use the WAC-reported Results path (most reliable)
+        if wac_result and wac_result.result_path:
+            result_dir = Path(wac_result.result_path)
+            logger.info(f"[TEST_04] Verifying WAC result path: {result_dir}")
+        else:
+            # Fallback: scan the known Assessment Results directory
+            result_dir = None
+            base = Path(self.adapter.get_result_dir())
+            if base.is_dir():
+                subdirs = [p for p in base.iterdir() if p.is_dir()]
+                if subdirs:
+                    result_dir = subdirs[0]
+            assert result_dir, (
+                f"No result path from WAC and no subdirectory found under "
+                f"{self.adapter.get_result_dir()}"
+            )
+            logger.info(f"[TEST_04] Fallback result path: {result_dir}")
+
+        axelog = result_dir / "AxeLog.txt"
+        assert axelog.exists(), f"AxeLog.txt not found in {result_dir}"
         logger.info(f"[TEST_04] AxeLog.txt verified: {axelog}")
 
