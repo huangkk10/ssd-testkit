@@ -226,7 +226,7 @@ class ADKController(threading.Thread):
             self._ui.select_bpfs_configured_job(num_iters, auto_boot)
             self._ui.save_custom_job(job_name)
             self._ui.connect_launcher()
-            self._ui.read_job_info(log_path)
+            # Custom/saved jobs do not expose a "Copy details" button in Assessment Launcher
             await self._ui_click_start_async()
             ok, msg = await self._scan_finished()
             if not ok:

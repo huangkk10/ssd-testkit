@@ -334,7 +334,9 @@ class UIRunner:
         iter_ctrl.click_input()
         keyboard.send_keys("^a")    # select all existing text
         keyboard.send_keys(str(num_iters))
-        logger.debug("select_bpfs_configured_job: Iterations entered")
+        time.sleep(0.3)
+        actual_val = iter_ctrl.get_value()
+        logger.debug("select_bpfs_configured_job: Iterations entered — field value readback='%s' (expected=%d)", actual_val, num_iters)
 
         # Set "Use wake timers to automate boot" to match auto_boot
         wake_timer = self._session.window.child_window(
