@@ -7,12 +7,13 @@ assessment, using RebootManager to persist state and auto-restart pytest.
 
 Workflow:
     Step 1 — Precondition: clean up stale WAC directories (first boot only).
-    Step 2 — Open WAC, configure BPFS (Iterations=1, wake timers ON), save
+    Step 2 — Apply OS configuration (Search Index, OneDrive, Defender, etc.).
+    Step 3 — Open WAC, configure BPFS (Iterations=1, wake timers ON), save
              custom job, connect launcher, persist reboot state, click Start.
              WAC will hibernate the machine immediately after Start is clicked.
-    Step 3 — After reboot: poll WAC result directory until the assessment
-             completes, then verify AxeLog passes.
-    Step 4 — Assert final result artefacts exist.
+    Step 4 — After reboot: connect to WAC, wait for the View Results page,
+             read errors / warnings / result path.
+    Step 5 — Assert final result artefacts exist.
 
 Requirements:
     - Windows ADK (wac.exe) must be installed.
@@ -51,6 +52,7 @@ from lib.testtool.windows_adk import ADKController
 from lib.testtool.windows_adk.config import WAC_EXE, get_build_number
 from lib.testtool.windows_adk.result_reader import WACRunResult
 from lib.testtool.windows_adk.version_adapter import VersionAdapter
+from lib.testtool.osconfig import OsConfigController, OsConfigProfile, OsConfigStateManager
 
 logger = get_module_logger(__name__)
 
@@ -66,8 +68,9 @@ class TestBPFSWorkflow(BaseTestCase):
     skip-completed logic automatically on every recovery boot.
     """
 
-    # Class-level state: populated by test_03, consumed by test_04
+    # Class-level state: populated by test_04, consumed by test_05
     _wac_result: "WACRunResult | None" = None
+    _osconfig_controller: "OsConfigController | None" = None
 
     # ------------------------------------------------------------------
     # Class-level fixture — overrides BaseTestCase.setup_teardown_class
@@ -96,6 +99,37 @@ class TestBPFSWorkflow(BaseTestCase):
         logger.info(f"[SETUP] log_path     : {cls.log_path}")
 
         yield
+
+        # Revert OsConfig changes applied in test_02 (best-effort)
+        if cls._osconfig_controller is not None:
+            try:
+                logger.info("[TEARDOWN] Reverting OsConfig changes (pre-reboot path)...")
+                cls._osconfig_controller.revert_all()
+                logger.info("[TEARDOWN] OsConfig reverted successfully")
+            except Exception as exc:
+                logger.warning(f"[TEARDOWN] OsConfig revert failed — {exc} (continuing)")
+        else:
+            state_mgr = OsConfigStateManager()
+            if state_mgr.exists():
+                try:
+                    logger.info("[TEARDOWN] Post-reboot OsConfig revert — loading snapshot from disk")
+                    profile = OsConfigProfile(
+                        disable_search_index=os.getenv("ADK_DISABLE_SEARCH_INDEX", "0") == "1",
+                        disable_onedrive=os.getenv("ADK_DISABLE_ONEDRIVE", "0") == "1",
+                        disable_onedrive_tasks=os.getenv("ADK_DISABLE_ONEDRIVE_TASKS", "0") == "1",
+                        disable_edge_update_tasks=os.getenv("ADK_DISABLE_EDGE_UPDATE_TASKS", "0") == "1",
+                        disable_defender=os.getenv("ADK_DISABLE_DEFENDER", "0") == "1",
+                    )
+                    controller = OsConfigController(
+                        profile=profile,
+                        state_manager=state_mgr,
+                    )
+                    controller.revert_all()
+                    logger.info("[TEARDOWN] OsConfig reverted successfully (post-reboot)")
+                except Exception as exc:
+                    logger.warning(f"[TEARDOWN] OsConfig post-reboot revert failed — {exc} (continuing)")
+            else:
+                logger.info("[TEARDOWN] No OsConfig snapshot on disk — skipping revert")
 
         cls._teardown_reboot_manager()
         logger.info(f"{cls.__name__} session complete")
@@ -133,12 +167,50 @@ class TestBPFSWorkflow(BaseTestCase):
         logger.info("[TEST_01] WAC directories cleaned")
 
     # ------------------------------------------------------------------
-    # Step 2 — Configure BPFS and click Start (triggers hibernate)
+    # Step 2 — Apply OS configuration
     # ------------------------------------------------------------------
 
     @pytest.mark.order(2)
-    @step(2, "Configure BPFS and click Start")
-    def test_02_configure_and_start(self, adk_env, check_environment):
+    @step(2, "OsConfig — apply OS settings")
+    def test_02_apply_osconfig(self, adk_env, check_environment):
+        """
+        Apply OS configuration for clean BPFS testing.
+        Settings are controlled via environment variables (all default to disabled).
+
+        Environment variables:
+            ADK_DISABLE_SEARCH_INDEX      Set to "1" to disable Windows Search service.
+            ADK_DISABLE_ONEDRIVE          Set to "1" to disable OneDrive via policy.
+            ADK_DISABLE_ONEDRIVE_TASKS    Set to "1" to disable OneDrive scheduled tasks.
+            ADK_DISABLE_EDGE_UPDATE_TASKS Set to "1" to disable Edge update tasks.
+            ADK_DISABLE_DEFENDER          Set to "1" to disable Defender real-time protection.
+        """
+        logger.info("[TEST_02] OsConfig apply started")
+
+        profile = OsConfigProfile(
+            disable_search_index=os.getenv("ADK_DISABLE_SEARCH_INDEX", "0") == "1",
+            disable_onedrive=os.getenv("ADK_DISABLE_ONEDRIVE", "0") == "1",
+            disable_onedrive_tasks=os.getenv("ADK_DISABLE_ONEDRIVE_TASKS", "0") == "1",
+            disable_edge_update_tasks=os.getenv("ADK_DISABLE_EDGE_UPDATE_TASKS", "0") == "1",
+            disable_defender=os.getenv("ADK_DISABLE_DEFENDER", "0") == "1",
+        )
+        controller = OsConfigController(
+            profile=profile,
+            state_manager=OsConfigStateManager(),
+        )
+        controller.apply_all()
+
+        # Cache for teardown revert (best-effort)
+        TestBPFSWorkflow._osconfig_controller = controller
+
+        logger.info("[TEST_02] OsConfig applied successfully")
+
+    # ------------------------------------------------------------------
+    # Step 3 — Configure BPFS and click Start (triggers hibernate)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.order(3)
+    @step(3, "Configure BPFS and click Start")
+    def test_03_configure_and_start(self, adk_env, check_environment):
         """
         Open WAC, configure BPFS with Iterations=1, save the custom job,
         connect the Assessment Launcher.
@@ -158,24 +230,24 @@ class TestBPFSWorkflow(BaseTestCase):
 
         # Persist state BEFORE clicking Start — the machine will hibernate.
         self.reboot_mgr.prepare_for_external_reboot(
-            step_name="test_02_configure_and_start",
+            step_name="test_03_configure_and_start",
             test_file=__file__,
         )
 
-        logger.info("[TEST_02] Clicking Start — machine will hibernate shortly")
+        logger.info("[TEST_03] Clicking Start — machine will hibernate shortly")
         ctrl._ui.click_start()
 
         # Fallback wait in case hibernate is delayed (e.g. dry-run environment).
-        logger.info("[TEST_02] Waiting for hibernate...")
+        logger.info("[TEST_03] Waiting for hibernate...")
         time.sleep(120)
 
     # ------------------------------------------------------------------
-    # Step 3 — Wait for assessment result (runs after reboot)
+    # Step 4 — Wait for assessment result (runs after reboot)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(3)
-    @step(3, "Wait for WAC assessment result")
-    def test_03_wait_result(self, adk_env, check_environment):
+    @pytest.mark.order(4)
+    @step(4, "Wait for WAC assessment result")
+    def test_04_wait_result(self, adk_env, check_environment):
         """
         Connect to WAC after the post-BPFS reboot and wait for the
         View Results page to appear.
@@ -198,14 +270,14 @@ class TestBPFSWorkflow(BaseTestCase):
         )
 
         logger.info(
-            "[TEST_03] errors=%d  warnings=%d  analysis_complete=%s",
+            "[TEST_04] errors=%d  warnings=%d  analysis_complete=%s",
             wac_result.errors, wac_result.warnings, wac_result.analysis_complete,
         )
-        logger.info("[TEST_03] machine      : %s", wac_result.machine_name)
-        logger.info("[TEST_03] run_time     : %s", wac_result.run_time)
-        logger.info("[TEST_03] result_path  : %s", wac_result.result_path)
+        logger.info("[TEST_04] machine      : %s", wac_result.machine_name)
+        logger.info("[TEST_04] run_time     : %s", wac_result.run_time)
+        logger.info("[TEST_04] result_path  : %s", wac_result.result_path)
 
-        # Store for step 4 verification
+        # Store for step 5 verification
         TestBPFSWorkflow._wac_result = wac_result
 
         assert wac_result.errors == 0, (
@@ -214,18 +286,18 @@ class TestBPFSWorkflow(BaseTestCase):
         )
 
     # ------------------------------------------------------------------
-    # Step 4 — Verify result artefacts
+    # Step 5 — Verify result artefacts
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(4)
-    @step(4, "Verify result artefacts")
-    def test_04_verify(self, adk_env, check_environment):
+    @pytest.mark.order(5)
+    @step(5, "Verify result artefacts")
+    def test_05_verify(self, adk_env, check_environment):
         """Assert expected result files exist using the path reported by WAC."""
         wac_result = getattr(TestBPFSWorkflow, "_wac_result", None)
 
         assert wac_result is not None, (
-            "test_03_wait_result did not store a WACRunResult — "
-            "ensure test_03 ran and passed before test_04."
+            "test_04_wait_result did not store a WACRunResult — "
+            "ensure test_04 ran and passed before test_05."
         )
         assert wac_result.result_path, (
             f"WAC did not report a Results path. "
@@ -240,5 +312,5 @@ class TestBPFSWorkflow(BaseTestCase):
 
         axelog = result_dir / "AxeLog.txt"
         assert axelog.exists(), f"AxeLog.txt not found in {result_dir}"
-        logger.info(f"[TEST_04] AxeLog.txt verified: {axelog}")
+        logger.info(f"[TEST_05] AxeLog.txt verified: {axelog}")
 
