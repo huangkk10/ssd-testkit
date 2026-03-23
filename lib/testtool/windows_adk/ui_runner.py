@@ -345,8 +345,8 @@ class UIRunner:
 
         logger.debug("select_bpfs_configured_job: setting Iterations = %d via keyboard", num_iters)
         iter_ctrl = self._session.window.child_window(
+            auto_id="AID_Parameter_Value_Iterations",
             control_type="Edit",
-            found_index=0,          # first editable field in the settings pane
         )
         iter_ctrl.click_input()
         keyboard.send_keys("^a")    # select all existing text
