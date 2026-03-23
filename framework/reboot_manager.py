@@ -416,10 +416,33 @@ class RebootManager:
                 pytest_args += f' "{test_file}"'
             run_cmd = f'"{python_exe}" -m pytest {pytest_args}'
 
+        # Forward LOG_LEVEL if set in the current process environment so that
+        # debug-level logging survives across the reboot boundary.
+        log_level = os.environ.get("LOG_LEVEL", "")
+        log_level_line = f"set LOG_LEVEL={log_level}" if log_level else ""
+
+        # Lock file prevents duplicate pytest launches when WAC performs
+        # multiple hibernate/resume cycles (e.g. BPFS training iterations).
+        # Each resume fires the startup BAT; without the lock every iteration
+        # starts a new pytest process while the previous one is still running.
+        lock_file = os.path.join(current_dir, ".pytest_running.lock").replace("\\", "\\\\")
+
         # Write the BAT file
         bat_content = f"""@echo off
 cd /d {current_dir}
+
+:: Prevent duplicate pytest launches during multi-iteration hibernate cycles
+set LOCK={lock_file}
+if exist "%LOCK%" (
+    echo [AutoRun] pytest already running ^(lock file present^) - skipping duplicate launch
+    exit /b 0
+)
+echo %TIME% > "%LOCK%"
+
+{log_level_line}
 {run_cmd}
+
+del "%LOCK%" 2>nul
 """
 
         os.makedirs(os.path.dirname(bat_path), exist_ok=True)
