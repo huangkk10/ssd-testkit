@@ -221,31 +221,57 @@ def _read_treeitem_value(window, auto_id: str) -> str:
             Custom  aid=""  name=""        ← empty placeholder
             Custom  aid=""  name="2"       ← THE VALUE  (first non-empty child)
             Image                          ← error/warning icon (optional)
-            Text    aid="HeaderText"  name="Total errors:"   ← label repeat
+            Text    aid="HeaderText"       ← label repeat
+
+    Implementation note: pywinauto UIA backend's item.children() does not
+    reliably return direct children for TreeItem controls.  Instead we walk
+    the flat descendants() list looking for the first non-empty Custom control
+    that immediately follows the target TreeItem.
     """
     try:
-        item = window.child_window(auto_id=auto_id, control_type="TreeItem")
-        for child in item.children():
-            try:
-                ct = (child.element_info.control_type or "").lower()
-                name = _safe_name(child).strip()
-                if ct == "custom" and name and name != auto_id.strip():
-                    return name
-            except Exception:
-                pass
+        all_ctrls = window.descendants()
     except Exception as exc:
-        logger.debug("[ViewResults] _read_treeitem_value(%r) error: %s", auto_id, exc)
+        logger.debug("[ViewResults] _read_treeitem_value descendants error: %s", exc)
+        return ""
+
+    inside = False
+    for ctrl in all_ctrls:
+        try:
+            ct   = (ctrl.element_info.control_type or "")
+            aid  = (ctrl.element_info.automation_id or "")
+            name = _safe_name(ctrl).strip()
+
+            if ct == "TreeItem":
+                inside = (aid == auto_id)
+                continue
+
+            if inside and ct == "Custom" and name:
+                logger.debug("[ViewResults] _read_treeitem_value(%r) → %r", auto_id, name)
+                return name
+
+        except Exception:
+            pass
+
+    logger.debug("[ViewResults] _read_treeitem_value(%r) not found", auto_id)
     return ""
 
 
 def _parse_flow_document(window) -> dict:
     """Parse the right-side FlowDocument (aid=AID_FlowDocumentScrollViewer).
 
-    The Document's value is a tab-separated key\\tvalue block, e.g.:
-        System information\\r\\nName\\tPC-SSD-6646\\r\\n...Results\\tC:\\Data\\...\\r\\n
+    The Document's value is a tab-separated key\\tvalue block grouped into
+    sections, e.g.:
+        System information\\r\\nName\\tPC-SSD-6646\\r\\n...
+        Results\\tC:\\Data\\...\\r\\n
+        Job information\\r\\nName\\tBPFS_Workflow_Test\\r\\n
 
-    Returns a dict of {field_name: value_string}.
+    Keys are stored as "<Section>.<Field>" to avoid collision between
+    "System information.Name" and "Job information.Name".
+    Top-level bare keys (without a tab) that have no section are stored as-is.
+
+    Returns a dict of {"Section.Field": value, ...}.
     """
+    _SECTION_HEADERS = {"System information", "Job information"}
     try:
         doc = window.child_window(
             auto_id="AID_FlowDocumentScrollViewer",
@@ -256,10 +282,18 @@ def _parse_flow_document(window) -> dict:
             logger.debug("[ViewResults] FlowDocument value is empty")
             return {}
         fields: dict = {}
+        current_section = ""
         for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if line in _SECTION_HEADERS:
+                current_section = line
+                continue
             if "\t" in line:
                 key, _, val = line.partition("\t")
-                fields[key.strip()] = val.strip()
+                full_key = f"{current_section}.{key.strip()}" if current_section else key.strip()
+                fields[full_key] = val.strip()
         logger.debug("[ViewResults] FlowDocument fields: %s", list(fields.keys()))
         return fields
     except Exception as exc:
@@ -314,10 +348,11 @@ def _read_system_information(window, result: WACRunResult) -> None:
     """Populate result.result_path / machine_name / run_time from FlowDocument."""
     fields = _parse_flow_document(window)
 
-    # Extract well-known fields (keys match WAC tab-separated block)
-    result.result_path  = fields.get("Results", "")
-    result.machine_name = fields.get("Name", "")
-    result.run_time     = fields.get("Start time", "")
+    # Keys are "Section.Field" — use section-qualified names to avoid
+    # collision between System information.Name and Job information.Name.
+    result.result_path  = fields.get("System information.Results", "")
+    result.machine_name = fields.get("System information.Name", "")
+    result.run_time     = fields.get("System information.Start time", "")
 
     if result.result_path:
         logger.debug("[ViewResults] result_path from FlowDocument: %r", result.result_path)
