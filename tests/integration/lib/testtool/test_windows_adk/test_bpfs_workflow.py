@@ -32,6 +32,7 @@ Run:
 """
 
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -105,6 +106,12 @@ class TestBPFSWorkflow(BaseTestCase):
     @step(1, "Precondition — clean WAC directories")
     def test_01_precondition(self, adk_env, check_environment):
         """Remove stale WAC result/job/test directories before the run."""
+        # Kill any running WAC / assessment engine so file locks are released
+        for proc in ("wac.exe", "axe.exe"):
+            subprocess.run(["taskkill", "/f", "/im", proc],
+                           capture_output=True)
+        time.sleep(1)
+
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl.cleanup_dirs()
         logger.info("[TEST_01] WAC directories cleaned")
