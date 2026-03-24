@@ -618,7 +618,19 @@ class UIRunner:
         ).double_click_input()
         time.sleep(2)
 
-        # Click the Hibernate card in the Configure Job left panel.
+        # Click 'Overview' in the left panel to dismiss the library view on the
+        # right side.  Without this, the library panel stays open and the
+        # subsequent card click matches the library ListItem (same title as the
+        # card), leaving the right panel on the library instead of the settings.
+        logger.debug("add_hibernate_to_configure_job: clicking Overview to dismiss library panel")
+        self._session.window.child_window(
+            title="Overview",
+            control_type="ListItem",
+        ).click_input()
+        time.sleep(0.5)
+
+        # Now click the Hibernate card in the Configure Job left panel to open
+        # its settings on the right.
         logger.debug("add_hibernate_to_configure_job: clicking Hibernate card in Configure Job panel")
         self._session.window.child_window(
             title="Hibernate performance",
@@ -690,6 +702,14 @@ class UIRunner:
             control_type="ListItem",
         ).double_click_input()
         time.sleep(2)
+
+        # Click 'Overview' to dismiss the library panel before clicking the card.
+        logger.debug("add_bpfb_to_configure_job: clicking Overview to dismiss library panel")
+        self._session.window.child_window(
+            title="Overview",
+            control_type="ListItem",
+        ).click_input()
+        time.sleep(0.5)
 
         # Click the BPFB card in the Configure Job left panel.
         logger.debug("add_bpfb_to_configure_job: clicking BPFB card in Configure Job panel")
