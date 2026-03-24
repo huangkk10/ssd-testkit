@@ -41,6 +41,12 @@ _AID_ASSESSMENT = {
     "modern_standby": "AID_QuickRun_Assessment_ec65f64e-55b4-4abc-a196-4c30af672924",
     "hibernate":      "AID_QuickRun_Assessment_bb6ad2d4-d388-4657-abf4-b289ae7723f7",
 }
+# auto_ids for the assessment cards in the Configure Job left panel.
+# Pattern: AID_JobProperties_Assessment_<GUID> (same GUIDs as _AID_ASSESSMENT).
+_AID_JOB_CARD = {
+    k: v.replace("AID_QuickRun_Assessment_", "AID_JobProperties_Assessment_")
+    for k, v in _AID_ASSESSMENT.items()
+}
 _AID_QUICKRUN_RUN_BTN  = "AID_QuickRun_RunButton"
 _AID_JOBVIEW_RUN_BTN   = "AID_JobView_RunButton"
 _AID_START_BTN         = "okButton"
@@ -547,12 +553,6 @@ class UIRunner:
             ).child_window(control_type="Button").click_input()
             time.sleep(1)
 
-            # Press Escape to dismiss the library panel on the right.
-            logger.debug("add_standby_to_configure_job: pressing Escape to dismiss library panel")
-            keyboard.send_keys("{ESC}")
-            logger.debug("add_standby_to_configure_job: Escape sent — waiting for library panel to close")
-            time.sleep(0.5)
-
         else:
             # ── Quick Run path: create the Configure Job tab ──────────────
             logger.debug(
@@ -583,9 +583,11 @@ class UIRunner:
 
         # ── Common: click the Standby card, uncheck recommended, set iters ─
         # Click the Standby card in the Configure Job left panel to show settings.
+        # Use auto_id to disambiguate when the library panel is still visible on
+        # the right (library has a same-titled ListItem with a different auto_id).
         logger.debug("add_standby_to_configure_job: clicking Standby card in Configure Job panel")
         self._session.window.child_window(
-            title="Standby performance",
+            auto_id=_AID_JOB_CARD["standby"],
             control_type="ListItem",
         ).click_input()
         logger.debug("add_standby_to_configure_job: Standby card clicked — settings panel should now be visible")
@@ -661,22 +663,14 @@ class UIRunner:
         ).child_window(control_type="Button").click_input()
         time.sleep(1)
 
-        # Press Escape to dismiss the library panel on the right.  Without
-        # this, both the library entry and the left-panel card share the same
-        # title ('Hibernate performance') and pywinauto finds the wrong element.
-        logger.debug("add_hibernate_to_configure_job: pressing Escape to dismiss library panel")
-        keyboard.send_keys("{ESC}")
-        logger.debug("add_hibernate_to_configure_job: Escape sent — waiting for library panel to close")
-        time.sleep(0.5)
-
-        # Log topology so we can see which ListItems survive after ESC.
-        self._log_wac_topology("add_hibernate: after ESC")
-
-        # Click the Hibernate card in the Configure Job left panel to open
-        # its settings on the right.
+        # Click the Hibernate card in the Configure Job left panel.
+        # Use auto_id to avoid ElementAmbiguousError: the library panel is still
+        # visible on the right and contains a same-titled ListItem (ESC does not
+        # close the library).  auto_id='AID_JobProperties_Assessment_<GUID>'
+        # uniquely identifies the job card in the left panel.
         logger.debug("add_hibernate_to_configure_job: clicking Hibernate card in Configure Job panel")
         self._session.window.child_window(
-            title="Hibernate performance",
+            auto_id=_AID_JOB_CARD["hibernate"],
             control_type="ListItem",
         ).click_input()
         logger.debug("add_hibernate_to_configure_job: Hibernate card clicked — settings panel should now be visible")
@@ -755,19 +749,11 @@ class UIRunner:
         ).child_window(control_type="Button").click_input()
         time.sleep(1)
 
-        # Press Escape to dismiss the library panel on the right.
-        logger.debug("add_bpfb_to_configure_job: pressing Escape to dismiss library panel")
-        keyboard.send_keys("{ESC}")
-        logger.debug("add_bpfb_to_configure_job: Escape sent — waiting for library panel to close")
-        time.sleep(0.5)
-
-        # Log topology so we can see which ListItems survive after ESC.
-        self._log_wac_topology("add_bpfb: after ESC")
-
         # Click the BPFB card in the Configure Job left panel.
+        # Use auto_id to avoid ElementAmbiguousError (library panel stays open).
         logger.debug("add_bpfb_to_configure_job: clicking BPFB card in Configure Job panel")
         self._session.window.child_window(
-            title="Boot performance (Full Boot)",
+            auto_id=_AID_JOB_CARD["bpfb"],
             control_type="ListItem",
         ).click_input()
         logger.debug("add_bpfb_to_configure_job: BPFB card clicked — settings panel should now be visible")
