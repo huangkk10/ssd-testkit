@@ -205,9 +205,8 @@ class Logger:
         )
 
         if not has_our_log_handler:
-            # Log file level: controlled by LOG_LEVEL env var (default INFO).
-            # Set LOG_LEVEL=DEBUG to capture debug-level messages in app.log.
-            _log_level = getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO)
+            # Log file level: controlled by LOG_LEVEL env var (default DEBUG).
+            _log_level = getattr(logging, os.getenv('LOG_LEVEL', 'DEBUG').upper(), logging.DEBUG)
             file_handler = logging.FileHandler(our_log_file, mode='a', encoding='utf-8')
             file_handler.setLevel(_log_level)
             file_handler.setFormatter(formatter)
