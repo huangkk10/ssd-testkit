@@ -205,18 +205,13 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     # ------------------------------------------------------------------
 
     @pytest.mark.order(4)
-    @step(4, "Configure S5 — BPFB, submit job")
+    @step(4, "Configure S5 — BPFB")
     def test_04_configure_s5(self):
-        """Add BPFB, submit three-assessment job, save custom job, connect launcher."""
-        job_name = os.getenv("ADK_JOB_NAME", "S3S4S5_Workflow_Test")
+        """Connect WAC Configure Job page and add BPFB (no submit yet)."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
         ctrl._ui.add_bpfb_to_configure_job(num_iters=1)
-        # Overview → Run: submits all three assessments as a single job
-        ctrl._ui.submit_configure_job()
-        ctrl._ui.save_custom_job(job_name)
-        ctrl._ui.connect_launcher()
-        logger.info("[TEST_04] Job ready — Assessment Launcher connected, awaiting Start")
+        logger.info("[TEST_04] BPFB added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
     # Step 5 — Persist reboot state and click Start (single start point)
@@ -226,8 +221,8 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @step(5, "Start Job — S3 → S4 → S5")
     def test_05_start_job(self):
         """
-        Reconnect to the Assessment Launcher, persist reboot state, then
-        click Start (the single, unique start point for the entire job).
+        Submit the three-assessment Configure Job, save it as a custom job,
+        persist reboot state, then click Start (the single, unique start point).
 
         WAC runs the three assessments sequentially:
           S3 — Standby sleep/wake: pytest process survives in RAM.
@@ -236,8 +231,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
           S5 — Cold reboot: OS session terminates (WAC Launcher triggers);
                startup BAT resumes pytest at test_06 after boot (Run #3).
         """
+        job_name = os.getenv("ADK_JOB_NAME", "S3S4S5_Workflow_Test")
         ctrl = ADKController(config={"log_path": self.log_path})
-        # Reconnect to the Assessment Launcher that test_04 left open.
+        # Connect to Configure Job page (left open by test_04), submit, save, open launcher.
+        ctrl._ui.connect()
+        ctrl._ui.submit_configure_job()
+        ctrl._ui.save_custom_job(job_name)
         ctrl._ui.connect_launcher()
 
         # Persist state and write the startup BAT BEFORE clicking Start.
