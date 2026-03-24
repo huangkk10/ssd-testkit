@@ -547,6 +547,12 @@ class UIRunner:
             ).double_click_input()
             time.sleep(2)
 
+            # Press Escape to dismiss the library panel on the right.
+            logger.debug("add_standby_to_configure_job: pressing Escape to dismiss library panel")
+            keyboard.send_keys("{ESCAPE}")
+            logger.debug("add_standby_to_configure_job: Escape sent — waiting for library panel to close")
+            time.sleep(0.5)
+
         else:
             # ── Quick Run path: create the Configure Job tab ──────────────
             logger.debug(
@@ -582,6 +588,7 @@ class UIRunner:
             title="Standby performance",
             control_type="ListItem",
         ).click_input()
+        logger.debug("add_standby_to_configure_job: Standby card clicked — settings panel should now be visible")
         time.sleep(1)
 
         # Uncheck "Use recommended settings" if currently checked.
@@ -589,7 +596,9 @@ class UIRunner:
             title="Use recommended settings",
             control_type="CheckBox",
         )
-        if use_recommended.get_toggle_state() == 1:
+        state_rec = use_recommended.get_toggle_state()
+        logger.debug("add_standby_to_configure_job: 'Use recommended settings' toggle_state=%d", state_rec)
+        if state_rec == 1:
             logger.debug("add_standby_to_configure_job: unchecking 'Use recommended settings'")
             use_recommended.click_input()
         time.sleep(1)
@@ -652,6 +661,14 @@ class UIRunner:
         ).double_click_input()
         time.sleep(2)
 
+        # Press Escape to dismiss the library panel on the right.  Without
+        # this, both the library entry and the left-panel card share the same
+        # title ('Hibernate performance') and pywinauto finds the wrong element.
+        logger.debug("add_hibernate_to_configure_job: pressing Escape to dismiss library panel")
+        keyboard.send_keys("{ESCAPE}")
+        logger.debug("add_hibernate_to_configure_job: Escape sent — waiting for library panel to close")
+        time.sleep(0.5)
+
         # Click the Hibernate card in the Configure Job left panel to open
         # its settings on the right.
         logger.debug("add_hibernate_to_configure_job: clicking Hibernate card in Configure Job panel")
@@ -659,6 +676,7 @@ class UIRunner:
             title="Hibernate performance",
             control_type="ListItem",
         ).click_input()
+        logger.debug("add_hibernate_to_configure_job: Hibernate card clicked — settings panel should now be visible")
         time.sleep(1)
 
         # Uncheck "Use recommended settings" if currently checked.
@@ -666,7 +684,9 @@ class UIRunner:
             title="Use recommended settings",
             control_type="CheckBox",
         )
-        if use_recommended.get_toggle_state() == 1:
+        state_rec = use_recommended.get_toggle_state()
+        logger.debug("add_hibernate_to_configure_job: 'Use recommended settings' toggle_state=%d", state_rec)
+        if state_rec == 1:
             logger.debug("add_hibernate_to_configure_job: unchecking 'Use recommended settings'")
             use_recommended.click_input()
         time.sleep(1)
@@ -729,12 +749,19 @@ class UIRunner:
         ).double_click_input()
         time.sleep(2)
 
+        # Press Escape to dismiss the library panel on the right.
+        logger.debug("add_bpfb_to_configure_job: pressing Escape to dismiss library panel")
+        keyboard.send_keys("{ESCAPE}")
+        logger.debug("add_bpfb_to_configure_job: Escape sent — waiting for library panel to close")
+        time.sleep(0.5)
+
         # Click the BPFB card in the Configure Job left panel.
         logger.debug("add_bpfb_to_configure_job: clicking BPFB card in Configure Job panel")
         self._session.window.child_window(
             title="Boot performance (Full Boot)",
             control_type="ListItem",
         ).click_input()
+        logger.debug("add_bpfb_to_configure_job: BPFB card clicked — settings panel should now be visible")
         time.sleep(1)
 
         # Uncheck "Use recommended settings" if currently checked.
@@ -742,7 +769,9 @@ class UIRunner:
             title="Use recommended settings",
             control_type="CheckBox",
         )
-        if use_recommended.get_toggle_state() == 1:
+        state_rec = use_recommended.get_toggle_state()
+        logger.debug("add_bpfb_to_configure_job: 'Use recommended settings' toggle_state=%d", state_rec)
+        if state_rec == 1:
             logger.debug("add_bpfb_to_configure_job: unchecking 'Use recommended settings'")
             use_recommended.click_input()
         time.sleep(1)
