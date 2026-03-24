@@ -599,12 +599,13 @@ class UIRunner:
         """
         logger.debug("add_hibernate_to_configure_job: num_iters=%d", num_iters)
 
-        # VERIFY: Confirm title/auto_id of the 'Add assessment' button on real hardware.
-        logger.debug("add_hibernate_to_configure_job: clicking 'Add assessment from library'")
+        # Click the 'Add assessments' ListItem in the Configure Job left panel
+        # to open the assessment library on the right.
+        logger.debug("add_hibernate_to_configure_job: clicking 'Add assessments' in left panel")
         self._session.window.child_window(
-            title="Add assessment from library",
-            control_type="Button",
-        ).click()
+            title="Add assessments",
+            control_type="ListItem",
+        ).click_input()
         time.sleep(1)
 
         # Double-click Hibernate performance to add it to the job.
@@ -670,12 +671,13 @@ class UIRunner:
         """
         logger.debug("add_bpfb_to_configure_job: num_iters=%d", num_iters)
 
-        # VERIFY: Confirm title/auto_id of the 'Add assessment' button on real hardware.
-        logger.debug("add_bpfb_to_configure_job: clicking 'Add assessment from library'")
+        # Click the 'Add assessments' ListItem in the Configure Job left panel
+        # to open the assessment library on the right.
+        logger.debug("add_bpfb_to_configure_job: clicking 'Add assessments' in left panel")
         self._session.window.child_window(
-            title="Add assessment from library",
-            control_type="Button",
-        ).click()
+            title="Add assessments",
+            control_type="ListItem",
+        ).click_input()
         time.sleep(1)
 
         # Double-click BPFB to add it to the job.
