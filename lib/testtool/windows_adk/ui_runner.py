@@ -343,6 +343,77 @@ class UIRunner:
         ).click()
         logger.debug("select_hibernate: Run clicked")
 
+    def select_hibernate_configured_job(self, num_iters: int = 1) -> None:
+        """Select Hibernate performance via Run Individual Assessments, configure Iterations, then click Run.
+
+        UI steps performed:
+            1. Click 'Run Individual Assessments' in the left panel.
+            2. Double-click 'Hibernate performance' to enter Configure Job page.
+            3. In the Configure job page — select the Hibernate card on the left:
+               - Uncheck 'Use recommended settings'
+               - Set 'Number of Iterations' to *num_iters*
+               (Do NOT touch 'Perform an initial reboot' — leave at default unchecked.)
+               (No wake timer checkbox — not present on this assessment.)
+            4. Click 'Overview' in the left panel:
+               - Ensure 'Stop this job if an error occurs' is checked.
+            5. Click 'Run' to submit the job.
+        """
+        logger.debug("select_hibernate_configured_job: num_iters=%d", num_iters)
+        self._open_quickrun_panel()
+
+        # Double-click Hibernate in the Quick Run list to enter the Configure Job page.
+        logger.debug("select_hibernate_configured_job: double-clicking 'Hibernate performance' to open Configure page")
+        ctrl = self._session.window.child_window(
+            title="Hibernate performance",
+            control_type="ListItem",
+        )
+        ctrl.double_click_input()
+        logger.debug("select_hibernate_configured_job: waiting for Configure Job page to load")
+        time.sleep(2)
+
+        # In the Configure Job left panel, click the Hibernate assessment card to show settings.
+        logger.debug("select_hibernate_configured_job: clicking Hibernate card in Configure Job left panel")
+        self._session.window.child_window(
+            title="Hibernate performance",
+            control_type="ListItem",
+        ).click_input()
+        time.sleep(1)
+
+        # Uncheck "Use recommended settings" (if currently checked)
+        use_recommended = self._session.window.child_window(
+            title="Use recommended settings",
+            control_type="CheckBox",
+        )
+        state_rec = use_recommended.get_toggle_state()
+        logger.debug("select_hibernate_configured_job: 'Use recommended settings' toggle_state=%d", state_rec)
+        if state_rec == 1:
+            logger.debug("select_hibernate_configured_job: unchecking 'Use recommended settings'")
+            use_recommended.click_input()
+        time.sleep(1)
+
+        # Set Number of Iterations.
+        logger.debug("select_hibernate_configured_job: setting Iterations = %d via keyboard", num_iters)
+        iter_ctrl = self._session.window.child_window(
+            auto_id="AID_Parameter_Value_Iterations",
+            control_type="Edit",
+        )
+        iter_ctrl.click_input()
+        keyboard.send_keys("^a")    # select all existing text
+        keyboard.send_keys(str(num_iters))
+        time.sleep(0.3)
+        actual_val = iter_ctrl.get_value()
+        logger.debug("select_hibernate_configured_job: Iterations entered — field value readback='%s' (expected=%d)", actual_val, num_iters)
+
+        # Click Overview and ensure "Stop this job if an error occurs" is checked.
+        self._configure_job_overview_stop_on_error()
+
+        # Click Run to submit
+        logger.debug("select_hibernate_configured_job: clicking Run button (JobView)")
+        self._session.window.child_window(
+            title="Run", auto_id=_AID_JOBVIEW_RUN_BTN, control_type="Button"
+        ).click()
+        logger.debug("select_hibernate_configured_job: Run clicked")
+
     def select_bpfs_configured_job(self, num_iters: int = 1, auto_boot: bool = True) -> None:
         """Select BPFS via Run Individual Assessments, configure it, set job Overview, then click Run.
 
