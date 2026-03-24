@@ -506,6 +506,236 @@ class UIRunner:
         ).click()
         logger.debug("select_bpfs_configured_job: Run clicked")
 
+    # ------------------------------------------------------------------
+    # Multi-assessment Configure Job helpers (S3/S4/S5 combined job)
+    # ------------------------------------------------------------------
+
+    def add_standby_to_configure_job(self, num_iters: int = 1) -> None:
+        """Open the Configure Job page with Standby Performance as the first assessment.
+
+        Enters the Configure Job page via Quick Run → double-click Standby
+        Performance.  Configures iterations but does NOT click Run — WAC
+        remains on the Configure Job page so further assessments can be added
+        before submission via submit_configure_job().
+
+        Args:
+            num_iters: Number of iterations (default 1).
+        """
+        logger.debug("add_standby_to_configure_job: num_iters=%d", num_iters)
+        self._open_quickrun_panel()
+
+        # Scroll down to reveal Standby Performance in the Quick Run list.
+        logger.debug("add_standby_to_configure_job: scrolling to reveal Standby Performance")
+        focus_ctrl = self._session.window.child_window(
+            title="Boot performance (Fast Startup)",
+            auto_id=_AID_ASSESSMENT["bpfs"],
+            control_type="ListItem",
+        )
+        focus_ctrl.select()
+        focus_ctrl.set_focus()
+        keyboard.send_keys("{PGDN}{PGDN}{PGDN}")
+
+        # Double-click Standby Performance to enter the Configure Job page.
+        logger.debug("add_standby_to_configure_job: double-clicking 'Standby performance'")
+        self._session.window.child_window(
+            title="Standby performance",
+            auto_id=_AID_ASSESSMENT["standby"],
+            control_type="ListItem",
+        ).double_click_input()
+        logger.debug("add_standby_to_configure_job: waiting for Configure Job page to load")
+        time.sleep(2)
+
+        # Click the Standby card in the Configure Job left panel to show settings.
+        logger.debug("add_standby_to_configure_job: clicking Standby card in Configure Job panel")
+        self._session.window.child_window(
+            title="Standby performance",
+            control_type="ListItem",
+        ).click_input()
+        time.sleep(1)
+
+        # Uncheck "Use recommended settings" if currently checked.
+        use_recommended = self._session.window.child_window(
+            title="Use recommended settings",
+            control_type="CheckBox",
+        )
+        if use_recommended.get_toggle_state() == 1:
+            logger.debug("add_standby_to_configure_job: unchecking 'Use recommended settings'")
+            use_recommended.click_input()
+        time.sleep(1)
+
+        # Set Number of Iterations.
+        logger.debug("add_standby_to_configure_job: setting Iterations=%d", num_iters)
+        iter_ctrl = self._session.window.child_window(
+            auto_id="AID_Parameter_Value_Iterations",
+            control_type="Edit",
+        )
+        iter_ctrl.click_input()
+        keyboard.send_keys("^a")
+        keyboard.send_keys(str(num_iters))
+        time.sleep(0.3)
+        logger.debug(
+            "add_standby_to_configure_job: Iterations set — readback='%s'; "
+            "WAC remains on Configure Job page",
+            iter_ctrl.get_value(),
+        )
+
+    def add_hibernate_to_configure_job(self, num_iters: int = 1) -> None:
+        """Add Hibernate Performance to an already-open Configure Job page.
+
+        Assumes WAC is currently showing the Configure Job page (e.g. after
+        add_standby_to_configure_job).  Clicks the 'Add assessment from
+        library' control, selects 'Hibernate performance', configures
+        iterations, and leaves WAC on the Configure Job page without clicking
+        Run.
+
+        .. note::
+            The auto_id of the 'Add assessment from library' button has NOT
+            been verified on real hardware.  If this method raises an
+            ElementNotFoundError, enumerate the Configure Job page with
+            debug_enumerate=True and update the title/auto_id below.
+
+        Args:
+            num_iters: Number of iterations (default 1).
+        """
+        logger.debug("add_hibernate_to_configure_job: num_iters=%d", num_iters)
+
+        # VERIFY: Confirm title/auto_id of the 'Add assessment' button on real hardware.
+        logger.debug("add_hibernate_to_configure_job: clicking 'Add assessment from library'")
+        self._session.window.child_window(
+            title="Add assessment from library",
+            control_type="Button",
+        ).click()
+        time.sleep(1)
+
+        # Double-click Hibernate performance to add it to the job.
+        logger.debug("add_hibernate_to_configure_job: selecting 'Hibernate performance'")
+        self._session.window.child_window(
+            title="Hibernate performance",
+            auto_id=_AID_ASSESSMENT["hibernate"],
+            control_type="ListItem",
+        ).double_click_input()
+        time.sleep(2)
+
+        # Click the Hibernate card in the Configure Job left panel.
+        logger.debug("add_hibernate_to_configure_job: clicking Hibernate card in Configure Job panel")
+        self._session.window.child_window(
+            title="Hibernate performance",
+            control_type="ListItem",
+        ).click_input()
+        time.sleep(1)
+
+        # Uncheck "Use recommended settings" if currently checked.
+        use_recommended = self._session.window.child_window(
+            title="Use recommended settings",
+            control_type="CheckBox",
+        )
+        if use_recommended.get_toggle_state() == 1:
+            logger.debug("add_hibernate_to_configure_job: unchecking 'Use recommended settings'")
+            use_recommended.click_input()
+        time.sleep(1)
+
+        # Set Number of Iterations.
+        logger.debug("add_hibernate_to_configure_job: setting Iterations=%d", num_iters)
+        iter_ctrl = self._session.window.child_window(
+            auto_id="AID_Parameter_Value_Iterations",
+            control_type="Edit",
+        )
+        iter_ctrl.click_input()
+        keyboard.send_keys("^a")
+        keyboard.send_keys(str(num_iters))
+        time.sleep(0.3)
+        logger.debug(
+            "add_hibernate_to_configure_job: Iterations set — readback='%s'; "
+            "WAC remains on Configure Job page",
+            iter_ctrl.get_value(),
+        )
+
+    def add_bpfb_to_configure_job(self, num_iters: int = 1) -> None:
+        """Add Boot Performance (Full Boot) to an already-open Configure Job page.
+
+        Assumes WAC is currently showing the Configure Job page (e.g. after
+        add_hibernate_to_configure_job).  Clicks the 'Add assessment from
+        library' control, selects 'Boot performance (Full Boot)', configures
+        iterations, and leaves WAC on the Configure Job page without clicking
+        Run.
+
+        .. note::
+            The auto_id of the 'Add assessment from library' button has NOT
+            been verified on real hardware.  If this method raises an
+            ElementNotFoundError, enumerate the Configure Job page with
+            debug_enumerate=True and update the title/auto_id below.
+
+        Args:
+            num_iters: Number of iterations (default 1).
+        """
+        logger.debug("add_bpfb_to_configure_job: num_iters=%d", num_iters)
+
+        # VERIFY: Confirm title/auto_id of the 'Add assessment' button on real hardware.
+        logger.debug("add_bpfb_to_configure_job: clicking 'Add assessment from library'")
+        self._session.window.child_window(
+            title="Add assessment from library",
+            control_type="Button",
+        ).click()
+        time.sleep(1)
+
+        # Double-click BPFB to add it to the job.
+        logger.debug("add_bpfb_to_configure_job: selecting 'Boot performance (Full Boot)'")
+        self._session.window.child_window(
+            title="Boot performance (Full Boot)",
+            auto_id=_AID_ASSESSMENT["bpfb"],
+            control_type="ListItem",
+        ).double_click_input()
+        time.sleep(2)
+
+        # Click the BPFB card in the Configure Job left panel.
+        logger.debug("add_bpfb_to_configure_job: clicking BPFB card in Configure Job panel")
+        self._session.window.child_window(
+            title="Boot performance (Full Boot)",
+            control_type="ListItem",
+        ).click_input()
+        time.sleep(1)
+
+        # Uncheck "Use recommended settings" if currently checked.
+        use_recommended = self._session.window.child_window(
+            title="Use recommended settings",
+            control_type="CheckBox",
+        )
+        if use_recommended.get_toggle_state() == 1:
+            logger.debug("add_bpfb_to_configure_job: unchecking 'Use recommended settings'")
+            use_recommended.click_input()
+        time.sleep(1)
+
+        # Set Number of Iterations.
+        logger.debug("add_bpfb_to_configure_job: setting Iterations=%d", num_iters)
+        iter_ctrl = self._session.window.child_window(
+            auto_id="AID_Parameter_Value_Iterations",
+            control_type="Edit",
+        )
+        iter_ctrl.click_input()
+        keyboard.send_keys("^a")
+        keyboard.send_keys(str(num_iters))
+        time.sleep(0.3)
+        logger.debug(
+            "add_bpfb_to_configure_job: Iterations set — readback='%s'; "
+            "WAC remains on Configure Job page",
+            iter_ctrl.get_value(),
+        )
+
+    def submit_configure_job(self) -> None:
+        """Submit the Configure Job by clicking Overview (to set stop-on-error)
+        and then clicking the Run button.
+
+        Call this after all assessments have been added via
+        add_*_to_configure_job().  After this call, save_custom_job() and
+        connect_launcher() should be called before click_start().
+        """
+        logger.debug("submit_configure_job: configuring Overview and clicking Run")
+        self._configure_job_overview_stop_on_error()
+        self._session.window.child_window(
+            title="Run", auto_id=_AID_JOBVIEW_RUN_BTN, control_type="Button"
+        ).click()
+        logger.debug("submit_configure_job: Run clicked")
+
     def _configure_job_overview_stop_on_error(self) -> None:
         """Click 'Overview' in the Configure Job left panel and ensure
         'Stop this job if an error occurs' is checked."""
