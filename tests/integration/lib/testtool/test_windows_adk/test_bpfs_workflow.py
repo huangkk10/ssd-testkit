@@ -28,6 +28,15 @@ Environment variables:
                         (default: 7200 — 2 hours)
     ADK_LOG_DIR         Override the base directory for log output
 
+    --- Mitigation flags (set to "0" to disable, default "1" = enabled) ---
+    ADK_MITIGATIONS     Master switch for all mitigation measures below.
+                        Set to "0" to run a bare baseline without any fixes.
+    ADK_MIT_OSCONFIG    Step 2: apply OsConfig (disable Search/OneDrive/Defender etc.)
+    ADK_MIT_FAST_STARTUP   Step 1: verify + auto-enable HiberbootEnabled registry key
+    ADK_MIT_WAKE_TIMERS    Step 1: verify + auto-enable wake timers in active power plan
+    ADK_MIT_SERVICES       Step 1: ensure SysMain / DiagTrack are running
+    ADK_MIT_HIBERFIL       Step 1: refresh hibernate file (powercfg /hibernate off/on)
+
 Run:
     pytest tests/integration/lib/testtool/test_windows_adk/test_bpfs_workflow.py -v -s
 """
@@ -56,6 +65,43 @@ from lib.testtool.windows_adk.version_adapter import VersionAdapter
 from lib.testtool.osconfig import OsConfigController, OsConfigProfile, OsConfigStateManager
 
 logger = get_module_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Mitigation feature flags — edit here to change defaults
+#
+# Set to True/False to enable/disable each mitigation.
+# Environment variables (ADK_MITIGATIONS, ADK_MIT_*) override these defaults
+# when set to "0" or "1".
+# ---------------------------------------------------------------------------
+
+_MITIGATIONS: dict[str, bool] = {
+    # Master switch: set False to disable ALL mitigations at once.
+    "ADK_MITIGATIONS":       False,
+
+    # Step 1 mitigations
+    "ADK_MIT_FAST_STARTUP":  False,   # Verify + auto-enable HiberbootEnabled registry key
+    "ADK_MIT_WAKE_TIMERS":   False,   # Verify + auto-enable wake timers in active power plan
+    "ADK_MIT_SERVICES":      False,   # Ensure SysMain / DiagTrack are running
+    "ADK_MIT_HIBERFIL":      False,   # Refresh hibernate file (powercfg /hibernate off/on)
+
+    # Step 2 mitigations
+    "ADK_MIT_OSCONFIG":      False,   # Apply OsConfig (disable Search/OneDrive/Defender etc.)
+}
+
+
+def _mit(name: str) -> bool:
+    """Return True if a mitigation is enabled.
+
+    Priority: environment variable ("0"/"1") > _MITIGATIONS dict default.
+    Master switch (ADK_MITIGATIONS) must also be True for any flag to fire.
+    """
+    def _resolve(key: str) -> bool:
+        env = os.getenv(key)
+        if env is not None:
+            return env == "1"
+        return _MITIGATIONS.get(key, True)
+
+    return _resolve("ADK_MITIGATIONS") and _resolve(name)
 
 
 @pytest.mark.integration
@@ -172,42 +218,44 @@ class TestBPFSWorkflow(BaseTestCase):
         # Fast Startup.  If Fast Startup is disabled the OS performs a cold
         # boot instead and the ETW boot-trace session is never written,
         # which causes WAC error 0xC0040477 after the reboot.
-        try:
-            key = winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE,
-                r"SYSTEM\CurrentControlSet\Control\Session Manager\Power",
-                access=winreg.KEY_READ | winreg.KEY_WRITE,
-            )
-            hiberboot, _ = winreg.QueryValueEx(key, "HiberbootEnabled")
-            if hiberboot != 1:
-                logger.warning("[TEST_01] Fast Startup disabled — enabling now (HiberbootEnabled=1)")
-                winreg.SetValueEx(key, "HiberbootEnabled", 0, winreg.REG_DWORD, 1)
-                logger.info("[TEST_01] Fast Startup enabled")
-            else:
-                logger.info("[TEST_01] Fast Startup already enabled")
-            winreg.CloseKey(key)
-        except PermissionError:
-            pytest.fail(
-                "[TEST_01] Cannot write HiberbootEnabled — run pytest as Administrator."
-            )
-        except FileNotFoundError:
-            logger.warning("[TEST_01] HiberbootEnabled registry key not found — skipping check")
+        if _mit("ADK_MIT_FAST_STARTUP"):
+            try:
+                key = winreg.OpenKey(
+                    winreg.HKEY_LOCAL_MACHINE,
+                    r"SYSTEM\CurrentControlSet\Control\Session Manager\Power",
+                    access=winreg.KEY_READ | winreg.KEY_WRITE,
+                )
+                hiberboot, _ = winreg.QueryValueEx(key, "HiberbootEnabled")
+                if hiberboot != 1:
+                    logger.warning("[TEST_01] Fast Startup disabled — enabling now (HiberbootEnabled=1)")
+                    winreg.SetValueEx(key, "HiberbootEnabled", 0, winreg.REG_DWORD, 1)
+                    logger.info("[TEST_01] Fast Startup enabled")
+                else:
+                    logger.info("[TEST_01] Fast Startup already enabled")
+                winreg.CloseKey(key)
+            except PermissionError:
+                pytest.fail(
+                    "[TEST_01] Cannot write HiberbootEnabled — run pytest as Administrator."
+                )
+            except FileNotFoundError:
+                logger.warning("[TEST_01] HiberbootEnabled registry key not found — skipping check")
+        else:
+            logger.info("[TEST_01] ADK_MIT_FAST_STARTUP disabled — skipping Fast Startup check")
 
         # ── Verify + auto-fix Wake Timers in the active power plan ─────────
         # WAC needs to schedule a wake timer so the system resumes from
         # hibernate automatically.  If wake timers are disabled the machine
         # stays asleep and pytest never gets to Step 4.
-        try:
-            result = subprocess.run(
-                ["powercfg", "/query", "SCHEME_CURRENT", "SUB_SLEEP", "RTCWAKE"],
-                capture_output=True, text=True,
-            )
-            if "0x00000001" in result.stdout:
-                logger.info("[TEST_01] Wake timers enabled in active power plan")
-            else:
-                logger.warning("[TEST_01] Wake timers disabled — enabling for AC and DC")
-                # RTCWAKE: 0 = Disabled, 1 = Enabled
-                for index in ("0x1", "0x0"):  # AC then DC
+        if _mit("ADK_MIT_WAKE_TIMERS"):
+            try:
+                result = subprocess.run(
+                    ["powercfg", "/query", "SCHEME_CURRENT", "SUB_SLEEP", "RTCWAKE"],
+                    capture_output=True, text=True,
+                )
+                if "0x00000001" in result.stdout:
+                    logger.info("[TEST_01] Wake timers enabled in active power plan")
+                else:
+                    logger.warning("[TEST_01] Wake timers disabled — enabling for AC and DC")
                     subprocess.run(
                         ["powercfg", "/setacvalueindex", "SCHEME_CURRENT",
                          "SUB_SLEEP", "RTCWAKE", "1"],
@@ -218,10 +266,12 @@ class TestBPFSWorkflow(BaseTestCase):
                          "SUB_SLEEP", "RTCWAKE", "1"],
                         capture_output=True,
                     )
-                subprocess.run(["powercfg", "/setactive", "SCHEME_CURRENT"], capture_output=True)
-                logger.info("[TEST_01] Wake timers enabled")
-        except Exception as exc:
-            logger.warning(f"[TEST_01] Wake timer check failed (non-fatal): {exc}")
+                    subprocess.run(["powercfg", "/setactive", "SCHEME_CURRENT"], capture_output=True)
+                    logger.info("[TEST_01] Wake timers enabled")
+            except Exception as exc:
+                logger.warning(f"[TEST_01] Wake timer check failed (non-fatal): {exc}")
+        else:
+            logger.info("[TEST_01] ADK_MIT_WAKE_TIMERS disabled — skipping wake timer check")
 
         # ── Ensure ETW-dependent services are running ───────────────────────
         # BPFS relies on an ETW boot autologger session that stays alive for
@@ -274,12 +324,15 @@ class TestBPFSWorkflow(BaseTestCase):
         # causes the boot-trace session to disappear mid-assessment
         # (0xC0040477).  Disabling and re-enabling hibernate forces Windows
         # to create a fresh hiberfil.sys and clears any stale session state.
-        try:
-            subprocess.run(["powercfg", "/hibernate", "off"], capture_output=True, check=True)
-            subprocess.run(["powercfg", "/hibernate", "on"],  capture_output=True, check=True)
-            logger.info("[TEST_01] Hibernate file refreshed (off/on)")
-        except Exception as exc:
-            logger.warning(f"[TEST_01] Hibernate refresh failed (non-fatal): {exc}")
+        if _mit("ADK_MIT_HIBERFIL"):
+            try:
+                subprocess.run(["powercfg", "/hibernate", "off"], capture_output=True, check=True)
+                subprocess.run(["powercfg", "/hibernate", "on"],  capture_output=True, check=True)
+                logger.info("[TEST_01] Hibernate file refreshed (off/on)")
+            except Exception as exc:
+                logger.warning(f"[TEST_01] Hibernate refresh failed (non-fatal): {exc}")
+        else:
+            logger.info("[TEST_01] ADK_MIT_HIBERFIL disabled — skipping hibernate file refresh")
 
         # ── Log active ETW autologger sessions (diagnostic) ────────────────
         # This output helps identify left-over sessions from previous runs
@@ -312,6 +365,10 @@ class TestBPFSWorkflow(BaseTestCase):
             ADK_DISABLE_DEFENDER          Set to "1" to disable Defender real-time protection.
         """
         logger.info("[TEST_02] OsConfig apply started")
+
+        if not _mit("ADK_MIT_OSCONFIG"):
+            logger.info("[TEST_02] ADK_MIT_OSCONFIG disabled — skipping OsConfig apply")
+            return
 
         profile = OsConfigProfile(
             disable_search_index=os.getenv("ADK_DISABLE_SEARCH_INDEX", "0") == "1",
