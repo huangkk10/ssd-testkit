@@ -540,12 +540,12 @@ class UIRunner:
             ).click_input()
             time.sleep(1)
 
-            logger.debug("add_standby_to_configure_job: selecting 'Standby performance' from library")
+            logger.debug("add_standby_to_configure_job: clicking '+' button to add 'Standby performance' to job")
             self._session.window.child_window(
                 title="Standby performance",
                 control_type="ListItem",
-            ).double_click_input()
-            time.sleep(2)
+            ).child_window(control_type="Button").click_input()
+            time.sleep(1)
 
             # Press Escape to dismiss the library panel on the right.
             logger.debug("add_standby_to_configure_job: pressing Escape to dismiss library panel")
@@ -651,15 +651,15 @@ class UIRunner:
         ).click_input()
         time.sleep(1)
 
-        # Double-click Hibernate performance to add it to the job.
-        # NOTE: Items in the Add assessments library panel do NOT have the
-        # Quick Run auto_id GUIDs — match by title only.
-        logger.debug("add_hibernate_to_configure_job: selecting 'Hibernate performance'")
+        # Click the '+' Button inside the library ListItem to add it to the job.
+        # NOTE: double_click_input() on the ListItem only expands the detail row;
+        # the actual "add" action is the child Button (the cyan '+' icon).
+        logger.debug("add_hibernate_to_configure_job: clicking '+' button to add 'Hibernate performance' to job")
         self._session.window.child_window(
             title="Hibernate performance",
             control_type="ListItem",
-        ).double_click_input()
-        time.sleep(2)
+        ).child_window(control_type="Button").click_input()
+        time.sleep(1)
 
         # Press Escape to dismiss the library panel on the right.  Without
         # this, both the library entry and the left-panel card share the same
@@ -739,15 +739,15 @@ class UIRunner:
         ).click_input()
         time.sleep(1)
 
-        # Double-click BPFB to add it to the job.
-        # NOTE: Items in the Add assessments library panel do NOT have the
-        # Quick Run auto_id GUIDs — match by title only.
-        logger.debug("add_bpfb_to_configure_job: selecting 'Boot performance (Full Boot)'")
+        # Click the '+' Button inside the library ListItem to add it to the job.
+        # NOTE: double_click_input() on the ListItem only expands the detail row;
+        # the actual "add" action is the child Button (the cyan '+' icon).
+        logger.debug("add_bpfb_to_configure_job: clicking '+' button to add 'Boot performance (Full Boot)' to job")
         self._session.window.child_window(
             title="Boot performance (Full Boot)",
             control_type="ListItem",
-        ).double_click_input()
-        time.sleep(2)
+        ).child_window(control_type="Button").click_input()
+        time.sleep(1)
 
         # Press Escape to dismiss the library panel on the right.
         logger.debug("add_bpfb_to_configure_job: pressing Escape to dismiss library panel")
