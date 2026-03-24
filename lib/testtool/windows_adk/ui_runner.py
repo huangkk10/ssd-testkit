@@ -609,10 +609,11 @@ class UIRunner:
         time.sleep(1)
 
         # Double-click Hibernate performance to add it to the job.
+        # NOTE: Items in the Add assessments library panel do NOT have the
+        # Quick Run auto_id GUIDs — match by title only.
         logger.debug("add_hibernate_to_configure_job: selecting 'Hibernate performance'")
         self._session.window.child_window(
             title="Hibernate performance",
-            auto_id=_AID_ASSESSMENT["hibernate"],
             control_type="ListItem",
         ).double_click_input()
         time.sleep(2)
@@ -681,10 +682,11 @@ class UIRunner:
         time.sleep(1)
 
         # Double-click BPFB to add it to the job.
+        # NOTE: Items in the Add assessments library panel do NOT have the
+        # Quick Run auto_id GUIDs — match by title only.
         logger.debug("add_bpfb_to_configure_job: selecting 'Boot performance (Full Boot)'")
         self._session.window.child_window(
             title="Boot performance (Full Boot)",
-            auto_id=_AID_ASSESSMENT["bpfb"],
             control_type="ListItem",
         ).double_click_input()
         time.sleep(2)
