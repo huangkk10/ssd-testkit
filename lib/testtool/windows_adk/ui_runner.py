@@ -549,7 +549,7 @@ class UIRunner:
 
             # Press Escape to dismiss the library panel on the right.
             logger.debug("add_standby_to_configure_job: pressing Escape to dismiss library panel")
-            keyboard.send_keys("{ESCAPE}")
+            keyboard.send_keys("{ESC}")
             logger.debug("add_standby_to_configure_job: Escape sent — waiting for library panel to close")
             time.sleep(0.5)
 
@@ -665,9 +665,12 @@ class UIRunner:
         # this, both the library entry and the left-panel card share the same
         # title ('Hibernate performance') and pywinauto finds the wrong element.
         logger.debug("add_hibernate_to_configure_job: pressing Escape to dismiss library panel")
-        keyboard.send_keys("{ESCAPE}")
+        keyboard.send_keys("{ESC}")
         logger.debug("add_hibernate_to_configure_job: Escape sent — waiting for library panel to close")
         time.sleep(0.5)
+
+        # Log topology so we can see which ListItems survive after ESC.
+        self._log_wac_topology("add_hibernate: after ESC")
 
         # Click the Hibernate card in the Configure Job left panel to open
         # its settings on the right.
@@ -678,6 +681,9 @@ class UIRunner:
         ).click_input()
         logger.debug("add_hibernate_to_configure_job: Hibernate card clicked — settings panel should now be visible")
         time.sleep(1)
+
+        # Log topology to verify CheckBox is reachable.
+        self._log_wac_topology("add_hibernate: after card click")
 
         # Uncheck "Use recommended settings" if currently checked.
         use_recommended = self._session.window.child_window(
@@ -751,9 +757,12 @@ class UIRunner:
 
         # Press Escape to dismiss the library panel on the right.
         logger.debug("add_bpfb_to_configure_job: pressing Escape to dismiss library panel")
-        keyboard.send_keys("{ESCAPE}")
+        keyboard.send_keys("{ESC}")
         logger.debug("add_bpfb_to_configure_job: Escape sent — waiting for library panel to close")
         time.sleep(0.5)
+
+        # Log topology so we can see which ListItems survive after ESC.
+        self._log_wac_topology("add_bpfb: after ESC")
 
         # Click the BPFB card in the Configure Job left panel.
         logger.debug("add_bpfb_to_configure_job: clicking BPFB card in Configure Job panel")
@@ -763,6 +772,9 @@ class UIRunner:
         ).click_input()
         logger.debug("add_bpfb_to_configure_job: BPFB card clicked — settings panel should now be visible")
         time.sleep(1)
+
+        # Log topology to verify CheckBox is reachable.
+        self._log_wac_topology("add_bpfb: after card click")
 
         # Uncheck "Use recommended settings" if currently checked.
         use_recommended = self._session.window.child_window(
@@ -825,6 +837,36 @@ class UIRunner:
         except Exception:
             pass
         return False
+
+    def _log_wac_topology(self, label: str) -> None:
+        """Dump a compact DEBUG-level snapshot of the WAC UI tree.
+
+        Walks all descendants of the WAC window and logs each element's
+        control_type, title, and auto_id.  Zero overhead when log level
+        is above DEBUG.
+
+        Args:
+            label: Short context string, e.g. 'add_hibernate: after ESC'.
+        """
+        if not logger.isEnabledFor(10):  # logging.DEBUG == 10
+            return
+        try:
+            lines = [f"[topology] {label} — WAC control tree:"]
+            for ctrl in self._session.window.descendants():
+                try:
+                    ct    = ctrl.element_info.control_type
+                    title = ctrl.window_text()
+                    aid   = getattr(ctrl.element_info, "automation_id", "") or ""
+                    if title or aid:
+                        row = f"  [{ct}] title={title!r}"
+                        if aid:
+                            row += f"  aid={aid!r}"
+                        lines.append(row)
+                except Exception:
+                    continue
+            logger.debug("\n".join(lines))
+        except Exception as exc:
+            logger.debug("[topology] %s — failed to enumerate: %s", label, exc)
 
     def _activate_configure_job_tab(self) -> None:
         """Ensure the Configure Job tab is the active tab in WAC.
