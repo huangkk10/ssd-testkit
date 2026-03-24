@@ -33,6 +33,12 @@ class RebootManager:
         self.state_file = self.STATE_FILE
         self.total_tests = total_tests
         self._auto_login_config = auto_login_config if auto_login_config is not None else {}
+        # Auto-clear stale state when this is a fresh manual run (not a
+        # BAT-triggered recovery).  The startup BAT always sets
+        # PYTEST_REBOOT_RECOVERY=1; its absence means the user ran pytest
+        # directly, so any leftover state file is stale and should be removed.
+        if not os.environ.get('PYTEST_REBOOT_RECOVERY') and Path(self.state_file).exists():
+            Path(self.state_file).unlink()
         self.state = self._load_state()
     
     def _load_state(self):
@@ -421,6 +427,10 @@ class RebootManager:
         log_level = os.environ.get("LOG_LEVEL", "")
         log_level_line = f"set LOG_LEVEL={log_level}" if log_level else ""
 
+        # Signal to the resumed pytest process that this is a BAT-triggered
+        # recovery (not a fresh manual run), so RebootManager keeps state.
+        recovery_marker = "set PYTEST_REBOOT_RECOVERY=1"
+
         # Lock file prevents duplicate pytest launches when WAC performs
         # multiple hibernate/resume cycles (e.g. BPFS training iterations).
         # Each resume fires the startup BAT; without the lock every iteration
@@ -439,6 +449,7 @@ if exist "%LOCK%" (
 )
 echo %TIME% > "%LOCK%"
 
+{recovery_marker}
 {log_level_line}
 {run_cmd}
 
