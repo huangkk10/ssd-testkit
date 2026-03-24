@@ -511,40 +511,85 @@ class UIRunner:
     # ------------------------------------------------------------------
 
     def add_standby_to_configure_job(self, num_iters: int = 1) -> None:
-        """Open the Configure Job page with Standby Performance as the first assessment.
+        """Add Standby Performance to a Configure Job.
 
-        Enters the Configure Job page via Quick Run → double-click Standby
-        Performance.  Configures iterations but does NOT click Run — WAC
-        remains on the Configure Job page so further assessments can be added
-        before submission via submit_configure_job().
+        Two paths depending on whether a Configure Job tab already exists:
+
+        * **No existing tab** (Standby is the first assessment): enters the
+          Configure Job page via Quick Run → double-click Standby Performance,
+          which creates the tab.
+        * **Tab already exists** (Standby is being added after another
+          assessment): activates the existing tab and adds Standby via the
+          "Add assessments" library panel, same approach as
+          add_hibernate_to_configure_job and add_bpfb_to_configure_job.
+
+        Configures iterations but does NOT click Run — WAC remains on the
+        Configure Job page so further assessments can be added before
+        submission via submit_configure_job().
 
         Args:
             num_iters: Number of iterations (default 1).
         """
         logger.debug("add_standby_to_configure_job: num_iters=%d", num_iters)
-        self._open_quickrun_panel()
 
-        # Scroll down to reveal Standby Performance in the Quick Run list.
-        logger.debug("add_standby_to_configure_job: scrolling to reveal Standby Performance")
-        focus_ctrl = self._session.window.child_window(
-            title="Boot performance (Fast Startup)",
-            auto_id=_AID_ASSESSMENT["bpfs"],
-            control_type="ListItem",
-        )
-        focus_ctrl.select()
-        focus_ctrl.set_focus()
-        keyboard.send_keys("{PGDN}{PGDN}{PGDN}")
+        if self._has_configure_job_tab():
+            # ── Library path: tab already exists ──────────────────────────
+            logger.debug(
+                "add_standby_to_configure_job: Configure Job tab already exists — using library path"
+            )
+            self._activate_configure_job_tab()
 
-        # Double-click Standby Performance to enter the Configure Job page.
-        logger.debug("add_standby_to_configure_job: double-clicking 'Standby performance'")
-        self._session.window.child_window(
-            title="Standby performance",
-            auto_id=_AID_ASSESSMENT["standby"],
-            control_type="ListItem",
-        ).double_click_input()
-        logger.debug("add_standby_to_configure_job: waiting for Configure Job page to load")
-        time.sleep(2)
+            logger.debug("add_standby_to_configure_job: clicking 'Add assessments' in left panel")
+            self._session.window.child_window(
+                title="Add assessments",
+                control_type="ListItem",
+            ).click_input()
+            time.sleep(1)
 
+            logger.debug("add_standby_to_configure_job: selecting 'Standby performance' from library")
+            self._session.window.child_window(
+                title="Standby performance",
+                control_type="ListItem",
+            ).double_click_input()
+            time.sleep(2)
+
+            # Dismiss the library panel by clicking Overview, then click the card.
+            logger.debug("add_standby_to_configure_job: clicking Overview to dismiss library panel")
+            self._session.window.child_window(
+                title="Overview",
+                control_type="ListItem",
+            ).click_input()
+            time.sleep(0.5)
+
+        else:
+            # ── Quick Run path: create the Configure Job tab ──────────────
+            logger.debug(
+                "add_standby_to_configure_job: no Configure Job tab — using Quick Run path"
+            )
+            self._open_quickrun_panel()
+
+            # Scroll down to reveal Standby Performance in the Quick Run list.
+            logger.debug("add_standby_to_configure_job: scrolling to reveal Standby Performance")
+            focus_ctrl = self._session.window.child_window(
+                title="Boot performance (Fast Startup)",
+                auto_id=_AID_ASSESSMENT["bpfs"],
+                control_type="ListItem",
+            )
+            focus_ctrl.select()
+            focus_ctrl.set_focus()
+            keyboard.send_keys("{PGDN}{PGDN}{PGDN}")
+
+            # Double-click Standby Performance to enter the Configure Job page.
+            logger.debug("add_standby_to_configure_job: double-clicking 'Standby performance'")
+            self._session.window.child_window(
+                title="Standby performance",
+                auto_id=_AID_ASSESSMENT["standby"],
+                control_type="ListItem",
+            ).double_click_input()
+            logger.debug("add_standby_to_configure_job: waiting for Configure Job page to load")
+            time.sleep(2)
+
+        # ── Common: click the Standby card, uncheck recommended, set iters ─
         # Click the Standby card in the Configure Job left panel to show settings.
         logger.debug("add_standby_to_configure_job: clicking Standby card in Configure Job panel")
         self._session.window.child_window(
@@ -598,6 +643,9 @@ class UIRunner:
             num_iters: Number of iterations (default 1).
         """
         logger.debug("add_hibernate_to_configure_job: num_iters=%d", num_iters)
+
+        # Ensure the Configure Job tab is active before interacting with it.
+        self._activate_configure_job_tab()
 
         # Click the 'Add assessments' ListItem in the Configure Job left panel
         # to open the assessment library on the right.
@@ -684,6 +732,9 @@ class UIRunner:
         """
         logger.debug("add_bpfb_to_configure_job: num_iters=%d", num_iters)
 
+        # Ensure the Configure Job tab is active before interacting with it.
+        self._activate_configure_job_tab()
+
         # Click the 'Add assessments' ListItem in the Configure Job left panel
         # to open the assessment library on the right.
         logger.debug("add_bpfb_to_configure_job: clicking 'Add assessments' in left panel")
@@ -759,6 +810,54 @@ class UIRunner:
             title="Run", auto_id=_AID_JOBVIEW_RUN_BTN, control_type="Button"
         ).click()
         logger.debug("submit_configure_job: Run clicked")
+
+    def _has_configure_job_tab(self) -> bool:
+        """Return True if a Configure Job tab (title ending with '*') already exists.
+
+        Used by add_*_to_configure_job methods to decide whether to create a
+        new job via Quick Run double-click or to add an assessment to the
+        already-open job via the library panel.
+        """
+        try:
+            tabs = self._session.window.descendants(control_type="TabItem")
+            for tab in tabs:
+                try:
+                    if tab.window_text().endswith("*"):
+                        return True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return False
+
+    def _activate_configure_job_tab(self) -> None:
+        """Ensure the Configure Job tab is the active tab in WAC.
+
+        When a Configure Job is created via double-click in Quick Run, WAC
+        opens a new tab (e.g. 'Boot performance (Fast...*)').  The original
+        Home / Quick Run tab may remain selected.  Calling this method before
+        interacting with the Configure Job left panel guarantees the correct
+        tab is active, regardless of which tab WAC is currently showing.
+
+        Strategy: find any TabItem whose title ends with '*' (unsaved job
+        marker) and click it.  If none is found, assume we are already on the
+        Configure Job page and proceed.
+        """
+        try:
+            tabs = self._session.window.descendants(control_type="TabItem")
+            for tab in tabs:
+                try:
+                    title = tab.window_text()
+                    if title.endswith("*"):
+                        logger.debug("_activate_configure_job_tab: clicking tab '%s'", title)
+                        tab.click_input()
+                        time.sleep(0.5)
+                        return
+                except Exception:
+                    continue
+            logger.debug("_activate_configure_job_tab: no unsaved tab found — assuming already on Configure Job page")
+        except Exception as exc:
+            logger.debug("_activate_configure_job_tab: tab search failed (non-fatal): %s", exc)
 
     def _configure_job_overview_stop_on_error(self) -> None:
         """Click 'Overview' in the Configure Job left panel and ensure
