@@ -11,6 +11,12 @@ from pathlib import Path
 # Import shared TestCaseConfiguration from parent conftest
 from tests.integration.conftest import TestCaseConfiguration
 
+
+@pytest.fixture(scope="session")
+def testcase_config():
+    """Provide TestCaseConfiguration for STC-2557."""
+    return TestCaseConfiguration(Path(__file__).parent)
+
 # Absolute path to the reboot state file (relative paths are unreliable at
 # collection time because os.chdir() hasn't run yet).
 _CASE_DIR = Path(__file__).parent
@@ -42,10 +48,10 @@ def pytest_collection_finish(session):
     if has_test01:
         return  # full run — let test_01 manage the state file
 
-    # Post-reboot tests (after S4 hibernate / S5 cold reboot): test_06, test_07
+    # Post-reboot tests (after S4 hibernate / S5 cold reboot): test_07, test_08
     _POST_REBOOT_TESTS = {
-        'test_06_wait_results',
-        'test_07_verify_results',
+        'test_07_wait_results',
+        'test_08_verify',
     }
     collected_names = {item.name for item in stc2557_items}
 

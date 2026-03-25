@@ -68,6 +68,7 @@ from .actions import AbstractOsAction
 from .config import OsConfigProfile
 from .state_manager import OsConfigStateManager
 from .controller import OsConfigController
+from .profile_loader import load_profile
 
 __version__ = "0.2.0"
 
@@ -107,4 +108,5 @@ __all__ = [
     "OsConfigProfile",
     "OsConfigStateManager",
     "OsConfigController",
+    "load_profile",
 ]

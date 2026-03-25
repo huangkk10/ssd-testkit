@@ -1,0 +1,18 @@
+# osconfig.yaml — stc2557_adk_s3s4s5
+# SUT 準備清單：停用 Task Scheduler 中會干擾測試的工作
+#
+# 欄位說明請參考 lib/testtool/osconfig/config.py OsConfigProfile
+# 未列出的欄位維持預設值 (False / "")
+
+# SystemRestore：停用 C:\ 的系統還原
+# （透過 Disable-ComputerRestore + registry DisableSR=1）
+disable_system_restore: true
+
+# MemoryDiagnostic：停用 RunFullMemoryDiagnostic 排程工作
+# Task path: \Microsoft\Windows\MemoryDiagnostic\RunFullMemoryDiagnostic
+disable_memory_diagnostic_tasks: true
+
+# McAfee：停用 McAfee 排程工作（若未安裝則自動 no-op）
+# Tasks: \McAfee\McAfee Auto Maintenance Task Agent
+#        \McAfee\DAD.WPS.Execute.Updates
+disable_mcafee_tasks: true

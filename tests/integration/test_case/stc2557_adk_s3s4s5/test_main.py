@@ -67,6 +67,9 @@ from lib.testtool.windows_adk import ADKController
 from lib.testtool.windows_adk.config import WAC_EXE, get_build_number
 from lib.testtool.windows_adk.result_reader import WACRunResult
 from lib.testtool.windows_adk.version_adapter import VersionAdapter
+from lib.testtool.osconfig import OsConfigController
+from lib.testtool.osconfig.state_manager import OsConfigStateManager
+from lib.testtool.osconfig.profile_loader import load_profile
 
 logger = get_module_logger(__name__)
 
@@ -85,8 +88,9 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     S4 hibernate and S5 cold reboot.
     """
 
-    # Class-level state: populated by test_06, consumed by test_07
+    # Class-level state: populated by test_07, consumed by test_08
     _wac_result: "WACRunResult | None" = None
+    _osconfig_controller: "OsConfigController | None" = None
 
     # ------------------------------------------------------------------
     # Class-level fixture — overrides BaseTestCase.setup_teardown_class
@@ -100,6 +104,9 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
         test_dir = cls._setup_working_directory(__file__)
 
+        # ── Config ────────────────────────────────────────────────────────────
+        cls.config = testcase_config.tool_config
+
         # Resolve log path: ADK_LOG_DIR env var or test directory
         base = os.getenv("ADK_LOG_DIR")
         cls.log_path = (
@@ -109,19 +116,22 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         Path(cls.log_path).mkdir(parents=True, exist_ok=True)
 
         cls.adapter = VersionAdapter(get_build_number())
-        cls.reboot_mgr = RebootManager(total_tests=cls._count_test_methods())
+        cls.reboot_mgr = RebootManager(
+            total_tests=cls._count_test_methods(),
+            auto_login_config=cls.config.get('osconfig', {}),
+        )
 
         phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
-        logger.info(f"[SETUP] Phase        : {phase}")
-        logger.info(f"[SETUP] reboot_count : {cls.reboot_mgr.state.get('reboot_count', 0)}")
-        logger.info(f"[SETUP] completed    : {cls.reboot_mgr.state.get('completed_tests', [])}")
-        logger.info(f"[SETUP] log_path     : {cls.log_path}")
+        # logger.info(f"[SETUP] Phase        : {phase}")
+        # logger.info(f"[SETUP] reboot_count : {cls.reboot_mgr.state.get('reboot_count', 0)}")
+        # logger.info(f"[SETUP] completed    : {cls.reboot_mgr.state.get('completed_tests', [])}")
+        # logger.info(f"[SETUP] log_path     : {cls.log_path}")
         # ── Pre-RunCard tools (smicli needed by generate_dut_info) ───────────────────
         _tools_yaml = Path(__file__).parent / "Config" / "tools.yaml"
-        logger.info(f"[SETUP] __file__      : {__file__}")
-        logger.info(f"[SETUP] tools.yaml    : {_tools_yaml}")
-        logger.info(f"[SETUP] tools.yaml exists: {_tools_yaml.exists()}")
-        logger.info(f"[SETUP] SMICLI_PATH (before install): {os.environ.get('SMICLI_PATH', 'NOT SET')}")
+        # logger.info(f"[SETUP] __file__      : {__file__}")
+        # logger.info(f"[SETUP] tools.yaml    : {_tools_yaml}")
+        # logger.info(f"[SETUP] tools.yaml exists: {_tools_yaml.exists()}")
+        # logger.info(f"[SETUP] SMICLI_PATH (before install): {os.environ.get('SMICLI_PATH', 'NOT SET')}")
         ToolInstaller(_tools_yaml).install_pre_runcard()
         logger.info(f"[SETUP] SMICLI_PATH (after install) : {os.environ.get('SMICLI_PATH', 'NOT SET')}")
         smicli_exe = os.environ.get('SMICLI_PATH', '')
@@ -132,6 +142,32 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         yield
 
         cls._teardown_runcard(request.session)
+
+        # ── OsConfig revert (跨 reboot 安全) ──────────────────────────────────
+        _osconfig_yaml = Path(__file__).parent / "Config" / "osconfig.yaml"
+        if cls._osconfig_controller is not None:
+            # Pre-Reboot path: controller still alive in-process
+            try:
+                logger.info("[TEARDOWN] Reverting OsConfig changes (pre-reboot path)...")
+                cls._osconfig_controller.revert_all()
+                logger.info("[TEARDOWN] OsConfig reverted successfully")
+            except Exception as exc:
+                logger.warning(f"[TEARDOWN] OsConfig revert failed \u2014 {exc} (continuing)")
+        else:
+            # Post-Reboot path: rebuild profile from YAML + load snapshot from disk
+            state_mgr = OsConfigStateManager()
+            if state_mgr.exists():
+                try:
+                    logger.info("[TEARDOWN] Post-reboot OsConfig revert \u2014 loading snapshot from disk")
+                    profile = load_profile(_osconfig_yaml)
+                    controller = OsConfigController(profile=profile, state_manager=state_mgr)
+                    controller.revert_all()
+                    logger.info("[TEARDOWN] OsConfig reverted successfully (post-reboot)")
+                except Exception as exc:
+                    logger.warning(f"[TEARDOWN] OsConfig post-reboot revert failed \u2014 {exc} (continuing)")
+            else:
+                logger.info("[TEARDOWN] No OsConfig snapshot on disk \u2014 skipping revert")
+
         cls._teardown_reboot_manager()
         logger.info(f"{cls.__name__} session complete")
         os.chdir(cls.original_cwd)
@@ -171,12 +207,39 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info("[TEST_01] WAC directories cleaned")
 
     # ------------------------------------------------------------------
-    # Step 2 — Configure S3 (Standby Performance)
+    # Step 2 — OsConfig
     # ------------------------------------------------------------------
 
     @pytest.mark.order(2)
-    @step(2, "Configure S3 — Standby Performance")
-    def test_02_configure_s3(self):
+    @step(2, "OsConfig — apply OS settings")
+    def test_02_apply_osconfig(self):
+        """
+        Apply OS configuration per SUT preparation checklist:
+        - Disable System Restore (SystemRestore\\SR)
+        - Disable Memory Diagnostic task (RunFullMemoryDiagnostic)
+        - Disable McAfee tasks if present — no-op if McAfee not installed
+        """
+        logger.info("[TEST_02] OsConfig apply started")
+
+        _osconfig_yaml = Path(__file__).parent / "Config" / "osconfig.yaml"
+        profile = load_profile(_osconfig_yaml)
+
+        controller = OsConfigController(
+            profile=profile,
+            state_manager=OsConfigStateManager(),
+        )
+        controller.apply_all()
+
+        TestSTC2557ADKS3S4S5._osconfig_controller = controller
+        logger.info("[TEST_02] OsConfig applied successfully")
+
+    # ------------------------------------------------------------------
+    # Step 3 — Configure S3 (Standby Performance)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.order(3)
+    @step(3, "Configure S3 — Standby Performance")
+    def test_03_configure_s3(self):
         """Open WAC Configure Job page and add Standby Performance (no Run)."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.open(WAC_EXE)
@@ -184,12 +247,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info("[TEST_02] Standby Performance added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
-    # Step 3 — Configure S4 (Hibernate Performance)
+    # Step 4 — Configure S4 (Hibernate Performance)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(3)
-    @step(3, "Configure S4 — Hibernate Performance")
-    def test_03_configure_s4(self):
+    @pytest.mark.order(4)
+    @step(4, "Configure S4 — Hibernate Performance")
+    def test_04_configure_s4(self):
         """Connect to WAC Configure Job page and add Hibernate Performance."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
@@ -197,12 +260,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info("[TEST_03] Hibernate Performance added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
-    # Step 4 — Configure S5 (BPFB), submit job, save, connect launcher
+    # Step 5 — Configure S5 (BPFB), submit job, save, connect launcher
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(4)
-    @step(4, "Configure S5 — BPFB")
-    def test_04_configure_s5(self):
+    @pytest.mark.order(5)
+    @step(5, "Configure S5 — BPFB")
+    def test_05_configure_s5(self):
         """Connect WAC Configure Job page and add BPFB (no submit yet)."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
@@ -210,12 +273,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info("[TEST_04] BPFB added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
-    # Step 5 — Persist reboot state and click Start (single start point)
+    # Step 6 — Persist reboot state and click Start (single start point)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(5)
-    @step(5, "Start Job — S3 → S4 → S5")
-    def test_05_start_job(self):
+    @pytest.mark.order(6)
+    @step(6, "Start Job — S3 → S4 → S5")
+    def test_06_start_job(self):
         """
         Submit the three-assessment Configure Job, save it as a custom job,
         persist reboot state, then click Start (the single, unique start point).
@@ -238,7 +301,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         # Persist state and write the startup BAT BEFORE clicking Start.
         # The earliest OS-level session termination is S4 hibernate.
         self.reboot_mgr.prepare_for_external_reboot(
-            step_name="test_05_start_job",
+            step_name="test_06_start_job",
             test_file=__file__,
         )
 
@@ -260,12 +323,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
             os._exit(0)
 
     # ------------------------------------------------------------------
-    # Step 6 — Wait for View Results (resumes after S5 cold reboot)
+    # Step 7 — Wait for View Results (resumes after S5 cold reboot)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(6)
-    @step(6, "Wait for WAC View Results")
-    def test_06_wait_results(self):
+    @pytest.mark.order(7)
+    @step(7, "Wait for WAC View Results")
+    def test_07_wait_results(self):
         """
         Connect to WAC and wait for the entire three-assessment job to
         complete and show the View Results page.
@@ -293,7 +356,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info("[TEST_06] run_time    : %s", wac_result.run_time)
         logger.info("[TEST_06] result_path : %s", wac_result.result_path)
 
-        # Store for step 7 verification.
+        # Store for step 8 verification.
         TestSTC2557ADKS3S4S5._wac_result = wac_result
 
         assert wac_result.errors == 0, (
@@ -302,12 +365,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         )
 
     # ------------------------------------------------------------------
-    # Step 7 — Verify result artefacts
+    # Step 8 — Verify result artefacts
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(7)
-    @step(7, "Verify result artefacts")
-    def test_07_verify(self):
+    @pytest.mark.order(8)
+    @step(8, "Verify result artefacts")
+    def test_08_verify(self):
         """Assert the result directory and AxeLog.txt exist."""
         wac_result = getattr(TestSTC2557ADKS3S4S5, "_wac_result", None)
 
