@@ -723,21 +723,40 @@ class UIRunner:
         """
         logger.debug("add_bpfs_to_configure_job: num_iters=%d auto_boot=%s", num_iters, auto_boot)
 
-        self._activate_configure_job_tab()
+        if self._has_configure_job_tab():
+            # ── Library path: Configure Job tab already exists ────────────
+            logger.debug("add_bpfs_to_configure_job: Configure Job tab already exists — using library path")
+            self._activate_configure_job_tab()
+            self._log_wac_topology("add_bpfs: before Add assessments (library path)")
 
-        logger.debug("add_bpfs_to_configure_job: clicking 'Add assessments' in left panel")
-        self._session.window.child_window(
-            title="Add assessments",
-            control_type="ListItem",
-        ).click_input()
-        time.sleep(1)
+            logger.debug("add_bpfs_to_configure_job: clicking 'Add assessments' in left panel")
+            self._session.window.child_window(
+                title="Add assessments",
+                control_type="ListItem",
+            ).click_input()
+            time.sleep(1)
 
-        logger.debug("add_bpfs_to_configure_job: clicking '+' button to add 'Boot performance (Fast Startup)' to job")
-        self._session.window.child_window(
-            title="Boot performance (Fast Startup)",
-            control_type="ListItem",
-        ).child_window(control_type="Button").click_input()
-        time.sleep(1)
+            logger.debug("add_bpfs_to_configure_job: clicking '+' button to add 'Boot performance (Fast Startup)' to job")
+            self._session.window.child_window(
+                title="Boot performance (Fast Startup)",
+                control_type="ListItem",
+            ).child_window(control_type="Button").click_input()
+            time.sleep(1)
+
+        else:
+            # ── Quick Run path: create the Configure Job tab via double-click ──
+            logger.debug("add_bpfs_to_configure_job: no Configure Job tab — using Quick Run double-click path")
+            self._log_wac_topology("add_bpfs: before Quick Run (no tab)")
+            self._open_quickrun_panel()
+
+            logger.debug("add_bpfs_to_configure_job: double-clicking 'Boot performance (Fast Startup)' to open Configure page")
+            self._session.window.child_window(
+                title="Boot performance (Fast Startup)",
+                auto_id=_AID_ASSESSMENT["bpfs"],
+                control_type="ListItem",
+            ).double_click_input()
+            logger.debug("add_bpfs_to_configure_job: waiting for Configure Job page to load")
+            time.sleep(2)
 
         logger.debug("add_bpfs_to_configure_job: clicking BPFS card in Configure Job panel")
         self._session.window.child_window(
