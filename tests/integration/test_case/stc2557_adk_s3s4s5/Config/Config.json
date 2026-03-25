@@ -1,0 +1,5 @@
+{
+    "smicli": {
+        "config_path": "./Config/SmiCli.json"
+    }
+}

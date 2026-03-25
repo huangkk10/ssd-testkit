@@ -62,7 +62,7 @@ from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.reboot_manager import RebootManager
 from lib.logger import get_module_logger, clear_log_files
-from lib.testtool.choco_manager import ChocoManager
+from lib.testtool.tool_installer import ToolInstaller
 from lib.testtool.windows_adk import ADKController
 from lib.testtool.windows_adk.config import WAC_EXE, get_build_number
 from lib.testtool.windows_adk.result_reader import WACRunResult
@@ -93,8 +93,8 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     # ------------------------------------------------------------------
 
     @pytest.fixture(scope="class", autouse=True)
-    def setup_test_class(self, request):
-        """Initialise working directory, VersionAdapter, and RebootManager."""
+    def setup_test_class(self, request, testcase_config, runcard_params):
+        """Initialise working directory, VersionAdapter, RebootManager, and RunCard."""
         cls = request.cls
         cls.original_cwd = os.getcwd()
 
@@ -117,8 +117,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info(f"[SETUP] completed    : {cls.reboot_mgr.state.get('completed_tests', [])}")
         logger.info(f"[SETUP] log_path     : {cls.log_path}")
 
+        # ── RunCard ─────────────────────────────────────────────────────────
+        cls._init_runcard(runcard_params)
+
         yield
 
+        cls._teardown_runcard(request.session)
         cls._teardown_reboot_manager()
         logger.info(f"{cls.__name__} session complete")
         os.chdir(cls.original_cwd)
@@ -126,24 +130,6 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _reinstall_windows_adk(package_id: str = "windows-adk") -> None:
-        """Uninstall (if present) then install Windows ADK via ChocoManager."""
-        mgr = ChocoManager()
-        if mgr.is_installed(package_id):
-            logger.info("[TEST_01] Uninstalling existing Windows ADK ...")
-            result = mgr.uninstall(package_id)
-            assert result.success, (
-                f"Windows ADK uninstall failed (exit {result.exit_code}):\n{result.output}"
-            )
-            logger.info("[TEST_01] Windows ADK uninstalled")
-        logger.info("[TEST_01] Installing Windows ADK ...")
-        result = mgr.install(package_id)
-        assert result.success, (
-            f"Windows ADK install failed (exit {result.exit_code}):\n{result.output}"
-        )
-        logger.info("[TEST_01] Windows ADK installed")
 
     # ------------------------------------------------------------------
     # Step 1 — Precondition
@@ -157,8 +143,9 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
             subprocess.run(["taskkill", "/f", "/im", proc], capture_output=True)
         time.sleep(1)
 
-        # Reinstall Windows ADK via ChocoManager for a known-good baseline.
-        self._reinstall_windows_adk()
+        # Install tools declared in Config/tools.yaml (windows-adk, reinstall=true)
+        _tools_yaml = Path(__file__).parent / "Config" / "tools.yaml"
+        ToolInstaller(_tools_yaml).install_all()
 
         clear_log_files()
         Path(self.log_path).mkdir(parents=True, exist_ok=True)
