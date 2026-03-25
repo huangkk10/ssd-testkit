@@ -50,8 +50,8 @@ def pytest_collection_finish(session):
 
     # Post-reboot tests (after S4 hibernate / S5 cold reboot): test_07, test_08
     _POST_REBOOT_TESTS = {
-        'test_06_wait_results',
-        'test_07_verify',
+        'test_07_wait_results',
+        'test_08_verify',
     }
     collected_names = {item.name for item in stc2557_items}
 
