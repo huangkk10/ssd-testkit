@@ -14,10 +14,11 @@ tools.yaml schema::
 """
 from __future__ import annotations
 
+import os
 import yaml
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from lib.testtool.choco_manager import ChocoManager
 from lib.logger import get_module_logger
@@ -31,6 +32,7 @@ class ToolEntry:
     reinstall: bool = False
     version: Optional[str] = None   # None → use package_meta.yaml default: true
     phase: str = "test"             # "pre_runcard" | "test" (default)
+    env: Dict[str, str] = field(default_factory=dict)  # env vars to inject into current process
 
 
 class ToolInstaller:
@@ -52,6 +54,10 @@ class ToolInstaller:
     - ``phase``     (str, default ``"test"``) — ``"pre_runcard"`` to install
                     before RunCard initialisation in ``setup_test_class``;
                     ``"test"`` (default) to install inside ``test_01_precondition``.
+    - ``env``      (dict, optional) — environment variables to set in the current
+                    process after the tool is ready (whether installed or skipped).
+                    Useful when the Chocolatey installer sets machine-level registry
+                    vars that the current process cannot see until restarted.
     """
 
     def __init__(self, yaml_path: str | Path) -> None:
@@ -77,6 +83,7 @@ class ToolInstaller:
                 reinstall=bool(item.get("reinstall", False)),
                 version=item.get("version") or None,
                 phase=str(item.get("phase", "test")),
+                env=dict(item.get("env") or {}),
             ))
         return entries
 
@@ -114,3 +121,9 @@ class ToolInstaller:
             assert mgr.is_installed(entry.id), \
                 f"[ToolInstaller] '{entry.id}' not detected after install"
             logger.info(f"[ToolInstaller] {entry.id} ready")
+
+            # Inject env vars into current process (machine-level env set by
+            # choco installer is not visible until a new process is started).
+            for var, val in entry.env.items():
+                os.environ[var] = val
+                logger.debug(f"[ToolInstaller] env set: {var}={val}")
