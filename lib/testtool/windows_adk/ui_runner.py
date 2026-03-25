@@ -907,7 +907,13 @@ class UIRunner:
         logger.debug("submit_configure_job: Run clicked")
 
     def _has_configure_job_tab(self) -> bool:
-        """Return True if a Configure Job tab (title ending with '*') already exists.
+        """Return True if a Configure Job tab already exists.
+
+        Detects a Configure Job tab by automation_id pattern
+        ('JobTabViewModel' in the aid), which is reliable regardless of
+        whether the job has been modified.  The previous approach of checking
+        window_text().endswith('*') was unreliable because the '*' indicator
+        is a child Text element, not part of the TabItem's own window_text().
 
         Used by add_*_to_configure_job methods to decide whether to create a
         new job via Quick Run double-click or to add an assessment to the
@@ -917,7 +923,8 @@ class UIRunner:
             tabs = self._session.window.descendants(control_type="TabItem")
             for tab in tabs:
                 try:
-                    if tab.window_text().endswith("*"):
+                    aid = getattr(tab.element_info, "automation_id", "") or ""
+                    if "JobTabViewModel" in aid:
                         return True
                 except Exception:
                     continue
