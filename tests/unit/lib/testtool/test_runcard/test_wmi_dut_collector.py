@@ -216,15 +216,25 @@ class TestCollectSuccess:
 # ══════════════════════════════════════════════════════════════════════════
 
 class TestCollectFailure:
-    def test_powershell_error_returns_false(self, tmp_path):
+    def test_powershell_error_degrades_gracefully(self, tmp_path):
+        """When all PS queries fail, collect() still writes the INI with
+        'Unknown' placeholder values and returns True (graceful degradation),
+        so that load_dut_info() can still proceed."""
         out = str(tmp_path / "DUT_Info.ini")
         c = WmiDutInfoCollector(output_file=out)
 
         with patch("subprocess.run", return_value=_ps_proc("", returncode=1, stderr="Access denied")):
             result = c.collect()
 
-        # collect() must not raise; it returns False
-        assert result is False
+        # collect() must not raise; graceful degradation → True + file written
+        assert result is True
+        assert Path(out).exists()
+
+        cfg = configparser.RawConfigParser()
+        cfg.read(out, encoding="utf-8")
+        assert cfg.has_section("info")
+        assert cfg.get("info", "os") == "Unknown"
+        assert cfg.get("info", "spor_board") == "N/A"
 
     def test_file_write_error_returns_false(self, tmp_path):
         """If _write_ini raises OSError, collect() returns False."""
