@@ -185,6 +185,13 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         ctrl.cleanup_dirs()
         logger.info("[TEST_01] WAC directories cleaned")
 
+        # Remove stale windows_adk report directory from a previous run.
+        adk_dir = Path(self.log_path).parent / "windows_adk"
+        if adk_dir.exists():
+            shutil.rmtree(adk_dir)
+            logger.info(f"[TEST_01] Removed stale report dir: {adk_dir}")
+        adk_dir.mkdir(parents=True, exist_ok=True)
+
         # Apply OS configuration (Task Scheduler prep: SystemRestore, MemoryDiagnostic, McAfee)
         _osconfig_yaml = Path(__file__).parent / "Config" / "osconfig.yaml"
         profile = load_profile(_osconfig_yaml)
