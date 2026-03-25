@@ -116,7 +116,9 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info(f"[SETUP] reboot_count : {cls.reboot_mgr.state.get('reboot_count', 0)}")
         logger.info(f"[SETUP] completed    : {cls.reboot_mgr.state.get('completed_tests', [])}")
         logger.info(f"[SETUP] log_path     : {cls.log_path}")
-
+        # ── Pre-RunCard tools (smicli needed by generate_dut_info) ───────────────────
+        _tools_yaml = Path(__file__).parent / "Config" / "tools.yaml"
+        ToolInstaller(_tools_yaml).install_pre_runcard()
         # ── RunCard ─────────────────────────────────────────────────────────
         cls._init_runcard(runcard_params)
 

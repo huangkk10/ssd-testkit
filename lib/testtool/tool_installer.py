@@ -4,9 +4,13 @@ ToolInstaller — reads a tools.yaml and installs each tool via ChocoManager.
 tools.yaml schema::
 
     tools:
-      - id: windows-adk      # ChocoManager tool_id
-        reinstall: true       # true = uninstall first; false (default) = skip if installed
-        version: "26100"      # optional; omit to use package_meta.yaml default: true
+      - id: smicli        # ChocoManager tool_id
+        reinstall: false   # false (default) = skip if installed
+        phase: pre_runcard # "pre_runcard" = install in setup before RunCard init
+                           # "test" (default) = install in test_01_precondition
+      - id: windows-adk
+        reinstall: true    # true = uninstall first
+        version: "26100"   # optional; omit to use package_meta.yaml default: true
 """
 from __future__ import annotations
 
@@ -26,6 +30,7 @@ class ToolEntry:
     id: str
     reinstall: bool = False
     version: Optional[str] = None   # None → use package_meta.yaml default: true
+    phase: str = "test"             # "pre_runcard" | "test" (default)
 
 
 class ToolInstaller:
@@ -44,6 +49,9 @@ class ToolInstaller:
                     if False, skip when already installed.
     - ``version``   (str, optional) — pin a specific version; omit to use the
                     version marked ``default: true`` in package_meta.yaml.
+    - ``phase``     (str, default ``"test"``) — ``"pre_runcard"`` to install
+                    before RunCard initialisation in ``setup_test_class``;
+                    ``"test"`` (default) to install inside ``test_01_precondition``.
     """
 
     def __init__(self, yaml_path: str | Path) -> None:
@@ -68,13 +76,22 @@ class ToolInstaller:
                 id=item["id"],
                 reinstall=bool(item.get("reinstall", False)),
                 version=item.get("version") or None,
+                phase=str(item.get("phase", "test")),
             ))
         return entries
 
+    def install_pre_runcard(self) -> None:
+        """Install only tools with ``phase: pre_runcard`` (call before RunCard init)."""
+        self._install([e for e in self._entries if e.phase == "pre_runcard"])
+
     def install_all(self) -> None:
         """Install (or reinstall) every tool declared in tools.yaml."""
+        self._install(self._entries)
+
+    def _install(self, entries: "List[ToolEntry]") -> None:
+        """Core install loop for a given subset of entries."""
         mgr = ChocoManager()
-        for entry in self._entries:
+        for entry in entries:
             if entry.reinstall and mgr.is_installed(entry.id):
                 logger.info(f"[ToolInstaller] Uninstalling {entry.id} (reinstall=true)")
                 result = mgr.uninstall(entry.id)
