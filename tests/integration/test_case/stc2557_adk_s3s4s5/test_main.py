@@ -9,7 +9,7 @@ Survives the OS-level hibernate and cold reboot that WAC triggers for S4 and
 S5 using RebootManager to persist state and auto-restart pytest.
 
 Workflow:
-    Step 1 — Precondition: kill wac/axe, clean WAC dirs, clear logs.
+    Step 1 — Precondition: kill wac/axe, clean WAC dirs, clear logs, apply OsConfig.
     Step 2 — Configure S3: open WAC Configure Job, add Standby Performance,
              configure params, leave on Configure Job page.
     Step 3 — Configure S4: connect WAC, add Hibernate Performance, configure
@@ -178,41 +178,24 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         ctrl.cleanup_dirs()
         logger.info("[TEST_01] WAC directories cleaned")
 
-    # ------------------------------------------------------------------
-    # Step 2 — OsConfig
-    # ------------------------------------------------------------------
-
-    @pytest.mark.order(2)
-    # @pytest.mark.skip(reason="Test")
-    @step(2, "OsConfig — apply OS settings")
-    def test_02_apply_osconfig(self):
-        """
-        Apply OS configuration per SUT preparation checklist:
-        - Disable System Restore (SystemRestore\\SR)
-        - Disable Memory Diagnostic task (RunFullMemoryDiagnostic)
-        - Disable McAfee tasks if present — no-op if McAfee not installed
-        """
-        logger.info("[TEST_02] OsConfig apply started")
-
+        # Apply OS configuration (Task Scheduler prep: SystemRestore, MemoryDiagnostic, McAfee)
         _osconfig_yaml = Path(__file__).parent / "Config" / "osconfig.yaml"
         profile = load_profile(_osconfig_yaml)
-
         controller = OsConfigController(
             profile=profile,
             state_manager=OsConfigStateManager(),
         )
         controller.apply_all()
-
         TestSTC2557ADKS3S4S5._osconfig_controller = controller
-        logger.info("[TEST_02] OsConfig applied successfully")
+        logger.info("[TEST_01] OsConfig applied successfully")
 
     # ------------------------------------------------------------------
-    # Step 3 — Configure S3 (Standby Performance)
+    # Step 2 — Configure S3 (Standby Performance)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(3)
-    @step(3, "Configure S3 — Standby Performance")
-    def test_03_configure_s3(self):
+    @pytest.mark.order(2)
+    @step(2, "Configure S3 — Standby Performance")
+    def test_02_configure_s3(self):
         """Open WAC Configure Job page and add Standby Performance (no Run)."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.open(WAC_EXE)
@@ -220,12 +203,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info("[TEST_02] Standby Performance added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
-    # Step 4 — Configure S4 (Hibernate Performance)
+    # Step 3 — Configure S4 (Hibernate Performance)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(4)
-    @step(4, "Configure S4 — Hibernate Performance")
-    def test_04_configure_s4(self):
+    @pytest.mark.order(3)
+    @step(3, "Configure S4 — Hibernate Performance")
+    def test_03_configure_s4(self):
         """Connect to WAC Configure Job page and add Hibernate Performance."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
@@ -233,12 +216,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info("[TEST_03] Hibernate Performance added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
-    # Step 5 — Configure S5 (BPFB), submit job, save, connect launcher
+    # Step 4 — Configure S5 (BPFB)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(5)
-    @step(5, "Configure S5 — BPFB")
-    def test_05_configure_s5(self):
+    @pytest.mark.order(4)
+    @step(4, "Configure S5 — BPFB")
+    def test_04_configure_s5(self):
         """Connect WAC Configure Job page and add BPFB (no submit yet)."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
@@ -246,12 +229,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info("[TEST_04] BPFB added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
-    # Step 6 — Persist reboot state and click Start (single start point)
+    # Step 5 — Persist reboot state and click Start (single start point)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(6)
-    @step(6, "Start Job — S3 → S4 → S5")
-    def test_06_start_job(self):
+    @pytest.mark.order(5)
+    @step(5, "Start Job — S3 → S4 → S5")
+    def test_05_start_job(self):
         """
         Submit the three-assessment Configure Job, save it as a custom job,
         persist reboot state, then click Start (the single, unique start point).
@@ -274,7 +257,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         # Persist state and write the startup BAT BEFORE clicking Start.
         # The earliest OS-level session termination is S4 hibernate.
         self.reboot_mgr.prepare_for_external_reboot(
-            step_name="test_06_start_job",
+            step_name="test_05_start_job",
             test_file=__file__,
         )
 
@@ -296,12 +279,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
             os._exit(0)
 
     # ------------------------------------------------------------------
-    # Step 7 — Wait for View Results (resumes after S5 cold reboot)
+    # Step 6 — Wait for View Results (resumes after S5 cold reboot)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(7)
-    @step(7, "Wait for WAC View Results")
-    def test_07_wait_results(self):
+    @pytest.mark.order(6)
+    @step(6, "Wait for WAC View Results")
+    def test_06_wait_results(self):
         """
         Connect to WAC and wait for the entire three-assessment job to
         complete and show the View Results page.
@@ -329,7 +312,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info("[TEST_06] run_time    : %s", wac_result.run_time)
         logger.info("[TEST_06] result_path : %s", wac_result.result_path)
 
-        # Store for step 8 verification.
+        # Store for step 7 verification.
         TestSTC2557ADKS3S4S5._wac_result = wac_result
 
         assert wac_result.errors == 0, (
@@ -338,12 +321,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         )
 
     # ------------------------------------------------------------------
-    # Step 8 — Verify result artefacts
+    # Step 7 — Verify result artefacts
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(8)
-    @step(8, "Verify result artefacts")
-    def test_08_verify(self):
+    @pytest.mark.order(7)
+    @step(7, "Verify result artefacts")
+    def test_07_verify(self):
         """Assert the result directory and AxeLog.txt exist."""
         wac_result = getattr(TestSTC2557ADKS3S4S5, "_wac_result", None)
 
