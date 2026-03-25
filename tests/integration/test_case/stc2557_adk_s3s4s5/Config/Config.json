@@ -1,5 +1,8 @@
 {
     "smicli": {
         "config_path": "./Config/SmiCli.json"
+    },
+    "DUT_info": {
+        "DiskType": 0
     }
 }
