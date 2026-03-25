@@ -386,17 +386,17 @@ class TestRunCardFallbackFalse:
         assert "SmiCli2.exe not found" in rc.error_message
 
     def test_wmi_not_called_when_fallback_false(self, tmp_path):
+        # With fallback=False the code returns immediately after smicli fails
+        # and never reaches the lazy import of WmiDutInfoCollector.
+        # Verify by patching the module-level class and asserting no instantiation.
         rc = _make_runcard(tmp_path)
         with self._smicli_fail_patch(), \
-             patch("lib.testtool.RunCard.WmiDutInfoCollector") as mock_wmi:
-            # WmiDutInfoCollector should not even be imported/used
-            try:
-                rc.generate_dut_info(
-                    output_file=str(tmp_path / "DUT_Info.ini"),
-                    fallback=False,
-                )
-            except Exception:
-                pass
+             patch("lib.testtool.wmi_dut_collector.WmiDutInfoCollector") as mock_wmi:
+            result = rc.generate_dut_info(
+                output_file=str(tmp_path / "DUT_Info.ini"),
+                fallback=False,
+            )
+        assert result is False
         mock_wmi.assert_not_called()
 
 
@@ -417,10 +417,9 @@ class TestRunCardFallbackTrue:
         mock_collector.collect.return_value = True
         mock_collector.error_message = ""
 
+        # Patch the class in its home module — that's what the lazy import resolves.
         with self._smicli_fail_patch(), \
              patch("lib.testtool.wmi_dut_collector.WmiDutInfoCollector",
-                   return_value=mock_collector), \
-             patch("lib.testtool.RunCard.WmiDutInfoCollector",
                    return_value=mock_collector):
             result = rc.generate_dut_info(
                 output_file=str(tmp_path / "DUT_Info.ini"),
@@ -437,7 +436,7 @@ class TestRunCardFallbackTrue:
         mock_collector.error_message = "PowerShell access denied"
 
         with self._smicli_fail_patch(), \
-             patch("lib.testtool.RunCard.WmiDutInfoCollector",
+             patch("lib.testtool.wmi_dut_collector.WmiDutInfoCollector",
                    return_value=mock_collector):
             result = rc.generate_dut_info(
                 output_file=str(tmp_path / "DUT_Info.ini"),
@@ -462,7 +461,7 @@ class TestRunCardSmicliSuccess:
         mock_ctrl.error_message = ""
 
         with patch("lib.testtool.RunCard.SmiCliController", return_value=mock_ctrl), \
-             patch("lib.testtool.RunCard.WmiDutInfoCollector") as mock_wmi:
+             patch("lib.testtool.wmi_dut_collector.WmiDutInfoCollector") as mock_wmi:
             result = rc.generate_dut_info(
                 output_file=str(tmp_path / "DUT_Info.ini"),
                 fallback=True,
