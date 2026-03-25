@@ -1,15 +1,14 @@
 # tools.yaml — stc2557_adk_s3s4s5
 #
 # phase: pre_runcard — 在 setup_test_class 中、RunCard 初始化前安裝
-# phase: test        — 在 test_01_precondition 中安裝（預設）
+# phase: test        — 在 test_01_precondition 中安裝（預設，可省略）
+#
+# env — 手動覆蓋 env var（通常不需要；ToolInstaller 會自動從 package_meta.yaml 注入）
 
 tools:
   - id: smicli
     reinstall: false
     phase: pre_runcard    # RunCard 需要 SmiCli2.exe 來收集 DUT 資訊
-    env:
-      SMICLI_PATH: 'C:\tools\SmiCli\SmiCli2.exe'  # choco 裝完後的安裝路徑；注入當前 process 避免 registry env lag
 
   - id: windows-adk
     reinstall: true
-    phase: test           # 每次重裝確保乾淨 baseline
