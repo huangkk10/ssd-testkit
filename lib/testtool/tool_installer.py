@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import yaml as _yaml
+
 from lib.testtool.choco_manager import ChocoManager
 from lib.logger import get_module_logger
 
@@ -95,6 +97,40 @@ class ToolInstaller:
         """Install (or reinstall) every tool declared in tools.yaml."""
         self._install(self._entries)
 
+    @staticmethod
+    def _inject_env_from_meta(tool_id: str) -> None:
+        """
+        Read ``install_dir`` and ``env_var`` from the tool's ``package_meta.yaml``
+        and inject ``env_var=<install_dir>\\<binary>`` into the current process.
+
+        This handles the common case where Chocolatey sets a machine-level env
+        var that the current process cannot see until a new process is started.
+        No-op if the tool has no ``package_meta.yaml`` or no ``env_var`` field.
+        """
+        # Locate package_meta.yaml next to the tool's __init__.py
+        # e.g. lib/testtool/smicli/package_meta.yaml
+        here = Path(__file__).parent  # lib/testtool/
+        meta_path = here / tool_id.replace("-", "_") / "package_meta.yaml"
+        if not meta_path.exists():
+            return
+        try:
+            with meta_path.open(encoding="utf-8") as f:
+                meta = _yaml.safe_load(f) or {}
+        except Exception:
+            return
+        env_var = meta.get("env_var")
+        install_dir = meta.get("install_dir")
+        if not env_var or not install_dir:
+            return
+        binaries = meta.get("binaries", [])
+        exe_name = binaries[0] if binaries else ""
+        if not exe_name:
+            return
+        exe_path = str(Path(install_dir) / exe_name)
+        if env_var not in os.environ:
+            os.environ[env_var] = exe_path
+            logger.debug(f"[ToolInstaller] env auto-set from meta: {env_var}={exe_path}")
+
     def _install(self, entries: "List[ToolEntry]") -> None:
         """Core install loop for a given subset of entries."""
         mgr = ChocoManager()
@@ -122,8 +158,9 @@ class ToolInstaller:
                 f"[ToolInstaller] '{entry.id}' not detected after install"
             logger.info(f"[ToolInstaller] {entry.id} ready")
 
-            # Inject env vars into current process (machine-level env set by
-            # choco installer is not visible until a new process is started).
+            # 1. Auto-inject env var from package_meta.yaml (install_dir + env_var)
+            self._inject_env_from_meta(entry.id)
+            # 2. Apply explicit overrides from tools.yaml (takes precedence)
             for var, val in entry.env.items():
                 os.environ[var] = val
-                logger.debug(f"[ToolInstaller] env set: {var}={val}")
+                logger.debug(f"[ToolInstaller] env override: {var}={val}")

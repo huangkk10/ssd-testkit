@@ -174,9 +174,16 @@ class Runcard:
     
     def generate_dut_info(self, smicli_path: Optional[str] = None,
                          output_file: Optional[str] = None,
-                         work_dir: Optional[str] = None) -> bool:
+                         work_dir: Optional[str] = None,
+                         fallback: bool = True) -> bool:
         """
-        Execute SmiCli2.exe to get DUT information and generate DUT_Info.ini
+        Execute SmiCli2.exe to get DUT information and generate DUT_Info.ini.
+
+        When *fallback* is ``True`` (the default) and SmiCli2.exe is
+        unavailable or fails, a secondary collection path using Windows
+        built-in PowerShell / WMI queries is attempted.  The fallback
+        produces a ``DUT_Info.ini`` in exactly the same format, so
+        ``load_dut_info()`` works unchanged.
 
         SmiCli2.exe path resolution order:
           1. Explicit ``smicli_path`` argument
@@ -189,6 +196,9 @@ class Runcard:
                          above is used to locate the executable.
             output_file: Output file name, default is "DUT_Info.ini" in testlog directory
             work_dir: Working directory, if None uses current directory
+            fallback: When True, attempt WMI-based collection if SmiCli2.exe
+                      fails.  Set to False to preserve the original behaviour
+                      (return False immediately on SmiCli failure).
 
         Returns:
             bool: Returns True if execution succeeds, False if it fails
@@ -209,9 +219,43 @@ class Runcard:
         )
         controller.start()
         controller.join(timeout=90)
-        if not controller.status:
-            self.error_message = controller.error_message
-        return bool(controller.status)
+
+        if controller.status:
+            return True
+
+        # SmiCli2.exe failed — log the reason, then decide whether to fallback.
+        smicli_error = controller.error_message
+        logger.LogWarn(
+            f"SmiCli2.exe failed ({smicli_error}); "
+            f"{'trying WMI fallback' if fallback else 'fallback disabled'}"
+        )
+
+        if not fallback:
+            self.error_message = smicli_error
+            return False
+
+        # WMI / PowerShell fallback
+        try:
+            from lib.testtool.wmi_dut_collector import WmiDutInfoCollector
+        except ImportError as exc:
+            self.error_message = (
+                f"SmiCli2 failed and WMI fallback module unavailable: {exc}. "
+                f"SmiCli error: {smicli_error}"
+            )
+            logger.LogErr(self.error_message)
+            return False
+
+        collector = WmiDutInfoCollector(output_file=output_file)
+        ok = collector.collect()
+        if ok:
+            logger.LogEvt("WMI fallback DUT_Info.ini generated successfully")
+        else:
+            self.error_message = (
+                f"SmiCli2 failed and WMI fallback also failed "
+                f"({collector.error_message}). SmiCli error: {smicli_error}"
+            )
+            logger.LogErr(self.error_message)
+        return ok
     
     def load_dut_info(self) -> bool:
         """
