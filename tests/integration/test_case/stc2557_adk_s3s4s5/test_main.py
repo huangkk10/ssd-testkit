@@ -122,16 +122,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         )
 
         phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
-        # logger.info(f"[SETUP] Phase        : {phase}")
-        # logger.info(f"[SETUP] reboot_count : {cls.reboot_mgr.state.get('reboot_count', 0)}")
-        # logger.info(f"[SETUP] completed    : {cls.reboot_mgr.state.get('completed_tests', [])}")
-        # logger.info(f"[SETUP] log_path     : {cls.log_path}")
-        # ── Pre-RunCard tools (smicli needed by generate_dut_info) ───────────────────
         _tools_yaml = Path(__file__).parent / "Config" / "tools.yaml"
-        # logger.info(f"[SETUP] __file__      : {__file__}")
-        # logger.info(f"[SETUP] tools.yaml    : {_tools_yaml}")
-        # logger.info(f"[SETUP] tools.yaml exists: {_tools_yaml.exists()}")
-        # logger.info(f"[SETUP] SMICLI_PATH (before install): {os.environ.get('SMICLI_PATH', 'NOT SET')}")
         ToolInstaller(_tools_yaml).install_pre_runcard()
         logger.info(f"[SETUP] SMICLI_PATH (after install) : {os.environ.get('SMICLI_PATH', 'NOT SET')}")
         smicli_exe = os.environ.get('SMICLI_PATH', '')
@@ -143,30 +134,11 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
         cls._teardown_runcard(request.session)
 
-        # ── OsConfig revert (跨 reboot 安全) ──────────────────────────────────
-        _osconfig_yaml = Path(__file__).parent / "Config" / "osconfig.yaml"
-        if cls._osconfig_controller is not None:
-            # Pre-Reboot path: controller still alive in-process
-            try:
-                logger.info("[TEARDOWN] Reverting OsConfig changes (pre-reboot path)...")
-                cls._osconfig_controller.revert_all()
-                logger.info("[TEARDOWN] OsConfig reverted successfully")
-            except Exception as exc:
-                logger.warning(f"[TEARDOWN] OsConfig revert failed \u2014 {exc} (continuing)")
-        else:
-            # Post-Reboot path: rebuild profile from YAML + load snapshot from disk
-            state_mgr = OsConfigStateManager()
-            if state_mgr.exists():
-                try:
-                    logger.info("[TEARDOWN] Post-reboot OsConfig revert \u2014 loading snapshot from disk")
-                    profile = load_profile(_osconfig_yaml)
-                    controller = OsConfigController(profile=profile, state_manager=state_mgr)
-                    controller.revert_all()
-                    logger.info("[TEARDOWN] OsConfig reverted successfully (post-reboot)")
-                except Exception as exc:
-                    logger.warning(f"[TEARDOWN] OsConfig post-reboot revert failed \u2014 {exc} (continuing)")
-            else:
-                logger.info("[TEARDOWN] No OsConfig snapshot on disk \u2014 skipping revert")
+        cls._revert_osconfig(
+            Path(__file__).parent / "Config" / "osconfig.yaml",
+            cls._osconfig_controller,
+            logger,
+        )
 
         cls._teardown_reboot_manager()
         logger.info(f"{cls.__name__} session complete")

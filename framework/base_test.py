@@ -161,7 +161,53 @@ class BaseTestCase:
             cls.reboot_mgr.cleanup()
         except Exception as exc:
             logger.LogEvt(f"[TEARDOWN] RebootManager cleanup failed — {exc} (continuing)")
+    @classmethod
+    def _revert_osconfig(
+        cls,
+        osconfig_yaml: "Path",
+        controller: "object | None",
+        log,
+    ) -> None:
+        """
+        Revert OsConfig changes safely across reboots.
 
+        Pre-reboot path:  *controller* is still alive → call ``revert_all()`` directly.
+        Post-reboot path: *controller* is ``None`` → rebuild profile from *osconfig_yaml*
+                          and load the snapshot that was persisted to disk before the
+                          reboot, then call ``revert_all()``.  No-op when no snapshot
+                          exists on disk.
+
+        Args:
+            osconfig_yaml: Path to the test case’s ``Config/osconfig.yaml``.
+            controller:    The ``OsConfigController`` cached at apply time
+                           (``cls._osconfig_controller``).  Pass ``None`` after a reboot.
+            log:           A logger instance (e.g. ``get_module_logger(__name__)``).
+        """
+        # Lazy imports so BaseTestCase never hard-depends on osconfig.
+        from lib.testtool.osconfig import OsConfigController
+        from lib.testtool.osconfig.state_manager import OsConfigStateManager
+        from lib.testtool.osconfig.profile_loader import load_profile
+
+        if controller is not None:
+            try:
+                log.info("[TEARDOWN] Reverting OsConfig changes (pre-reboot path)...")
+                controller.revert_all()
+                log.info("[TEARDOWN] OsConfig reverted successfully")
+            except Exception as exc:
+                log.warning(f"[TEARDOWN] OsConfig revert failed \u2014 {exc} (continuing)")
+        else:
+            state_mgr = OsConfigStateManager()
+            if state_mgr.exists():
+                try:
+                    log.info("[TEARDOWN] Post-reboot OsConfig revert \u2014 loading snapshot from disk")
+                    profile = load_profile(osconfig_yaml)
+                    ctrl = OsConfigController(profile=profile, state_manager=state_mgr)
+                    ctrl.revert_all()
+                    log.info("[TEARDOWN] OsConfig reverted successfully (post-reboot)")
+                except Exception as exc:
+                    log.warning(f"[TEARDOWN] OsConfig post-reboot revert failed \u2014 {exc} (continuing)")
+            else:
+                log.info("[TEARDOWN] No OsConfig snapshot on disk \u2014 skipping revert")
     @staticmethod
     def _cleanup_testlog_directory():
         """
