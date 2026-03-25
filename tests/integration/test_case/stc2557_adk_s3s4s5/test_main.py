@@ -50,6 +50,7 @@ Run:
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -369,6 +370,20 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         axelog = result_dir / "AxeLog.txt"
         assert axelog.exists(), f"AxeLog.txt not found in {result_dir}"
         logger.info(f"[TEST_08] AxeLog.txt verified: {axelog}")
+
+        # ── (1) Create windows_adk collection directory under testlog ─────────
+        adk_dir = Path(self.log_path).parent / "windows_adk"
+        adk_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"[TEST_08] Collection dir: {adk_dir}")
+
+        # ── (2) Zip the WAC result directory into windows_adk ─────────────────
+        zip_base = adk_dir / result_dir.name
+        shutil.make_archive(str(zip_base), "zip", str(result_dir.parent), result_dir.name)
+        logger.info(f"[TEST_08] Results archived: {zip_base}.zip")
+
+        # ── (3) Screenshot of the WAC result window ───────────────────────────
+        ctrl = ADKController(config={"log_path": self.log_path})
+        ctrl._ui.take_screenshot(str(adk_dir), result_dir.name)
 
         logger.info(
             "[TEST_08] Summary — errors=%d  warnings=%d  result_path=%s",
