@@ -42,6 +42,8 @@ from .defrag_schedule import DefragScheduleAction
 from .defender_scan_schedule import DefenderScanScheduleAction
 from .edge_update_tasks import EdgeUpdateTasksAction
 from .onedrive_tasks import OneDriveTasksAction
+from .memory_diagnostic_tasks import MemoryDiagnosticTasksAction
+from .mcafee_tasks import McAfeeTasksAction
 # ── Phase 4: System Actions ───────────────────────────────────────────────
 from .system_restore import SystemRestoreAction
 from .fast_startup import FastStartupAction
@@ -84,6 +86,8 @@ __all__ = [
     "DefenderScanScheduleAction",
     "EdgeUpdateTasksAction",
     "OneDriveTasksAction",
+    "MemoryDiagnosticTasksAction",
+    "McAfeeTasksAction",
     # Phase 4 – System
     "SystemRestoreAction",
     "FastStartupAction",

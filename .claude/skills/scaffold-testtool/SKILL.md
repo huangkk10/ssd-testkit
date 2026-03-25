@@ -349,7 +349,7 @@ When a user asks about a known tool, read the corresponding reference file first
 | **PwrTest** | `.claude/skills/scaffold-testtool/references/pwrtest.md` | WDK CLI tool; already bundled in SmiWinTools (no install needed); exe path resolved from `os_name`+`os_version`; non-standard `log_parser.py` for `pwrtestlog.log`/`.xml`; no `process_manager.py` or `ui_monitor.py` |
 | **OsReboot** | `.claude/skills/scaffold-testtool/references/reboot.md` | Wraps `shutdown.exe /r /t`; non-standard `state_manager.py` for cross-reboot cycle tracking; no install/UI/log parser; integration tests require isolated machine (`ENABLE_REBOOT_INTEGRATION_TEST=1`) |
 | **CDI** (CrystalDiskInfo) | `.claude/skills/scaffold-testtool/references/cdi.md` | GUI tool (pywinauto win32 backend); `CDILogParser` lives in `controller.py` (not a separate `log_parser.py`); `compare_smart_value_no_increase()` for before/after SMART comparison; legacy `CDI.py` deprecated |
-| **OsConfig** | `.claude/skills/scaffold-testtool/references/osconfig.md` | Pure Python API (no exe); 34 OS settings via winreg + PowerShell; non-standard `os_compat.py` + `registry_helper.py` + `state_manager.py` + `actions/` sub-directory; fail-soft + idempotent + snapshot/revert; all 6 phases complete |
+| **OsConfig** | `.claude/skills/scaffold-testtool/references/osconfig.md` | Pure Python API (no exe); 37 OS settings via winreg + PowerShell + schtasks; 33 Action classes across 7 categories; non-standard `os_compat.py` + `registry_helper.py` + `state_manager.py` + `actions/` sub-directory; fail-soft + idempotent + snapshot/revert; Schedule 類別共 6 個 task actions（Defrag / DefenderScan / EdgeUpdate / OneDrive / MemoryDiagnostic / McAfee） |
 
 ---
 

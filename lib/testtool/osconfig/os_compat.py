@@ -224,6 +224,16 @@ CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "exclude_editions": [],
         "description": "Disable OneDrive scheduled tasks (prefix match, covers SID-suffixed names)",
     },
+    "memory_diagnostic_tasks": {
+        "min_build": 0,
+        "exclude_editions": [],
+        "description": "Disable MemoryDiagnostic\\RunFullMemoryDiagnostic scheduled task",
+    },
+    "mcafee_tasks": {
+        "min_build": 0,
+        "exclude_editions": [],
+        "description": "Disable McAfee scheduled tasks (no-op if McAfee is not installed)",
+    },
     # ── System ───────────────────────────────────────────────────
     "system_restore": {
         "min_build": 0,

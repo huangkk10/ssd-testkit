@@ -88,6 +88,11 @@ class OsConfigProfile:
         disable_onedrive_tasks:     Disable OneDrive scheduled tasks
                                     (Reporting / Standalone Update / Startup,
                                     all SID variants discovered dynamically).
+        disable_memory_diagnostic_tasks: Disable the MemoryDiagnostic\\RunFullMemoryDiagnostic
+                                    scheduled task.
+        disable_mcafee_tasks:       Disable McAfee scheduled tasks when McAfee is
+                                    pre-installed (McAfee Auto Maintenance Task Agent,
+                                    DAD.WPS.Execute.Updates).  No-op if McAfee is absent.
 
         # ── System ────────────────────────────────────────────────────────
         disable_system_restore:     Disable System Restore on C:\\.
@@ -145,6 +150,8 @@ class OsConfigProfile:
     disable_defender_scan_schedule: bool = False
     disable_edge_update_tasks: bool = False
     disable_onedrive_tasks: bool = False
+    disable_memory_diagnostic_tasks: bool = False
+    disable_mcafee_tasks: bool = False
 
     # ── System ────────────────────────────────────────────────────────────
     disable_system_restore: bool = False
@@ -205,6 +212,8 @@ class OsConfigProfile:
             disable_defender_scan_schedule=True,
             disable_edge_update_tasks=True,
             disable_onedrive_tasks=True,
+            disable_memory_diagnostic_tasks=True,
+            disable_mcafee_tasks=True,
             # System
             disable_system_restore=True,
             disable_fast_startup=True,
