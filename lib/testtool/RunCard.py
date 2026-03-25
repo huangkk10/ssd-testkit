@@ -940,7 +940,36 @@ class Runcard:
             # Execute load_dut_info and check result (non-fatal — DUT info is best-effort)
             result = self.load_dut_info()
             if not result:
-                logger.LogWarn('load_dut_info failed — DUT info will be missing from RunCard (continuing)')
+                # smicli may have succeeded but produced incomplete disk data (e.g. non-SMI
+                # hardware where drive_letters is absent).  Regenerate DUT_Info.ini via WMI
+                # and retry load_dut_info once.
+                logger.LogWarn(
+                    'load_dut_info failed — smicli output may be incomplete; '
+                    'retrying with WMI supplement'
+                )
+                try:
+                    from lib.testtool.wmi_dut_collector import WmiDutInfoCollector
+                    _wmi_out = os.path.join(self.path, "DUT_Info.ini")
+                    _collector = WmiDutInfoCollector(output_file=_wmi_out)
+                    if _collector.collect():
+                        result = self.load_dut_info()
+                        if result:
+                            logger.LogEvt('WMI supplement succeeded — DUT info loaded')
+                        else:
+                            logger.LogWarn(
+                                'load_dut_info still failed after WMI supplement — '
+                                'DUT info will be missing from RunCard (continuing)'
+                            )
+                    else:
+                        logger.LogWarn(
+                            f'WMI supplement collect() failed ({_collector.error_message}) — '
+                            'DUT info will be missing from RunCard (continuing)'
+                        )
+                except Exception as _exc:
+                    logger.LogWarn(
+                        f'WMI supplement attempt raised {_exc} — '
+                        'DUT info will be missing from RunCard (continuing)'
+                    )
             
         # Set both start and end time to current time simultaneously to avoid time inconsistency
         current_time = datetime.now()
