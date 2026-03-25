@@ -4,10 +4,15 @@ choco_package_id: smiwintools
 tool_type: portable
 
 versions:
-  - version: "2026.2.13"           # NuGet version (X.Y.Z)
-    tool_version: "v20260213B"      # Tool's own version string
-    source_dir: "bin/installers/SmiWinTools/v20260213B"
+  - version: "2026.2.13.1"          # NuGet version (X.Y.Z.R)
+    tool_version: "v20260213C"       # Tool's own version string
+    source_dir: "bin/installers/SmiWinTools/v20260213C"
     default: true
+
+  - version: "2026.2.13"            # NuGet version (X.Y.Z)
+    tool_version: "v20260213B"       # Tool's own version string
+    source_dir: "bin/installers/SmiWinTools/v20260213B"
+    default: false
 
 install_dir: "C:\\tools\\SmiWinTools"
 env_var: "SMIWINTOOLS_PATH"         # Points to install_dir (the directory, not a single exe)

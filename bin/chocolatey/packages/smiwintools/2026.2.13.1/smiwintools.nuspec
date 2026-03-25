@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>smiwintools</id>
+    <version>2026.2.13.1</version>
+    <title>SmiWinTools (v20260213C)</title>
+    <authors>SSD TestKit</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>
+      Offline portable installation of SMI Windows Tools v20260213C.
+      Copies the full SmiWinTools directory (BAT scripts, Python sources, drivers,
+      helper utilities) to C:\tools\SmiWinTools and sets the SMIWINTOOLS_PATH
+      environment variable.
+      Requires SSD_TESTKIT_ROOT environment variable to locate the source files.
+    </description>
+    <tags>smiwintools smicli portable offline ssd</tags>
+  </metadata>
+</package>

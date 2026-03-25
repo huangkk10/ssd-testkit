@@ -8,10 +8,15 @@ choco_package_id: smicli
 tool_type: portable             # portable: Copy-Item 複製，不執行安裝程式
 
 versions:
-  - version: "2025.11.14"       # NuGet 版本（X.Y.Z）
-    tool_version: "v20251114A"  # 工具自身版本（SmiCli2.exe --version）
-    source_dir: "bin/installers/SmiCli/v20251114A"   # 來源目錄（含版本子目錄）
+  - version: "2026.2.13"        # NuGet 版本（X.Y.Z）
+    tool_version: "v20260213C"  # 工具自身版本
+    source_dir: "bin/installers/SmiCli/v20260213C"   # 來源目錄（含版本子目錄）
     default: true
+
+  - version: "2025.11.14"
+    tool_version: "v20251114A"
+    source_dir: "bin/installers/SmiCli/v20251114A"
+    default: false
 
 install_dir: "C:\\tools\\SmiCli"   # chocolateyInstall.ps1 的複製目的地
 env_var: "SMICLI_PATH"             # 安裝後設定，指向 install_dir\SmiCli2.exe
