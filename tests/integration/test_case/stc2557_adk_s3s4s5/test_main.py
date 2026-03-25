@@ -118,7 +118,14 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info(f"[SETUP] log_path     : {cls.log_path}")
         # ── Pre-RunCard tools (smicli needed by generate_dut_info) ───────────────────
         _tools_yaml = Path(__file__).parent / "Config" / "tools.yaml"
+        logger.info(f"[SETUP] __file__      : {__file__}")
+        logger.info(f"[SETUP] tools.yaml    : {_tools_yaml}")
+        logger.info(f"[SETUP] tools.yaml exists: {_tools_yaml.exists()}")
+        logger.info(f"[SETUP] SMICLI_PATH (before install): {os.environ.get('SMICLI_PATH', 'NOT SET')}")
         ToolInstaller(_tools_yaml).install_pre_runcard()
+        logger.info(f"[SETUP] SMICLI_PATH (after install) : {os.environ.get('SMICLI_PATH', 'NOT SET')}")
+        smicli_exe = os.environ.get('SMICLI_PATH', '')
+        logger.info(f"[SETUP] SmiCli2.exe exists: {Path(smicli_exe).exists() if smicli_exe else False}")
         # ── RunCard ─────────────────────────────────────────────────────────
         cls._init_runcard(runcard_params)
 

@@ -1,12 +1,15 @@
 # tools.yaml — stc2557_adk_s3s4s5
 #
-# Windows ADK 每次都執行 reinstall，確保乾淨的 baseline。
-# smicli 用於 RunCard 的 DUT 資訊收集（generate_dut_info）。
-# version 未填寫 → 自動使用 package_meta.yaml 中 default: true 的版本
+# phase: pre_runcard — 在 setup_test_class 中、RunCard 初始化前安裝
+# phase: test        — 在 test_01_precondition 中安裝（預設）
 
 tools:
-  - id: windows-adk
-    reinstall: true
-
   - id: smicli
     reinstall: false
+    phase: pre_runcard    # RunCard 需要 SmiCli2.exe 來收集 DUT 資訊
+    env:
+      SMICLI_PATH: 'C:\tools\SmiCli\SmiCli2.exe'  # choco 裝完後的安裝路徑；注入當前 process 避免 registry env lag
+
+  - id: windows-adk
+    reinstall: true
+    phase: test           # 每次重裝確保乾淨 baseline
