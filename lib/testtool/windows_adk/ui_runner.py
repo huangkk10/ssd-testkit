@@ -1181,14 +1181,43 @@ class UIRunner:
             debug_enumerate=debug_enumerate,
         )
 
-    def take_screenshot(self, log_path: str, result_dir_name: str) -> None:
-        """Capture a full-screen screenshot and save it to log_path."""
+    def take_screenshot(self, log_path: str, result_dir_name: str, tab_title: str = None) -> None:
+        """Capture a full-screen screenshot and save it to log_path.
+
+        Args:
+            log_path: Directory to save the screenshot in.
+            result_dir_name: Used as the filename stem: Finished_<name>.png.
+            tab_title: Optional WAC tab title to click before screenshotting
+                       (e.g. the saved job name 'S3S4S5_Workflow_Test').  If
+                       supplied and the tab is found, it is activated so the
+                       View Results page is visible in the screenshot.
+        """
         logger.debug("take_screenshot: connecting to WAC for screenshot")
         self.connect()
         self._session.window.maximize()
         self._session.window.set_focus()
-        time.sleep(1)
+        time.sleep(0.5)
+
+        if tab_title:
+            try:
+                tabs = self._session.window.descendants(control_type="TabItem")
+                for tab in tabs:
+                    try:
+                        if tab.window_text() == tab_title:
+                            logger.debug("take_screenshot: clicking tab '%s'", tab_title)
+                            tab.click_input()
+                            time.sleep(1)
+                            self._session.window.set_focus()
+                            break
+                    except Exception:
+                        continue
+                else:
+                    logger.debug("take_screenshot: tab '%s' not found — screenshotting current view", tab_title)
+            except Exception as exc:
+                logger.debug("take_screenshot: tab search failed (non-fatal): %s", exc)
+
         self._session.window.set_focus()
+        time.sleep(0.5)
         screen = pyautogui.screenshot()
         dest = os.path.join(log_path, f"Finished_{result_dir_name}.png")
         screen.save(dest)

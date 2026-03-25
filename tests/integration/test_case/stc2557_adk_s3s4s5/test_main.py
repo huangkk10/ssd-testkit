@@ -382,8 +382,9 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info(f"[TEST_08] Results archived: {zip_base}.zip")
 
         # ── (3) Screenshot of the WAC result window ───────────────────────────
+        job_name = os.getenv("ADK_JOB_NAME", "S3S4S5_Workflow_Test")
         ctrl = ADKController(config={"log_path": self.log_path})
-        ctrl._ui.take_screenshot(str(adk_dir), result_dir.name)
+        ctrl._ui.take_screenshot(str(adk_dir), result_dir.name, tab_title=job_name)
 
         logger.info(
             "[TEST_08] Summary — errors=%d  warnings=%d  result_path=%s",
