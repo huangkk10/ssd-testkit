@@ -707,6 +707,88 @@ class UIRunner:
             iter_ctrl.get_value(),
         )
 
+    def add_bpfs_to_configure_job(self, num_iters: int = 1, auto_boot: bool = True) -> None:
+        """Add Boot Performance (Fast Startup) to an already-open Configure Job page.
+
+        Assumes WAC is currently showing the Configure Job page (e.g. after
+        open() has navigated to it).  Clicks the 'Add assessment from
+        library' control, selects 'Boot performance (Fast Startup)', configures
+        iterations and wake-timer setting, and leaves WAC on the Configure Job
+        page without clicking Run.
+
+        Args:
+            num_iters: Number of iterations (default 1).
+            auto_boot: When True, 'Use wake timers to automate boot' is left
+                       checked; when False the checkbox is unchecked.
+        """
+        logger.debug("add_bpfs_to_configure_job: num_iters=%d auto_boot=%s", num_iters, auto_boot)
+
+        self._activate_configure_job_tab()
+
+        logger.debug("add_bpfs_to_configure_job: clicking 'Add assessments' in left panel")
+        self._session.window.child_window(
+            title="Add assessments",
+            control_type="ListItem",
+        ).click_input()
+        time.sleep(1)
+
+        logger.debug("add_bpfs_to_configure_job: clicking '+' button to add 'Boot performance (Fast Startup)' to job")
+        self._session.window.child_window(
+            title="Boot performance (Fast Startup)",
+            control_type="ListItem",
+        ).child_window(control_type="Button").click_input()
+        time.sleep(1)
+
+        logger.debug("add_bpfs_to_configure_job: clicking BPFS card in Configure Job panel")
+        self._session.window.child_window(
+            auto_id=_AID_JOB_CARD["bpfs"],
+            control_type="ListItem",
+        ).click_input()
+        time.sleep(1)
+
+        self._log_wac_topology("add_bpfs: after card click")
+
+        use_recommended = self._session.window.child_window(
+            title="Use recommended settings",
+            control_type="CheckBox",
+        )
+        state_rec = use_recommended.get_toggle_state()
+        logger.debug("add_bpfs_to_configure_job: 'Use recommended settings' toggle_state=%d", state_rec)
+        if state_rec == 1:
+            logger.debug("add_bpfs_to_configure_job: unchecking 'Use recommended settings'")
+            use_recommended.click_input()
+        time.sleep(1)
+
+        logger.debug("add_bpfs_to_configure_job: setting Iterations=%d", num_iters)
+        iter_ctrl = self._session.window.child_window(
+            auto_id="AID_Parameter_Value_Iterations",
+            control_type="Edit",
+        )
+        iter_ctrl.click_input()
+        keyboard.send_keys("^a")
+        keyboard.send_keys(str(num_iters))
+        time.sleep(0.3)
+
+        wake_ctrl = self._session.window.child_window(
+            auto_id="AID_Parameter_Value_waketimersupport",
+            control_type="CheckBox",
+        )
+        state_wake = wake_ctrl.get_toggle_state()
+        logger.debug("add_bpfs_to_configure_job: wake_timer toggle_state=%d auto_boot=%s", state_wake, auto_boot)
+        if auto_boot and state_wake != 1:
+            logger.debug("add_bpfs_to_configure_job: enabling wake timer")
+            wake_ctrl.click_input()
+        elif not auto_boot and state_wake == 1:
+            logger.debug("add_bpfs_to_configure_job: disabling wake timer")
+            wake_ctrl.click_input()
+        time.sleep(0.3)
+
+        logger.debug(
+            "add_bpfs_to_configure_job: done — Iterations readback='%s'; "
+            "WAC remains on Configure Job page",
+            iter_ctrl.get_value(),
+        )
+
     def add_bpfb_to_configure_job(self, num_iters: int = 1) -> None:
         """Add Boot Performance (Full Boot) to an already-open Configure Job page.
 
