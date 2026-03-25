@@ -183,6 +183,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     # ------------------------------------------------------------------
 
     @pytest.mark.order(2)
+    # @pytest.mark.skip(reason="Test")
     @step(2, "OsConfig — apply OS settings")
     def test_02_apply_osconfig(self):
         """
