@@ -366,7 +366,9 @@ class Runcard:
             # Get filesystem information
             drive_letters = disk_section.get('drive_letters', '')
             if drive_letters:
-                filesystem_result = self._get_filesystem_type(drive_letters)
+                # drive_letters may be space-separated (e.g. "C D"); use only the first letter
+                first_letter = drive_letters.split()[0]
+                filesystem_result = self._get_filesystem_type(first_letter)
                 if filesystem_result[0]:  # Success
                     self.sample_filesystem = filesystem_result[1]
                 else:  # Failure
