@@ -39,6 +39,15 @@ class RebootManager:
         # directly, so any leftover state file is stale and should be removed.
         if not os.environ.get('PYTEST_REBOOT_RECOVERY') and Path(self.state_file).exists():
             Path(self.state_file).unlink()
+        # On BAT-triggered recovery, clear any stale lock file left by the
+        # previous session process being killed by an OS reboot mid-run.
+        # Without this, the BAT's duplicate-launch guard blocks subsequent
+        # reboot cycles (e.g. BPFS training run → calibration run).
+        if os.environ.get('PYTEST_REBOOT_RECOVERY'):
+            lock_file = Path(os.getcwd()) / ".pytest_running.lock"
+            if lock_file.exists():
+                lock_file.unlink()
+                print(f"[RebootManager] Cleared stale lock file: {lock_file}")
         self.state = self._load_state()
     
     def _load_state(self):
