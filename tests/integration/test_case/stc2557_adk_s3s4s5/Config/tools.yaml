@@ -12,3 +12,6 @@ tools:
 
   - id: windows-adk
     reinstall: false
+
+  - id: cdi
+    reinstall: false

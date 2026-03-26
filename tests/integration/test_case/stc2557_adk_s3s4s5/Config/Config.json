@@ -4,5 +4,15 @@
     },
     "DUT_info": {
         "DiskType": 0
+    },
+    "cdi": {
+        "ExePath": "C:\\tools\\CrystalDiskInfo\\DiskInfo64.exe",
+        "LogPath": "./testlog/CDILog",
+        "ScreenShotDriveLetter": "C:"
+    },
+    "smart_check": {
+        "drive_letter": "C:",
+        "no_increase_attributes": ["Unsafe Shutdowns"],
+        "must_be_zero_attributes": []
     }
 }
