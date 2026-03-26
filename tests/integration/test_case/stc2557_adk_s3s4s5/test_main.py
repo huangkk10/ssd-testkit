@@ -9,12 +9,13 @@ Survives the OS-level hibernate and cold reboot that WAC triggers for S4 and
 S5 using RebootManager to persist state and auto-restart pytest.
 
 Workflow:
-    Step 1  — Precondition: kill wac/axe, clean WAC dirs, clear logs.
+    Step 1  — Precondition: kill wac/axe, clear logs, remove stale reboot state.
     Step 2  — Install Tools: install Windows ADK and dependencies via Chocolatey.
     Step 3  — Apply OsConfig: configure Task Scheduler entries (SystemRestore,
               MemoryDiagnostic, McAfee).
-    Step 4  — Reboot: reboot the DUT to ensure a clean platform environment
-              before WAC assessment; startup BAT resumes pytest at step 5.
+    Step 4  — Clean Environment: remove stale WAC result/job/test dirs then
+              reboot the DUT for a clean platform environment; startup BAT
+              resumes pytest at step 5.
     Step 5  — Configure BPFS: open WAC Configure Job, add Boot Performance
               Fast Startup, leave on Configure Job page.
     Step 6  — Configure S5 (BPFB): connect WAC, add Boot Performance Full Boot,
@@ -169,12 +170,15 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     # ------------------------------------------------------------------
 
     @pytest.mark.order(1)
-    @step(1, "Precondition — clean WAC directories")
+    @step(1, "Precondition")
     def test_01_precondition(self):
-        """Kill wac/axe, clear logs, remove stale WAC dirs and reboot state."""
+        """Kill wac/axe, clear logs, and remove stale reboot state."""
         for proc in ("wac.exe", "axe.exe"):
             subprocess.run(["taskkill", "/f", "/im", proc], capture_output=True)
         time.sleep(1)
+
+        # Clean entire testlog directory so previous run artefacts don't accumulate.
+        self._cleanup_testlog_directory()
 
         clear_log_files()
         Path(self.log_path).mkdir(parents=True, exist_ok=True)
@@ -185,17 +189,6 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
             state_file.unlink()
             self.reboot_mgr.state = self.reboot_mgr._load_state()
             logger.info(f"[TEST_01] Removed stale reboot state: {state_file}")
-
-        ctrl = ADKController(config={"log_path": self.log_path})
-        ctrl.cleanup_dirs()
-        logger.info("[TEST_01] WAC directories cleaned")
-
-        # Remove stale windows_adk report directory from a previous run.
-        adk_dir = Path(self.log_path).parent / "windows_adk"
-        if adk_dir.exists():
-            shutil.rmtree(adk_dir)
-            logger.info(f"[TEST_01] Removed stale report dir: {adk_dir}")
-        adk_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
     # Step 2 — Install Tools
@@ -228,24 +221,29 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         logger.info("[TEST_03] OsConfig applied successfully")
 
     # ------------------------------------------------------------------
-    # Step 4 — Reboot (clean platform environment)
+    # Step 4 — Clean Environment
     # ------------------------------------------------------------------
 
     @pytest.mark.order(4)
-    @step(4, "Reboot — clean platform environment")
-    def test_04_reboot(self):
+    @step(4, "Clean Environment")
+    def test_04_clean_environment(self):
         """
-        Reboot the DUT to flush residual background processes and apply any
-        pending OS/driver changes introduced by steps 2–3.
+        Remove stale WAC result, job, and test directories, then reboot the DUT
+        to flush residual background processes and apply any pending OS/driver
+        changes introduced by steps 2–3.
 
         RebootManager persists state, writes the startup BAT, issues
         shutdown /r, and calls os._exit(0).  pytest resumes at
         test_05_configure_bpfs after the system comes back up (Run #2).
         """
+        ctrl = ADKController(config={"log_path": self.log_path})
+        ctrl.cleanup_dirs()
+        logger.info("[TEST_04] WAC directories cleaned")
+
         logger.info("[TEST_04] Issuing reboot for clean platform environment...")
         self.reboot_mgr.setup_reboot(
             delay=10,
-            reason="test_04_reboot: clean platform environment before WAC assessment",
+            reason="test_04_clean_environment: clean platform environment before WAC assessment",
             test_file=__file__,
         )
 
