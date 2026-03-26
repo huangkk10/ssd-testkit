@@ -34,3 +34,8 @@ enable_auto_admin_logon: true
 # Test Signing：關閉 bcdedit testsigning，確保 kernel 驅動程式簽章驗證正常
 # Command: bcdedit /set testsigning off
 disable_test_signing: true
+
+# UAC：停用使用者帳戶控制（EnableLUA=0），避免提權提示干擾自動化測試
+# Registry: HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Policies\System
+#           EnableLUA = 0
+disable_uac: true
