@@ -15,29 +15,33 @@ Workflow:
               MemoryDiagnostic, McAfee).
     Step 4  — Clean Environment: remove stale WAC result/job/test dirs then
               reboot the DUT for a clean platform environment; startup BAT
-              resumes pytest at step 5.
-    Step 5  — Configure BPFS: open WAC Configure Job, add Boot Performance
+              resumes pytest at step 6.
+    Step 5  — CDI Before: capture SMART baseline (Before_ prefix).
+    Step 6  — Configure BPFS: open WAC Configure Job, add Boot Performance
               Fast Startup, leave on Configure Job page.
-    Step 6  — Configure S5 (BPFB): connect WAC, add Boot Performance Full Boot,
+    Step 7  — Configure S5 (BPFB): connect WAC, add Boot Performance Full Boot,
               leave on Configure Job page.
-    Step 7  — Configure S3: connect WAC, add Standby Performance,
+    Step 8  — Configure S3: connect WAC, add Standby Performance,
               configure params, leave on Configure Job page.
-    Step 8  — Configure S4: connect WAC, add Hibernate Performance, configure
+    Step 9  — Configure S4: connect WAC, add Hibernate Performance, configure
               params, leave on Configure Job page.
-    Step 9  — Start Job: connect WAC, submit Configure Job, save custom job,
+    Step 10 — Start Job: connect WAC, submit Configure Job, save custom job,
               connect Assessment Launcher, persist reboot state,
               click Start (single, unique start point).
               WAC runs sequentially:
                 BPFS — Fast Startup hibernate/resume  — pytest process survives.
                 S3   — Standby sleep/wake             — pytest process survives.
                 S4   — Hibernate          — OS session terminates; startup BAT
-                                            resumes pytest at step 10 (Run #3).
+                                            resumes pytest at step 11 (Run #3).
                 S5   — Cold reboot        — OS session terminates again; startup
-                                            BAT resumes pytest at step 10 (Run #4).
-    Step 10 — Wait Results: connect WAC, wait for View Results page (timeout
+                                            BAT resumes pytest at step 11 (Run #4).
+    Step 11 — Wait Results: connect WAC, wait for View Results page (timeout
               covers the full four-assessment run including S5 BPFB).
-    Step 11 — Verify: assert no errors, assert result directory and AxeLog.txt
+    Step 12 — Verify: assert no errors, assert result directory and AxeLog.txt
               exist.
+    Step 13 — CDI After: capture post-assessment SMART snapshot (After_ prefix).
+    Step 14 — SMART Compare: verify no unsafe shutdown increase and error
+              counters are zero.
 
 Requirements:
     - Windows ADK (wac.exe) must be installed via Chocolatey.
@@ -81,6 +85,7 @@ from lib.testtool.windows_adk.version_adapter import VersionAdapter
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.state_manager import OsConfigStateManager
 from lib.testtool.osconfig.profile_loader import load_profile
+from lib.testtool.cdi import CDIController
 
 logger = get_module_logger(__name__)
 
@@ -94,16 +99,16 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     Runs Standby Performance (S3), Hibernate Performance (S4), and Boot
     Performance Full Boot (S5) as a single WAC Configure Job.  The three
-    assessments are configured across steps 5–8 and started in step 9 with
+    assessments are configured across steps 6–9 and started in step 10 with
     a single click_start.  RebootManager handles state persistence across the
     S4 hibernate and S5 cold reboot.
     """
 
-    # Class-level state: populated by test_10, consumed by test_11
+    # Class-level state: populated by test_11, consumed by test_12
     _wac_result: "WACRunResult | None" = None
 
-    # Comment: steps 5-8 configure BPFS + S3/S4/S5 in one Configure Job;
-    #          step 9 starts all four assessments with a single click_start.
+    # Comment: steps 6-9 configure BPFS + S3/S4/S5 in one Configure Job;
+    #          step 10 starts all four assessments with a single click_start.
     _osconfig_controller: "OsConfigController | None" = None
 
     # ------------------------------------------------------------------
@@ -234,7 +239,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
         RebootManager persists state, writes the startup BAT, issues
         shutdown /r, and calls os._exit(0).  pytest resumes at
-        test_05_configure_bpfs after the system comes back up (Run #2).
+        test_06_configure_bpfs after the system comes back up (Run #2).
         """
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl.cleanup_dirs()
@@ -248,64 +253,85 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         )
 
     # ------------------------------------------------------------------
-    # Step 5 — Configure BPFS (Boot Performance Fast Startup)
+    # Step 5 — CDI Before
     # ------------------------------------------------------------------
 
     @pytest.mark.order(5)
-    @step(5, "Configure BPFS — Boot Performance Fast Startup")
-    def test_05_configure_bpfs(self):
+    @step(5, "CDI Before — SMART baseline")
+    def test_05_cdi_before(self):
+        """Run CrystalDiskInfo to capture SMART baseline (Before_ prefix)."""
+        cfg = self.config['cdi']
+        ctrl = CDIController(
+            executable_path=cfg['ExePath'],
+            log_path=cfg['LogPath'],
+            log_prefix='Before_',
+            screenshot_drive_letter=cfg.get('ScreenShotDriveLetter', 'C:'),
+        )
+        ctrl.start()
+        ctrl.join(timeout=180)
+        if not ctrl.status:
+            pytest.fail(f"CDI Before failed (status={ctrl.status})")
+        logger.info("[TEST_05] CDI Before complete")
+
+    # ------------------------------------------------------------------
+    # Step 6 — Configure BPFS (Boot Performance Fast Startup)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.order(6)
+    @step(6, "Configure BPFS — Boot Performance Fast Startup")
+    def test_06_configure_bpfs(self):
         """Open WAC Configure Job page and add Boot Performance Fast Startup (no Run)."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.open(WAC_EXE)
         ctrl._ui.add_bpfs_to_configure_job(num_iters=1)
-        logger.info("[TEST_05] BPFS added — WAC on Configure Job page")
+        logger.info("[TEST_06] BPFS added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
-    # Step 6 — Configure S5 (BPFB)
+    # Step 7 — Configure S5 (BPFB)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(6)
-    @step(6, "Configure S5 — BPFB")
-    def test_06_configure_s5(self):
+    @pytest.mark.order(7)
+    @step(7, "Configure S5 — BPFB")
+    def test_07_configure_s5(self):
         """Connect WAC Configure Job page and add BPFB (no submit yet)."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
         ctrl._ui.add_bpfb_to_configure_job(num_iters=1)
-        logger.info("[TEST_06] BPFB added — WAC on Configure Job page")
+        logger.info("[TEST_07] BPFB added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
-    # Step 7 — Configure S3 (Standby Performance)
+    # Step 8 — Configure S3 (Standby Performance)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(7)
-    @step(7, "Configure S3 — Standby Performance")
-    def test_07_configure_s3(self):
+    @pytest.mark.order(8)
+    @step(8, "Configure S3 — Standby Performance")
+    def test_08_configure_s3(self):
         """Connect WAC Configure Job page and add Standby Performance (no Run)."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
         ctrl._ui.add_standby_to_configure_job(num_iters=1)
-        logger.info("[TEST_07] Standby Performance added — WAC on Configure Job page")
+        logger.info("[TEST_08] Standby Performance added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
-    # Step 8 — Configure S4 (Hibernate Performance)
+    # Step 9 — Configure S4 (Hibernate Performance)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(8)
-    @step(8, "Configure S4 — Hibernate Performance")
-    def test_08_configure_s4(self):
+    @pytest.mark.order(9)
+    @step(9, "Configure S4 — Hibernate Performance")
+    def test_09_configure_s4(self):
         """Connect to WAC Configure Job page and add Hibernate Performance."""
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
         ctrl._ui.add_hibernate_to_configure_job(num_iters=1)
-        logger.info("[TEST_08] Hibernate Performance added — WAC on Configure Job page")
+        logger.info("[TEST_09] Hibernate Performance added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
-    # Step 9 — Persist reboot state and click Start (single start point)
+    # Step 10 — Persist reboot state and click Start (single start point)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(9)
-    @step(9, "Start Job — BPFS → S3 → S4 → S5")
-    def test_09_start_job(self):
+    @pytest.mark.order(10)
+    @step(10, "Start Job — BPFS → S3 → S4 → S5")
+    def test_10_start_job(self):
         """
         Submit the four-assessment Configure Job, save it as a custom job,
         persist reboot state, then click Start (the single, unique start point).
@@ -314,13 +340,13 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
           BPFS — Fast Startup hibernate/resume: pytest process survives in RAM.
           S3   — Standby sleep/wake: pytest process survives in RAM.
           S4   — Hibernate: OS session terminates; startup BAT resumes
-                 pytest at test_10 after the hibernate resume (Run #3).
+                 pytest at test_11 after the hibernate resume (Run #3).
           S5   — Cold reboot: OS session terminates (WAC Launcher triggers);
-                 startup BAT resumes pytest at test_10 after boot (Run #4).
+                 startup BAT resumes pytest at test_11 after boot (Run #4).
         """
         job_name = os.getenv("ADK_JOB_NAME", "S3S4S5_Workflow_Test")
         ctrl = ADKController(config={"log_path": self.log_path})
-        # Connect to Configure Job page (left open by test_08), submit, save, open launcher.
+        # Connect to Configure Job page (left open by test_09), submit, save, open launcher.
         ctrl._ui.connect()
         ctrl._ui.submit_configure_job()
         ctrl._ui.save_custom_job(job_name)
@@ -329,11 +355,11 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         # Persist state and write the startup BAT BEFORE clicking Start.
         # The earliest OS-level session termination is S4 hibernate.
         self.reboot_mgr.prepare_for_external_reboot(
-            step_name="test_09_start_job",
+            step_name="test_10_start_job",
             test_file=__file__,
         )
 
-        logger.info("[TEST_09] Clicking Start — WAC will run BPFS → S3 → S4 → S5 sequentially")
+        logger.info("[TEST_10] Clicking Start — WAC will run BPFS → S3 → S4 → S5 sequentially")
         ctrl._ui.click_start()
 
         # Wall-clock guard:
@@ -345,18 +371,18 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         _wall = time.time() - _t_click
         if _wall > 300:
             logger.info(
-                "[TEST_09] Reboot detected (wall time=%.0fs) — "
-                "exiting so startup BAT handles test_10+", _wall
+                "[TEST_10] Reboot detected (wall time=%.0fs) — "
+                "exiting so startup BAT handles test_11+", _wall
             )
             os._exit(0)
 
     # ------------------------------------------------------------------
-    # Step 10 — Wait for View Results (resumes after S5 cold reboot)
+    # Step 11 — Wait for View Results (resumes after S5 cold reboot)
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(10)
-    @step(10, "Wait for WAC View Results")
-    def test_10_wait_results(self):
+    @pytest.mark.order(11)
+    @step(11, "Wait for WAC View Results")
+    def test_11_wait_results(self):
         """
         Connect to WAC and wait for the entire four-assessment job to
         complete and show the View Results page.
@@ -377,14 +403,14 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         )
 
         logger.info(
-            "[TEST_10] errors=%d  warnings=%d  analysis_complete=%s",
+            "[TEST_11] errors=%d  warnings=%d  analysis_complete=%s",
             wac_result.errors, wac_result.warnings, wac_result.analysis_complete,
         )
-        logger.info("[TEST_10] machine     : %s", wac_result.machine_name)
-        logger.info("[TEST_10] run_time    : %s", wac_result.run_time)
-        logger.info("[TEST_10] result_path : %s", wac_result.result_path)
+        logger.info("[TEST_11] machine     : %s", wac_result.machine_name)
+        logger.info("[TEST_11] run_time    : %s", wac_result.run_time)
+        logger.info("[TEST_11] result_path : %s", wac_result.result_path)
 
-        # Store for step 11 verification.
+        # Store for step 12 verification.
         TestSTC2557ADKS3S4S5._wac_result = wac_result
 
         assert wac_result.errors == 0, (
@@ -393,18 +419,18 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         )
 
     # ------------------------------------------------------------------
-    # Step 11 — Verify result artefacts
+    # Step 12 — Verify result artefacts
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(11)
-    @step(11, "Verify result artefacts")
-    def test_11_verify(self):
+    @pytest.mark.order(12)
+    @step(12, "Verify result artefacts")
+    def test_12_verify(self):
         """Assert the result directory and AxeLog.txt exist."""
         wac_result = getattr(TestSTC2557ADKS3S4S5, "_wac_result", None)
 
         assert wac_result is not None, (
-            "test_10_wait_results did not store a WACRunResult — "
-            "ensure test_10 ran and passed before test_11."
+            "test_11_wait_results did not store a WACRunResult — "
+            "ensure test_11 ran and passed before test_12."
         )
         assert wac_result.result_path, (
             f"WAC did not report a Results path. "
@@ -420,17 +446,17 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         # WAC multi-assessment job: outermost AxeLog.txt covers the full job.
         axelog = result_dir / "AxeLog.txt"
         assert axelog.exists(), f"AxeLog.txt not found in {result_dir}"
-        logger.info(f"[TEST_11] AxeLog.txt verified: {axelog}")
+        logger.info(f"[TEST_12] AxeLog.txt verified: {axelog}")
 
         # ── (1) Create windows_adk collection directory under testlog ─────────
         adk_dir = Path(self.log_path).parent / "windows_adk"
         adk_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"[TEST_11] Collection dir: {adk_dir}")
+        logger.info(f"[TEST_12] Collection dir: {adk_dir}")
 
         # ── (2) Zip the WAC result directory into windows_adk ─────────────────
         zip_base = adk_dir / result_dir.name
         shutil.make_archive(str(zip_base), "zip", str(result_dir.parent), result_dir.name)
-        logger.info(f"[TEST_11] Results archived: {zip_base}.zip")
+        logger.info(f"[TEST_12] Results archived: {zip_base}.zip")
 
         # ── (3) Screenshot of the WAC result window ───────────────────────────
         job_name = os.getenv("ADK_JOB_NAME", "S3S4S5_Workflow_Test")
@@ -438,6 +464,75 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         ctrl._ui.take_screenshot(str(adk_dir), result_dir.name, tab_title=job_name)
 
         logger.info(
-            "[TEST_11] Summary — errors=%d  warnings=%d  result_path=%s",
+            "[TEST_12] Summary — errors=%d  warnings=%d  result_path=%s",
             wac_result.errors, wac_result.warnings, wac_result.result_path,
         )
+
+    # ------------------------------------------------------------------
+    # Step 13 — CDI After
+    # ------------------------------------------------------------------
+
+    @pytest.mark.order(13)
+    @step(13, "CDI After — SMART snapshot")
+    def test_13_cdi_after(self):
+        """Run CrystalDiskInfo to capture post-assessment SMART data (After_ prefix)."""
+        cfg = self.config['cdi']
+        ctrl = CDIController(
+            executable_path=cfg['ExePath'],
+            log_path=cfg['LogPath'],
+            log_prefix='After_',
+            screenshot_drive_letter=cfg.get('ScreenShotDriveLetter', 'C:'),
+        )
+        ctrl.start()
+        ctrl.join(timeout=180)
+        if not ctrl.status:
+            pytest.fail(f"CDI After failed (status={ctrl.status})")
+        logger.info("[TEST_13] CDI After complete")
+
+    # ------------------------------------------------------------------
+    # Step 14 — SMART Compare
+    # ------------------------------------------------------------------
+
+    @pytest.mark.order(14)
+    @step(14, "SMART Compare — verify drive health")
+    def test_14_smart_compare(self):
+        """
+        Compare Before_ and After_ SMART snapshots:
+        - Unsafe Shutdowns must NOT increase (indicates clean shutdown path)
+        - Configured must-be-zero attributes must all be 0
+        """
+        cdi_cfg = self.config['cdi']
+        smart_cfg = self.config.get('smart_check', {})
+        drive = smart_cfg.get('drive_letter', cdi_cfg.get('ScreenShotDriveLetter', 'C:'))
+
+        ctrl = CDIController(
+            executable_path=cdi_cfg['ExePath'],
+            log_path=cdi_cfg['LogPath'],
+        )
+
+        # ── Check: Unsafe Shutdowns must not increase ──────────────────────────
+        no_increase_attrs = smart_cfg.get('no_increase_attributes', ['Unsafe Shutdowns'])
+        ok, msg = ctrl.compare_smart_value_no_increase(
+            drive_letter=drive,
+            before_prefix='Before_',
+            after_prefix='After_',
+            keys=no_increase_attrs,
+        )
+        if not ok:
+            pytest.fail(f"SMART no-increase check failed: {msg}")
+        logger.info(f"[TEST_14] No-increase check passed: {no_increase_attrs}")
+
+        # ── Check: error counters must be 0 ───────────────────────────────────
+        zero_attrs = smart_cfg.get('must_be_zero_attributes', [])
+        for attr in zero_attrs:
+            ok, msg = ctrl.compare_smart_value(
+                drive_letter=drive,
+                log_prefix='After_',
+                keys=[attr],
+                expected_value=0,
+            )
+            if not ok:
+                pytest.fail(f"SMART zero-check failed: {msg}")
+            logger.info(f"[TEST_14] Zero-check passed: {attr}")
+
+        logger.info("[TEST_14] All SMART checks passed")
