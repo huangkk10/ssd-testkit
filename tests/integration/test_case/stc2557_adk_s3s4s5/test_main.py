@@ -231,7 +231,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     @pytest.mark.order(4)
     @step(4, "Clean Environment")
-    def test_04_clean_environment(self):
+    def test_04_clean_environment(self, request):
         """
         Remove stale WAC result, job, and test directories, then reboot the DUT
         to flush residual background processes and apply any pending OS/driver
@@ -239,11 +239,16 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
         RebootManager persists state, writes the startup BAT, issues
         shutdown /r, and calls os._exit(0).  pytest resumes at
-        test_06_configure_bpfs after the system comes back up (Run #2).
+        test_05_cdi_before after the system comes back up (Run #2).
         """
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl.cleanup_dirs()
         logger.info("[TEST_04] WAC directories cleaned")
+
+        # Pre-mark this step as completed BEFORE setup_reboot() calls os._exit(0).
+        # Without this, test_04 would not be in completed_tests after reboot
+        # and would execute again → infinite reboot loop.
+        self.reboot_mgr.pre_mark_completed(request.node.name)
 
         logger.info("[TEST_04] Issuing reboot for clean platform environment...")
         self.reboot_mgr.setup_reboot(
