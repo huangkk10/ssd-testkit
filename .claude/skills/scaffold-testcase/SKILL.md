@@ -261,6 +261,62 @@ def setup_test_class(self, request, testcase_config, runcard_params):
 > `BaseTestCase.setup_teardown_class` already creates a default `RebootManager()`
 > when none is set, but for simple tests you can ignore it entirely.
 
+---
+
+## ⚠️ Critical Rule: `pre_mark_completed` Before Every `setup_reboot()`
+
+**`setup_reboot()` calls `os._exit(0)` — the current pytest process is terminated immediately.**
+
+`BaseTestCase.setup_teardown_function` auto-marks a step as completed in its `yield` teardown,
+but that teardown **never executes** when `os._exit(0)` forcibly kills the process.
+
+**Result without `pre_mark_completed`:** the step does NOT appear in `completed_tests` in the
+reboot state file → after reboot, RebootManager re-runs the same step → `setup_reboot()` again
+→ **infinite reboot loop**.
+
+### Required Pattern
+
+Every test step that calls `setup_reboot()` **MUST** accept `request` as a parameter and call
+`pre_mark_completed` **immediately before** `setup_reboot()`:
+
+```python
+@pytest.mark.order(4)
+@step(4, "Clean Environment")
+def test_04_clean_environment(self, request):   # ← add `request` parameter
+    """..."""
+    # do work...
+    ctrl.cleanup_dirs()
+
+    # ✅ REQUIRED: pre-mark BEFORE setup_reboot() calls os._exit(0)
+    self.reboot_mgr.pre_mark_completed(request.node.name)
+
+    self.reboot_mgr.setup_reboot(
+        delay=10,
+        reason="...",
+        test_file=__file__,
+    )
+    # os._exit(0) is called inside setup_reboot — code below never executes
+```
+
+### Checklist
+
+- [ ] Any step that calls `setup_reboot()` accepts `request` as a parameter
+- [ ] `pre_mark_completed(request.node.name)` is called immediately before `setup_reboot()`
+- [ ] The docstring notes: `# os._exit(0) is called inside setup_reboot — code below never executes`
+
+### Real-world examples in this codebase
+
+| Test | Step | Pattern |
+|------|------|---------|
+| `stc2557_adk_s3s4s5` | `test_04_clean_environment` | `pre_mark_completed` + `setup_reboot` |
+| `stc2562_modern_standby` | `test_05_clear_sleep_history` | `pre_mark_completed` + `setup_reboot` |
+| `stc2562_modern_standby` | `test_09_clear_sleepstudy_and_reboot` | `pre_mark_completed` + `setup_reboot` |
+
+> **Note:** `prepare_for_external_reboot()` does NOT call `os._exit(0)` — it only persists state
+> and writes the BAT. Steps using only `prepare_for_external_reboot()` (followed by an external
+> tool triggering the reboot) do NOT need `pre_mark_completed`; the auto-mark in
+> `setup_teardown_function` will run normally after `prepare_for_external_reboot()` returns.
+
 #### Fixture Parameters
 
 | Parameter | Defined in | What it provides |
