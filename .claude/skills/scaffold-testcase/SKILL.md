@@ -253,9 +253,11 @@ def setup_test_class(self, request, testcase_config, runcard_params):
     # ── 7. RebootManager cleanup ──────────────────────────────────────
     cls._teardown_reboot_manager()   # removes state file + Startup BAT; swallows exceptions
 
-    logger.info(f"{cls.__name__} session complete")
+    write_session_footer(cls.__name__)   # symmetric banner to SESSION START
     os.chdir(cls.original_cwd)
 ```
+
+`write_session_footer` is imported from `lib.logger` and writes a prominent `SESSION COMPLETE` banner directly to `app.log` and `error.log`, matching the `SESSION START` style.
 
 > **Tests without reboots**: omit lines 3 / `_teardown_reboot_manager()`.
 > `BaseTestCase.setup_teardown_class` already creates a default `RebootManager()`
@@ -784,7 +786,7 @@ python -m pytest tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cy
 - **Shared conftest/fixtures**: `tests/integration/conftest.py` — `TestCaseConfiguration`, `runcard_params`
 - **Base test class**: `framework/base_test.py` — `BaseTestCase`
 - **Step decorator**: `framework/decorators.py` — `@step(N, "description")`
-- **Logger**: `lib/logger.py` — `get_module_logger(__name__)`, `logConfig()`
+- **Logger**: `lib/logger.py` — `get_module_logger(__name__)`, `logConfig()`, `write_session_footer()`
 - **Full STC-1685 example**: `.claude/skills/scaffold-testcase/references/stc1685_example.md`
 - **File templates**: `.claude/skills/scaffold-testcase/references/testcase_templates.md`
 - **Structure rules**: `.claude/skills/scaffold-testcase/references/testcase_structure.md`
