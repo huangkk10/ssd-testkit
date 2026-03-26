@@ -26,7 +26,7 @@ from .firewall import FirewallAction
 from .uac import UacAction
 
 # ── Phase 4: Boot Actions ─────────────────────────────────────────────────
-from .test_signing import TestSigningAction
+from .test_signing import TestSigningAction, DisableTestSigningAction
 from .recovery import RecoveryAction
 from .auto_reboot import AutoRebootAction
 from .auto_admin_logon import AutoAdminLogonAction
@@ -72,6 +72,7 @@ __all__ = [
     "UacAction",
     # Phase 4 – Boot
     "TestSigningAction",
+    "DisableTestSigningAction",
     "RecoveryAction",
     "AutoRebootAction",
     "AutoAdminLogonAction",

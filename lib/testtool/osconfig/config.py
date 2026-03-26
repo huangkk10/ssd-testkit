@@ -60,6 +60,7 @@ class OsConfigProfile:
 
         # ── Boot ──────────────────────────────────────────────────────────
         enable_test_signing:        Enable bcdedit test-signing mode.
+        disable_test_signing:       Disable bcdedit test-signing mode (ensure it is off).
         disable_recovery:           Disable WinRE automatic recovery.
         disable_auto_reboot:        Disable automatic reboot after BSOD.
         enable_auto_admin_logon:    Enable auto-logon (AutoAdminLogon=1).
@@ -128,6 +129,7 @@ class OsConfigProfile:
 
     # ── Boot ──────────────────────────────────────────────────────────────
     enable_test_signing: bool = False
+    disable_test_signing: bool = False
     disable_recovery: bool = False
     disable_auto_reboot: bool = False
     enable_auto_admin_logon: bool = False

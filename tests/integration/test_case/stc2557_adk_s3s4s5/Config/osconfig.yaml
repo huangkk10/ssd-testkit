@@ -16,3 +16,21 @@ disable_memory_diagnostic_tasks: true
 # Tasks: \McAfee\McAfee Auto Maintenance Task Agent
 #        \McAfee\DAD.WPS.Execute.Updates
 disable_mcafee_tasks: true
+
+# Fast Startup：停用 HiberbootEnabled，確保每次 shutdown/reboot 為完整 power cycle
+# Registry: HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power
+#           HiberbootEnabled = 0
+disable_fast_startup: true
+
+# 自動登入：開機後自動以指定帳號登入（僅限 lab 機器；密碼儲存為明文）
+# Registry: HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
+#           AutoAdminLogon = "1"
+enable_auto_admin_logon: true
+# auto_login_username 不設定 → 沿用 registry 裡既有的 DefaultUserName
+# auto_login_username: "Administrator"  # 若需覆蓋帳號名稱請取消此行註解
+# auto_login_password: ""              # 如需設定密碼請取消註解並填入
+# auto_login_domain: "."               # 本機帳號留空或用 "."
+
+# Test Signing：關閉 bcdedit testsigning，確保 kernel 驅動程式簽章驗證正常
+# Command: bcdedit /set testsigning off
+disable_test_signing: true

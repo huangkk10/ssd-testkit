@@ -214,7 +214,8 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @pytest.mark.order(3)
     @step(3, "Apply OS configuration")
     def test_03_apply_osconfig(self):
-        """Apply OS configuration (Task Scheduler prep: SystemRestore, MemoryDiagnostic, McAfee)."""
+        """Apply OS configuration (Task Scheduler prep: SystemRestore, MemoryDiagnostic, McAfee;
+        disable Fast Startup; enable auto admin logon; disable test signing)."""
         _osconfig_yaml = Path(__file__).parent / "Config" / "osconfig.yaml"
         profile = load_profile(_osconfig_yaml)
         controller = OsConfigController(

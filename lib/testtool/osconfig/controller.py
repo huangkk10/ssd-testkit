@@ -58,8 +58,7 @@ from .actions import (
     FirewallAction,
     UacAction,
     # ── Phase 4: Boot ────────────────────────────────────────────────────
-    TestSigningAction,
-    RecoveryAction,
+    TestSigningAction,    DisableTestSigningAction,    RecoveryAction,
     AutoRebootAction,
     AutoAdminLogonAction,
     MemoryDumpAction,
@@ -131,6 +130,8 @@ def _build_action_list(
     # ── Boot ──────────────────────────────────────────────────────────────
     if profile.enable_test_signing:
         actions.append(TestSigningAction(snapshot_store=s))
+    if profile.disable_test_signing:
+        actions.append(DisableTestSigningAction(snapshot_store=s))
     if profile.disable_recovery:
         actions.append(RecoveryAction(snapshot_store=s))
     if profile.disable_auto_reboot:

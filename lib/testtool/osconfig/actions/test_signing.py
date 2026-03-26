@@ -106,3 +106,86 @@ class TestSigningAction(AbstractOsAction):
             logger.debug(f"[{self.name}] Test Signing disabled")
 
         self._log_revert_done()
+
+
+class DisableTestSigningAction(AbstractOsAction):
+    """
+    Disable Windows Test Signing Mode (``bcdedit /set testsigning off``).
+
+    Ensures unsigned kernel-mode drivers cannot load — reverting the machine
+    to the default secure-boot signing policy.  Requires a reboot to take
+    effect.
+
+    ``revert()`` restores the original state (re-enables testsigning if it
+    was on before ``apply()`` was called).
+
+    Args:
+        snapshot_store: Optional shared snapshot dict.
+    """
+
+    name = "DisableTestSigningAction"
+
+    def __init__(self, snapshot_store: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(snapshot_store)
+
+    @classmethod
+    def supported_on(cls, build_info: WindowsBuildInfo) -> bool:
+        return is_supported(_CAP_KEY, build_info)
+
+    def _query_testsigning(self) -> bool:
+        """Return ``True`` when testsigning is currently ``Yes``."""
+        rc, stdout, _ = run_command_with_output("bcdedit /enum {current}")
+        if rc != 0:
+            logger.warning(
+                f"[{self.name}] 'bcdedit /enum {{current}}' returned rc={rc}"
+            )
+            return False
+        for line in stdout.splitlines():
+            stripped = line.strip().lower()
+            if stripped.startswith("testsigning"):
+                return "yes" in stripped
+        return False  # not present → off (default)
+
+    def check(self) -> bool:
+        """Return ``True`` when testsigning is already off (target state)."""
+        return not self._query_testsigning()
+
+    def apply(self) -> None:
+        """Disable Test Signing Mode (``bcdedit /set testsigning off``)."""
+        self._log_apply_start()
+
+        if self.check():
+            self._log_apply_skip()
+            return
+
+        # Snapshot whether it was on before we disable it
+        was_on = self._query_testsigning()
+        self._save_snapshot("test_signing_was_on", was_on)
+        logger.debug(f"[{self.name}] snapshot: testsigning was_on={was_on}")
+
+        rc = run_command("bcdedit /set testsigning off")
+        if rc != 0:
+            raise OsConfigActionError(
+                f"{self.name}: 'bcdedit /set testsigning off' returned rc={rc}"
+            )
+
+        logger.debug(f"[{self.name}] Test Signing disabled (reboot required)")
+        self._log_apply_done()
+
+    def revert(self) -> None:
+        """Restore testsigning to its pre-apply state."""
+        self._log_revert_start()
+
+        was_on = self._load_snapshot("test_signing_was_on", default=False)
+        if was_on:
+            rc = run_command("bcdedit /set testsigning on")
+            if rc != 0:
+                logger.warning(
+                    f"[{self.name}] 'bcdedit /set testsigning on' returned rc={rc}"
+                )
+            else:
+                logger.debug(f"[{self.name}] testsigning restored to on")
+        else:
+            logger.debug(f"[{self.name}] testsigning was already off before apply — no revert needed")
+
+        self._log_revert_done()
