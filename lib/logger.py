@@ -86,6 +86,30 @@ def _write_session_header(log_file: str) -> None:
         pass
 
 
+def write_session_footer(test_name: str) -> None:
+    """Write a session complete banner directly to the log files.
+
+    Symmetric counterpart to _write_session_header.  Call this at the end of
+    the class-level fixture teardown instead of a plain logger.info():
+
+        write_session_footer(cls.__name__)
+    """
+    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    footer = (
+        '\n' +
+        '=' * 80 + '\n' +
+        f'  SESSION COMPLETE: {test_name}  [{now}]\n' +
+        '=' * 80 + '\n'
+    )
+    log_dir = _get_log_dir()
+    for fname in ('app.log', 'error.log'):
+        try:
+            with open(str(log_dir / fname), 'a', encoding='utf-8') as f:
+                f.write(footer)
+        except Exception:
+            pass
+
+
 class Logger:
     """
     Object-oriented logger wrapper with centralized configuration.

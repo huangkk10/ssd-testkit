@@ -66,7 +66,7 @@ from lib.testtool.sleepstudy.sleep_report_parser import SleepReportParser, valid
 from lib.testtool.sleepstudy.history_cleaner import SleepHistoryCleaner
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.config import OsConfigProfile
-from lib.logger import get_module_logger, clear_log_files
+from lib.logger import get_module_logger, clear_log_files, write_session_footer
 from framework.reboot_manager import RebootManager
 
 logger = get_module_logger(__name__)
@@ -206,7 +206,7 @@ class TestSTC2562ModernStandby(BaseTestCase):
 
         cls._teardown_reboot_manager()
 
-        logger.info(f"{cls.__name__} session complete")
+        write_session_footer(cls.__name__)
         os.chdir(cls.original_cwd)
 
     # ------------------------------------------------------------------

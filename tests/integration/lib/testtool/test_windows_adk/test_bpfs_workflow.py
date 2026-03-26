@@ -46,7 +46,7 @@ import pytest
 from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.reboot_manager import RebootManager
-from lib.logger import get_module_logger, clear_log_files
+from lib.logger import get_module_logger, clear_log_files, write_session_footer
 from lib.testtool.windows_adk import ADKController
 from lib.testtool.windows_adk.config import WAC_EXE, get_build_number
 from lib.testtool.windows_adk.result_reader import WACRunResult
@@ -97,7 +97,7 @@ class TestBPFSWorkflow(BaseTestCase):
         yield
 
         cls._teardown_reboot_manager()
-        logger.info(f"{cls.__name__} session complete")
+        write_session_footer(cls.__name__)
         os.chdir(cls.original_cwd)
 
     # ------------------------------------------------------------------
