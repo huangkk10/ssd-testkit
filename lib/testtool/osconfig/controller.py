@@ -137,10 +137,27 @@ def _build_action_list(
     if profile.disable_auto_reboot:
         actions.append(AutoRebootAction(snapshot_store=s))
     if profile.enable_auto_admin_logon:
+        import getpass as _getpass
+        _username = profile.auto_login_username or _getpass.getuser()
+        _password = (
+            profile.auto_login_password
+            or os.getenv("SSD_TESTKIT_AUTO_LOGIN_PASSWORD", "")
+        )
+        if not _password:
+            raise OsConfigActionError(
+                "enable_auto_admin_logon requires a password. "
+                "Set 'auto_login_password' in osconfig.yaml or the "
+                "SSD_TESTKIT_AUTO_LOGIN_PASSWORD environment variable."
+            )
+        _domain = profile.auto_login_domain or "."
+        logger.debug(
+            "[OsConfigController] AutoAdminLogon: username=%r  domain=%r  password=<redacted>",
+            _username, _domain,
+        )
         actions.append(AutoAdminLogonAction(
-            username=profile.auto_login_username or None,
-            password=profile.auto_login_password or None,
-            domain=profile.auto_login_domain or None,
+            username=_username,
+            password=_password,
+            domain=_domain,
             snapshot_store=s,
         ))
     if profile.set_small_memory_dump:

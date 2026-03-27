@@ -135,9 +135,23 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         Path(cls.log_path).mkdir(parents=True, exist_ok=True)
 
         cls.adapter = VersionAdapter(get_build_number())
+        # ── Resolve auto-login config from osconfig.yaml for RebootManager ─────
+        _osconfig_yaml = Path(__file__).parent / "Config" / "osconfig.yaml"
+        _p = load_profile(_osconfig_yaml)
+        _auto_login_cfg: dict = {}
+        if _p.enable_auto_admin_logon:
+            import getpass
+            _auto_login_cfg = {
+                "auto_login_username": _p.auto_login_username or getpass.getuser(),
+                "auto_login_password": (
+                    _p.auto_login_password
+                    or os.getenv("SSD_TESTKIT_AUTO_LOGIN_PASSWORD", "")
+                ),
+                "auto_login_domain": _p.auto_login_domain or ".",
+            }
         cls.reboot_mgr = RebootManager(
             total_tests=cls._count_test_methods(),
-            auto_login_config=cls.config.get('osconfig', {}),
+            auto_login_config=_auto_login_cfg,
         )
 
         phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
@@ -215,7 +229,14 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @step(3, "Apply OS configuration")
     def test_03_apply_osconfig(self):
         """Apply OS configuration (Task Scheduler prep: SystemRestore, MemoryDiagnostic, McAfee;
-        disable Fast Startup; enable auto admin logon; disable test signing)."""
+        disable Fast Startup; enable auto admin logon; disable test signing).
+
+        Auto-login credential resolution is handled by OsConfigController:
+        - username: osconfig.yaml value, else current OS user (getpass.getuser())
+        - password: osconfig.yaml value, else SSD_TESTKIT_AUTO_LOGIN_PASSWORD env var
+        - domain:   osconfig.yaml value, else '.' (local account)
+        Controller raises OsConfigActionError immediately if password cannot be resolved.
+        """
         _osconfig_yaml = Path(__file__).parent / "Config" / "osconfig.yaml"
         profile = load_profile(_osconfig_yaml)
         controller = OsConfigController(

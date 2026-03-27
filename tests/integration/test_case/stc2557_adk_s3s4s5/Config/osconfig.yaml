@@ -25,10 +25,13 @@ disable_fast_startup: true
 # 自動登入：開機後自動以指定帳號登入（僅限 lab 機器；密碼儲存為明文）
 # Registry: HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
 #           AutoAdminLogon = "1"
+#
+# username：不填 → test_03 自動使用目前登入的使用者（getpass.getuser()）
+# password：不填 → 必須設定環境變數 SSD_TESTKIT_AUTO_LOGIN_PASSWORD；否則 test_03 直接 fail
+# domain  ：不填 → 預設 "." (本機帳號)
 enable_auto_admin_logon: true
-# auto_login_username 不設定 → 沿用 registry 裡既有的 DefaultUserName
-# auto_login_username: "Administrator"  # 若需覆蓋帳號名稱請取消此行註解
-# auto_login_password: ""              # 如需設定密碼請取消註解並填入
+# auto_login_username: "Administrator"  # 若需強制指定帳號名稱請取消此行註解
+# auto_login_password: "1.a"           # 若不想用環境變數，可在此填入明文密碼（lab only）
 # auto_login_domain: "."               # 本機帳號留空或用 "."
 
 # Test Signing：關閉 bcdedit testsigning，確保 kernel 驅動程式簽章驗證正常
