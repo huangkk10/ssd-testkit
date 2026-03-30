@@ -31,7 +31,7 @@ disable_fast_startup: false
 # username：不填 → test_03 自動使用目前登入的使用者（getpass.getuser()）
 # password：不填 → 必須設定環境變數 SSD_TESTKIT_AUTO_LOGIN_PASSWORD；否則 test_03 直接 fail
 # domain  ：不填 → 預設 "." (本機帳號)
-enable_auto_admin_logon: true
+enable_auto_admin_logon: false
 # auto_login_username: "Administrator"  # 若需強制指定帳號名稱請取消此行註解
 auto_login_password: ""                # 填入測試機登入密碼，或留空並設定 SSD_TESTKIT_AUTO_LOGIN_PASSWORD 環境變數
 # auto_login_domain: "."               # 本機帳號留空或用 "."
