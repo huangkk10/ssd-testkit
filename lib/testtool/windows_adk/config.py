@@ -13,6 +13,7 @@ SUPPORTED_BUILDS = {
     22000: "Windows 11 21H2",
     22621: "Windows 11 22H2/23H2",
     26100: "Windows 11 24H2",
+    26200: "Windows 11 Insider Preview (build 26200)",
 }
 
 # ---------------------------------------------------------------------------
@@ -23,6 +24,7 @@ TEST_RESULT_DIRS = {
     22000: r"C:\Users\{user}\AppData\Local\Microsoft\Axe\Results\ ",
     22621: r"C:\Data\Test\Microsoft\Axe\Results\ ",
     26100: r"C:\Data\Test\Microsoft\Axe\Results\ ",
+    26200: r"C:\Data\Test\Microsoft\Axe\Results\ ",
 }
 
 # ---------------------------------------------------------------------------
