@@ -6,6 +6,7 @@ setlocal
 :: SSD-TestKit One-Click Build Script
 :: Usage:
 ::   build.bat              - Normal build (reuse existing spec)
+::   build.bat --check      - Pre-flight check only (no build)
 ::   build.bat --clean      - Clean build artifacts first
 ::   build.bat --no-release - Skip ZIP creation
 ::   build.bat --spec-only  - Generate spec file only (no EXE)

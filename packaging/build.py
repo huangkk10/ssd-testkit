@@ -711,6 +711,120 @@ exe = EXE(
         print(f"  Size: {size_mb:.1f} MB")
 
 
+def pre_flight_check(config: 'BuildConfig', project_root: Path) -> bool:
+    """
+    Pre-flight checks before starting PyInstaller build.
+
+    Validates that all required files and directories exist and
+    prints a preview of what will be packaged.
+
+    Returns True if all checks pass, False if any error is found.
+    """
+    print("\n" + "=" * 70)
+    print("PRE-FLIGHT CHECK")
+    print("=" * 70)
+
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # ── 1. build_config.yaml 欄位完整性 ──────────────────────────────────
+    version = config.get('version', '').strip()
+    project_name = config.get('project_name', '').strip()
+    test_projects = config.get('test_projects', [])
+
+    if not version:
+        errors.append("build_config.yaml: 'version' is empty")
+    if not project_name:
+        errors.append("build_config.yaml: 'project_name' is empty")
+    if not test_projects:
+        errors.append("build_config.yaml: 'test_projects' is empty — nothing to package")
+
+    print(f"  project_name : {project_name or '(empty)'}")
+    print(f"  version      : {version or '(empty)'}")
+
+    release_name = config.get('release_name', '').strip()
+    if release_name:
+        from datetime import date as _date
+        preview_name = release_name.replace('{date}', _date.today().strftime('%Y%m%d'))
+        print(f"  release_name : {preview_name}")
+    else:
+        output_folder_name = config.get('output_folder_name', '') or \
+            (Path(test_projects[0]).name if test_projects else 'RunTest')
+        print(f"  output_name  : {output_folder_name}_v{version}")
+
+    # ── 2. test_projects 路徑與內容 ───────────────────────────────────────
+    print(f"\n  test_projects ({len(test_projects)} project(s)):")
+    for tp in test_projects:
+        tp_path = project_root / tp
+        if not tp_path.exists():
+            print(f"    [ERROR] {tp}  ← directory not found")
+            errors.append(f"test_project not found: {tp}")
+            continue
+
+        # Check test_main.py
+        main_py = tp_path / 'test_main.py'
+        if not main_py.exists():
+            print(f"    [ERROR] {tp}/test_main.py  ← not found")
+            errors.append(f"test_main.py missing in: {tp}")
+        else:
+            print(f"    [OK]    {tp}/test_main.py")
+
+        # Check Config/
+        config_dir = tp_path / 'Config'
+        if not config_dir.exists():
+            print(f"    [WARN]  {tp}/Config/  ← not found (Config will be skipped)")
+            warnings.append(f"Config/ missing in: {tp}")
+        else:
+            config_files = list(config_dir.iterdir())
+            print(f"    [OK]    {tp}/Config/  ({len(config_files)} file(s))")
+
+        # Check bin/
+        bin_dir = tp_path / 'bin'
+        if not bin_dir.exists():
+            print(f"    [WARN]  {tp}/bin/  ← not found (bin will be skipped)")
+            warnings.append(f"bin/ missing in: {tp}")
+        else:
+            bin_items = list(bin_dir.iterdir())
+            print(f"    [OK]    {tp}/bin/  ({len(bin_items)} item(s))")
+
+    # ── 3. framework / lib ────────────────────────────────────────────────
+    print()
+    for required_dir in ('framework', 'lib'):
+        d = project_root / required_dir
+        if not d.exists():
+            print(f"  [ERROR] {required_dir}/  ← not found")
+            errors.append(f"Required directory missing: {required_dir}")
+        else:
+            print(f"  [OK]    {required_dir}/")
+
+    # ── 4. pytest.ini ─────────────────────────────────────────────────────
+    pytest_ini = project_root / 'pytest.ini'
+    if not pytest_ini.exists():
+        print(f"  [WARN]  pytest.ini  ← not found")
+        warnings.append("pytest.ini missing at project root")
+    else:
+        print(f"  [OK]    pytest.ini")
+
+    # ── Result ────────────────────────────────────────────────────────────
+    print()
+    if warnings:
+        print(f"  Warnings ({len(warnings)}):")
+        for w in warnings:
+            print(f"    [WARN] {w}")
+
+    if errors:
+        print(f"\n  Errors ({len(errors)}):")
+        for e in errors:
+            print(f"    [ERROR] {e}")
+        print("\n[FAIL] Pre-flight check failed — fix errors above before building.")
+        print("=" * 70)
+        return False
+
+    print("[OK] Pre-flight check passed.")
+    print("=" * 70)
+    return True
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
@@ -734,6 +848,12 @@ def parse_args() -> argparse.Namespace:
         '--show-config',
         action='store_true',
         help='Show configuration and exit'
+    )
+
+    parser.add_argument(
+        '--check',
+        action='store_true',
+        help='Run pre-flight checks only, do not build'
     )
     
     parser.add_argument(
@@ -812,7 +932,14 @@ def _main_impl() -> int:
     
     # Create builder
     builder = PyInstallerBuilder(config, packaging_dir)
-    
+
+    # Pre-flight check
+    if not pre_flight_check(config, builder.project_root):
+        return 1
+
+    if args.check:
+        return 0
+
     # Clean if requested
     if args.clean:
         builder.clean()
