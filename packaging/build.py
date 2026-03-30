@@ -414,18 +414,16 @@ exe = EXE(
             return
         
         print("\nPost-processing dist directory...")
-        
-        # Get first test project (assuming single test project for now)
-        test_projects = self.config.get('test_projects', [])
+
+        test_projects = self.config.get_test_projects(self.project_root)
         if not test_projects:
             print("[WARNING] No test projects configured")
             return
-        
+
         subfolder_name = self._get_release_name()
         target_dist_dir = dist_dir / subfolder_name
 
         # Wipe the entire target dist subfolder so every build starts clean.
-        # This prevents stale files from previous builds accumulating.
         if target_dist_dir.exists():
             print(f"Removing old dist folder: {target_dist_dir}")
 
@@ -438,16 +436,13 @@ exe = EXE(
                     pass
 
             shutil.rmtree(target_dist_dir, onerror=_force_remove_all)
-            # Fallback via cmd for any kernel-locked files (e.g. .sys drivers)
             if target_dist_dir.exists():
                 import subprocess as _sp
-                _sp.run(['cmd', '/c', 'rmdir', '/S', '/Q', str(target_dist_dir)],
-                        check=False)
+                _sp.run(['cmd', '/c', 'rmdir', '/S', '/Q', str(target_dist_dir)], check=False)
 
-        # (Re)create the now-empty target directory
         target_dist_dir.mkdir(parents=True, exist_ok=True)
         print(f"[OK] Created target directory: dist/{subfolder_name}")
-        
+
         # Move exe to subfolder
         target_exe_file = target_dist_dir / f'{project_name}.exe'
         if exe_file.exists() and exe_file != target_exe_file:
@@ -459,17 +454,59 @@ exe = EXE(
                     _spd.run(['cmd', '/c', 'del', '/F', '/Q', str(target_exe_file)], check=False)
             shutil.move(str(exe_file), str(target_exe_file))
             print(f"[OK] Moved {project_name}.exe to dist/{subfolder_name}/")
-        
-        test_project_path = self.project_root / self.config.get('test_projects', [])[0]
-        if not test_project_path.exists():
-            print(f"[WARNING] Test project not found: {test_project_path}")
-            return
-        
-        # Copy bin from test project to dist subfolder
-        bin_src = test_project_path / 'bin'
+
+        # ── Shared helpers ────────────────────────────────────────────────────
+        def ignore_venv(dir_path, names):
+            ignored = []
+            blocked_dirs = {'__pycache__', '.pytest_cache', 'venv', '.venv', 'smiwintool_venv'}
+            for name in names:
+                full_path = Path(dir_path) / name
+                if full_path.is_dir() and name.lower() in blocked_dirs:
+                    ignored.append(name)
+                elif name.endswith(('.pyc', '.pyo')):
+                    ignored.append(name)
+            return ignored
+
+        def _safe_copy2(src, dst):
+            try:
+                shutil.copy2(src, dst)
+            except PermissionError:
+                fname = os.path.basename(src)
+                if fname.lower().endswith('.sys'):
+                    print(f"  [INFO] {fname} is locked. Attempting to unload driver...")
+                    if self._unload_kernel_driver(src):
+                        import time
+                        time.sleep(1)
+                        try:
+                            shutil.copy2(src, dst)
+                            print(f"  [OK] {fname} copied after driver unload")
+                            return
+                        except PermissionError:
+                            pass
+                    if os.path.exists(dst):
+                        print(f"  [SKIP] {fname} still locked. Existing copy kept.")
+                        return
+                raise
+
+        def ignore_test_files(dir_path, names):
+            ignored = []
+            for name in names:
+                if any(x in name.lower() for x in ['venv', '__pycache__', '.pytest_cache']):
+                    ignored.append(name)
+                elif name in ['bin', 'Config', 'log', 'testlog']:
+                    ignored.append(name)
+                elif name.endswith(('.pyc', '.pyo')):
+                    ignored.append(name)
+            return ignored
+
+        # ── Copy bin/ — merge all test projects' bin/ into one flat bin/ ─────
         bin_dst = target_dist_dir / 'bin'
-        if bin_src.exists():
-            if bin_dst.exists():
+        for tp in test_projects:
+            tp_path = self.project_root / tp
+            bin_src = tp_path / 'bin'
+            if not bin_src.exists():
+                continue
+            if bin_dst.exists() and tp == test_projects[0]:
                 def _force_remove(func, path, exc_info):
                     import stat as _stat, os as _os
                     try:
@@ -478,118 +515,40 @@ exe = EXE(
                     except Exception:
                         pass
                 shutil.rmtree(bin_dst, onerror=_force_remove)
-                # Fallback: force-remove via cmd if any locked file remains
                 if bin_dst.exists():
                     import subprocess as _sp
-                    _sp.run(['cmd', '/c', 'rmdir', '/S', '/Q', str(bin_dst)],
-                            check=False)
-
-            # Copy with exclusions
-            def ignore_venv(dir_path, names):
-                ignored = []
-                blocked_dirs = {'__pycache__', '.pytest_cache', 'venv', '.venv',
-                                'smiwintool_venv'}
-                for name in names:
-                    full_path = Path(dir_path) / name
-                    if full_path.is_dir() and name.lower() in blocked_dirs:
-                        ignored.append(name)
-                    elif name.endswith(('.pyc', '.pyo')):
-                        ignored.append(name)
-                return ignored
-
-            # Custom copy: if a file is locked by the Windows kernel (e.g.
-            # WinIoEx.sys loaded as a driver service), stop+delete the driver
-            # service to release the lock, then retry the copy.
-            def _safe_copy2(src, dst):
-                try:
-                    shutil.copy2(src, dst)
-                except PermissionError:
-                    fname = os.path.basename(src)
-                    if fname.lower().endswith('.sys'):
-                        print(f"  [INFO] {fname} is locked. Attempting to unload driver...")
-                        if self._unload_kernel_driver(src):
-                            # Short pause to let Windows release the handle
-                            import time
-                            time.sleep(1)
-                            try:
-                                shutil.copy2(src, dst)
-                                print(f"  [OK] {fname} copied after driver unload")
-                                return
-                            except PermissionError:
-                                pass
-                        # Unload failed or retry still denied – keep existing copy
-                        if os.path.exists(dst):
-                            print(f"  [SKIP] {fname} still locked after unload attempt. "
-                                  f"Existing copy kept. Reboot if you need to update it.")
-                            return
-                    raise
-
+                    _sp.run(['cmd', '/c', 'rmdir', '/S', '/Q', str(bin_dst)], check=False)
             shutil.copytree(bin_src, bin_dst, ignore=ignore_venv,
                             copy_function=_safe_copy2, dirs_exist_ok=True)
-            print(f"[OK] Copied bin/ to dist/{subfolder_name}/bin")
-        
-        # Copy Config from test project to dist subfolder
-        config_src = test_project_path / 'Config'
-        config_dst = target_dist_dir / 'Config'
-        if config_src.exists():
-            if config_dst.exists():
-                shutil.rmtree(config_dst)
-            shutil.copytree(config_src, config_dst)
-            print(f"[OK] Copied Config/ to dist/{subfolder_name}/Config")
-        
-        # Copy convenience batch files if they exist
-        bat_files = [
-            'run_tests.bat',
-            'run_single_test.bat',
-            'quick_test.bat',
-            'view_logs.bat'
-        ]
-        for bat_file in bat_files:
-            bat_src = self.packaging_dir / bat_file
-            if not bat_src.exists():
-                # Create default batch file
-                bat_src = dist_dir / bat_file
-            if bat_src.exists():
-                bat_dst = target_dist_dir / bat_file
-                if bat_dst.exists():
-                    bat_dst.unlink()
-                if bat_src != bat_dst:
-                    shutil.copy2(bat_src, bat_dst)
-                print(f"[OK] Copied {bat_file} to dist/{subfolder_name}/")
-        
-        # Copy test files to dist subfolder (maintaining relative path structure)
-        # e.g., tests/integration/.../stc1685_burnin -> dist/stc1685_burnin/tests/integration/.../stc1685_burnin
-        test_src = test_project_path  # Full path to test directory
-        # Extract relative path from project root
-        test_rel_path = test_project_path.relative_to(self.project_root)
-        test_dst = target_dist_dir / test_rel_path
-        
-        if test_src.exists():
-            # Remove destination if it exists
+            print(f"[OK] Merged {tp}/bin/ → dist/{subfolder_name}/bin")
+
+        # ── Copy test files — loop over every test project ───────────────────
+        for tp in test_projects:
+            tp_path = self.project_root / tp
+            if not tp_path.exists():
+                print(f"[WARNING] Test project not found: {tp}")
+                continue
+
+            # Config stays inside testcase dir (Path(__file__).parent / "Config" still works)
+            config_src = tp_path / 'Config'
+            if config_src.exists():
+                tp_rel = tp_path.relative_to(self.project_root)
+                config_dst_tp = target_dist_dir / tp_rel / 'Config'
+                if config_dst_tp.exists():
+                    shutil.rmtree(config_dst_tp)
+                shutil.copytree(config_src, config_dst_tp)
+                print(f"[OK] Copied {tp}/Config/ → dist/{subfolder_name}/{tp_rel}/Config")
+
+            # Test source files
+            test_rel_path = tp_path.relative_to(self.project_root)
+            test_dst = target_dist_dir / test_rel_path
             if test_dst.exists():
                 shutil.rmtree(test_dst)
-            
-            # Copy test directory with exclusions
-            def ignore_test_files(dir_path, names):
-                ignored = []
-                for name in names:
-                    # Skip venv, cache, bin, Config (already copied to root), log directories
-                    if any(x in name.lower() for x in ['venv', '__pycache__', '.pytest_cache']):
-                        ignored.append(name)
-                    elif name in ['bin', 'Config', 'log', 'testlog']:
-                        ignored.append(name)
-                    elif name.endswith(('.pyc', '.pyo')):
-                        ignored.append(name)
-                return ignored
-            
-            shutil.copytree(test_src, test_dst, ignore=ignore_test_files)
-            print(f"[OK] Copied test files to dist/{subfolder_name}/{test_rel_path}")
+            shutil.copytree(tp_path, test_dst, ignore=ignore_test_files)
+            print(f"[OK] Copied test files → dist/{subfolder_name}/{test_rel_path}")
 
-            # Walk up from test_src to project_root, copying __init__.py and
-            # conftest.py for each ancestor package. Ensures the full package
-            # chain has __init__.py so pytest prepend importmode resolves the
-            # project root correctly (prevents fallback to external PYTHONPATH).
-            parent = test_src.parent
+            # Ensure __init__.py / conftest.py exist at every ancestor package level
+            parent = tp_path.parent
             while True:
                 try:
                     rel = parent.relative_to(self.project_root)
@@ -603,36 +562,44 @@ exe = EXE(
                         shutil.copy2(str(fsrc), str(fdst))
                         print(f"[OK] Copied {rel / fname} to dist")
                     elif fname == '__init__.py' and not fdst.exists():
-                        # Auto-create empty __init__.py to maintain package chain
                         fdst.parent.mkdir(parents=True, exist_ok=True)
                         fdst.touch()
                         print(f"[OK] Created empty {rel / fname} in dist")
                 if parent == self.project_root:
                     break
                 parent = parent.parent
-        
-        # Copy pytest.ini to dist folder so rootdir = dist folder (not _MEIPASS).
-        # This prevents pytest from scanning upward past the dist folder and
-        # accidentally discovering conftest.py files in parent directories
-        # (e.g. C:\automation\conftest.py) which would pollute sys.path.
+
+        # ── Convenience batch files ───────────────────────────────────────────
+        for bat_file in ('run_tests.bat', 'run_single_test.bat', 'quick_test.bat', 'view_logs.bat'):
+            bat_src = self.packaging_dir / bat_file
+            if not bat_src.exists():
+                bat_src = dist_dir / bat_file
+            if bat_src.exists():
+                bat_dst = target_dist_dir / bat_file
+                if bat_dst.exists():
+                    bat_dst.unlink()
+                if bat_src != bat_dst:
+                    shutil.copy2(bat_src, bat_dst)
+                print(f"[OK] Copied {bat_file} to dist/{subfolder_name}/")
+
+        # ── pytest.ini ────────────────────────────────────────────────────────
         pytest_ini_src = self.project_root / 'pytest.ini'
         pytest_ini_dst = target_dist_dir / 'pytest.ini'
         if pytest_ini_src.exists():
             shutil.copy2(str(pytest_ini_src), str(pytest_ini_dst))
             print(f"[OK] Copied pytest.ini to dist/{subfolder_name}/")
 
+        # ── Print final structure ─────────────────────────────────────────────
         print(f"\n[OK] Final structure:")
         print(f"  dist/")
         print(f"    +-- {subfolder_name}/")
         print(f"        +-- {project_name}.exe")
-        if config_dst.exists():
-            print(f"        +-- Config/")
-            if (config_dst / 'Config.json').exists():
-                print(f"        |   +-- Config.json")
+        print(f"        +-- pytest.ini")
         if bin_dst.exists():
             print(f"        +-- bin/")
-        if test_dst.exists():
-            print(f"        +-- {test_rel_path}/")
+        print(f"        +-- tests/")
+        for tp in test_projects:
+            print(f"            +-- {Path(tp).name}/")
     
     def _unload_kernel_driver(self, sys_path: str) -> bool:
         """
