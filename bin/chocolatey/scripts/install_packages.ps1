@@ -1,4 +1,4 @@
-# install_packages.ps1
+﻿# install_packages.ps1
 # Read packages.config and batch install all packages according to active_source.
 #
 # Usage:
@@ -14,13 +14,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Ensure choco is installed ───────────────────────────────────────────────
+# â”€â”€ Ensure choco is installed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
     Write-Error "'choco' command not found. Please run install_choco.ps1 to install Chocolatey first."
     exit 1
 }
 
-# ── Read packages.config ─────────────────────────────────────────────────────
+# â”€â”€ Read packages.config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $pkgConfig = Join-Path $ConfigDir "packages.config"
 if (-not (Test-Path $pkgConfig)) {
     Write-Error "packages.config not found: $pkgConfig"
@@ -33,19 +33,19 @@ if (-not $packages) {
     exit 0
 }
 
-# ── Set SSD_TESTKIT_ROOT so nupkg install scripts can locate large installers ──
+# â”€â”€ Set SSD_TESTKIT_ROOT so nupkg install scripts can locate large installers â”€â”€
 # Scripts are at bin/chocolatey/scripts/ -> project root is 3 levels up
 $env:SSD_TESTKIT_ROOT = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..\")).Path
 Write-Host "[INFO] SSD_TESTKIT_ROOT=$env:SSD_TESTKIT_ROOT"
 
-# ── Resolve base packages directory (for per-package source resolution) ──────
+# â”€â”€ Resolve base packages directory (for per-package source resolution) â”€â”€â”€â”€â”€â”€
 # When $Source is not overridden, packages are stored at:
 #   <project_root>/bin/chocolatey/packages/<id>/<version>/
 # Chocolatey local folder source must point to the folder containing the nupkg;
 # it does NOT recurse into subdirectories.
 $packagesBaseDir = Join-Path $env:SSD_TESTKIT_ROOT "bin\chocolatey\packages"
 
-# ── Install each package in order ───────────────────────────────────────────
+# â”€â”€ Install each package in order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 $failed = @()
 foreach ($pkg in $packages) {
     $id  = $pkg.id
@@ -66,7 +66,7 @@ foreach ($pkg in $packages) {
 
     # NuGet normalises bare integers: e.g. "22621" -> "22621.0.0"
     # Pass the version as-is; choco will resolve it against what's in the nupkg.
-    $args = @("install", $id, "--source", $pkgSource, "--yes", "--no-progress", "--ignore-checksums")
+    $args = @("install", $id, "--version", $ver, "--source", $pkgSource, "--yes", "--no-progress", "--ignore-checksums")
     & choco @args
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "[WARN] $id $ver installation returned exit code $LASTEXITCODE"
@@ -76,7 +76,7 @@ foreach ($pkg in $packages) {
     }
 }
 
-# ── Summary ─────────────────────────────────────────────────────────────────
+# â”€â”€ Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 Write-Host "`n============================================"
 $total = @($packages).Count
 Write-Host " Total  : $total"
@@ -87,3 +87,4 @@ if ($failed.Count -gt 0) {
     exit 1
 }
 Write-Host "============================================"
+

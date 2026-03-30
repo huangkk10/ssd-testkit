@@ -1,0 +1,47 @@
+tools:
+  smicli:
+    version: 2026.2.13
+    bin_dir: SmiCli
+    source_dir: bin/installers/SmiCli/v20260213C
+    nexus_path: windows-tools/SmiCli/v20260213C/SmiCli-v20260213C.zip
+    install_dir: C:\\tools\\SmiCli
+    env_var: SMICLI_PATH
+    binaries: [SmiCli2.exe]
+
+  smiwintools:
+    version: 2026.2.13.1
+    bin_dir: SmiWinTools
+    source_dir: bin/installers/SmiWinTools/v20260213C
+    nexus_path: windows-tools/SmiWinTools/v20260213C/SmiWinTools-v20260213C.zip
+    install_dir: C:\\tools\\SmiWinTools
+    env_var: SMIWINTOOLS_PATH
+
+  burnin:
+    version: 10.2.1004
+    bin_dir: BurnIn
+    source_dir: bin/installers/BurnIn/10.2.1004
+    nexus_path: windows-tools/BurnIn/10.2.1004/BurnIn-10.2.1004.zip
+    install_dir: C:\\Program Files\\BurnInTest
+    env_var: BURNIN_PATH
+
+  cdi:
+    version: 8.17.13
+    bin_dir: CrystalDiskInfo
+    source_dir: bin/installers/CrystalDiskInfo/8.17.13
+    nexus_path: windows-tools/CrystalDiskInfo/8.17.13/CrystalDiskInfo-8.17.13.zip
+    install_dir: C:\\tools\\CrystalDiskInfo
+    env_var: CDI_PATH
+    binaries: [DiskInfo64.exe, DiskInfo32.exe]
+
+  phm:
+    version: 4.22.0
+    bin_dir: PHM
+    source_dir: bin/installers/PHM/V4.22.0_B25.02.06.02_H
+    nexus_path: windows-tools/PHM/V4.22.0_B25.02.06.02_H/PHM-V4.22.0.zip
+    install_dir: C:\\Program Files\\PowerhouseMountain
+    env_var: PHM_PATH
+
+  windows-adk:
+    version: 26100.0.0
+    install_dir: C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit
+    binaries: [wpr.exe, wpa.exe, xbootmgr.exe]
