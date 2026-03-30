@@ -499,14 +499,24 @@ exe = EXE(
                     ignored.append(name)
             return ignored
 
-        # ── Copy bin/ — merge all test projects' bin/ into one flat bin/ ─────
+        # ── Copy bin/ ─────────────────────────────────────────────────────────
+        # Source priority:
+        #   1. Project-root bin/  (ssd-testkit/bin/)  — main tool repository
+        #   2. Each testcase's own bin/ (if present)  — merged on top
         bin_dst = target_dist_dir / 'bin'
+
+        bin_sources = []
+        project_bin = self.project_root / 'bin'
+        if project_bin.exists():
+            bin_sources.append(('bin/ (project root)', project_bin))
         for tp in test_projects:
-            tp_path = self.project_root / tp
-            bin_src = tp_path / 'bin'
-            if not bin_src.exists():
-                continue
-            if bin_dst.exists() and tp == test_projects[0]:
+            tp_bin = self.project_root / tp / 'bin'
+            if tp_bin.exists():
+                bin_sources.append((f'{tp}/bin/', tp_bin))
+
+        first = True
+        for label, bin_src in bin_sources:
+            if first and bin_dst.exists():
                 def _force_remove(func, path, exc_info):
                     import stat as _stat, os as _os
                     try:
@@ -520,7 +530,8 @@ exe = EXE(
                     _sp.run(['cmd', '/c', 'rmdir', '/S', '/Q', str(bin_dst)], check=False)
             shutil.copytree(bin_src, bin_dst, ignore=ignore_venv,
                             copy_function=_safe_copy2, dirs_exist_ok=True)
-            print(f"[OK] Merged {tp}/bin/ → dist/{subfolder_name}/bin")
+            print(f"[OK] Merged {label} → dist/{subfolder_name}/bin")
+            first = False
 
         # ── Copy test files — loop over every test project ───────────────────
         for tp in test_projects:
@@ -751,7 +762,20 @@ def pre_flight_check(config: 'BuildConfig', project_root: Path) -> bool:
             (Path(test_projects[0]).name if test_projects else 'RunTest')
         print(f"  output_name  : {output_folder_name}_v{version}")
 
-    # ── 2. test_projects 路徑與內容 ───────────────────────────────────────
+    # ── 2. project-root bin/ ─────────────────────────────────────────────
+    project_bin = project_root / 'bin'
+    print()
+    if project_bin.exists():
+        bin_items = list(project_bin.iterdir())
+        print(f"  bin/ (project root): {len(bin_items)} item(s)")
+        for item in sorted(bin_items):
+            tag = "/" if item.is_dir() else ""
+            print(f"    [OK]    bin/{item.name}{tag}")
+    else:
+        print(f"  [WARN]  bin/ (project root)  ← not found")
+        warnings.append("bin/ missing at project root")
+
+    # ── 3. test_projects paths and contents ──────────────────────────────
     print(f"\n  test_projects ({len(test_projects)} project(s)):")
     for tp in test_projects:
         tp_path = project_root / tp
@@ -776,15 +800,6 @@ def pre_flight_check(config: 'BuildConfig', project_root: Path) -> bool:
         else:
             config_files = list(config_dir.iterdir())
             print(f"    [OK]    {tp}/Config/  ({len(config_files)} file(s))")
-
-        # Check bin/
-        bin_dir = tp_path / 'bin'
-        if not bin_dir.exists():
-            print(f"    [WARN]  {tp}/bin/  ← not found (bin will be skipped)")
-            warnings.append(f"bin/ missing in: {tp}")
-        else:
-            bin_items = list(bin_dir.iterdir())
-            print(f"    [OK]    {tp}/bin/  ({len(bin_items)} item(s))")
 
     # ── 3. framework / lib ────────────────────────────────────────────────
     print()
