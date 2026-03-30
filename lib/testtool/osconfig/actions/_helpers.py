@@ -119,11 +119,11 @@ def run_powershell(command: str, timeout: int = 60) -> Tuple[int, str, str]:
     Returns:
         Tuple of ``(returncode, stdout, stderr)``.
     """
-    full_cmd = f'powershell -NonInteractive -NoProfile -Command "{command}"'
-    logger.debug(f"run_powershell: {full_cmd}")
+    cmd = ["powershell", "-NonInteractive", "-NoProfile", "-Command", command]
+    logger.debug(f"run_powershell: {command}")
     result = subprocess.run(
-        full_cmd,
-        shell=True,
+        cmd,
+        shell=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

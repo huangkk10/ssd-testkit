@@ -20,7 +20,9 @@ disable_mcafee_tasks: true
 # Fast Startup：停用 HiberbootEnabled，確保每次 shutdown/reboot 為完整 power cycle
 # Registry: HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power
 #           HiberbootEnabled = 0
-disable_fast_startup: true
+# NOTE: 必須設為 false，BPFS (Boot Performance Fast Startup) assessment
+#       需要 Fast Startup 啟用才能執行；WAC 會自行管理 Fast Startup 狀態
+disable_fast_startup: false
 
 # 自動登入：開機後自動以指定帳號登入（僅限 lab 機器；密碼儲存為明文）
 # Registry: HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
