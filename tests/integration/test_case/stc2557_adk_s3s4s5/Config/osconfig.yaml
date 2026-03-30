@@ -31,7 +31,7 @@ disable_fast_startup: true
 # domain  ：不填 → 預設 "." (本機帳號)
 enable_auto_admin_logon: true
 # auto_login_username: "Administrator"  # 若需強制指定帳號名稱請取消此行註解
-# auto_login_password: "1.a"           # 若不想用環境變數，可在此填入明文密碼（lab only）
+auto_login_password: ""                # 填入測試機登入密碼，或留空並設定 SSD_TESTKIT_AUTO_LOGIN_PASSWORD 環境變數
 # auto_login_domain: "."               # 本機帳號留空或用 "."
 
 # Test Signing：關閉 bcdedit testsigning，確保 kernel 驅動程式簽章驗證正常
