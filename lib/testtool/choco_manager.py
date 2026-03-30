@@ -203,10 +203,10 @@ class ChocoManager:
         env["SSD_TESTKIT_ROOT"] = str(self._root)
         return env
 
-    @staticmethod
-    def _find_choco() -> str:
+    def _find_choco(self) -> str:
         """Return the choco executable path, preferring the well-known install location
-        to avoid PATH issues when running inside a Python virtualenv."""
+        to avoid PATH issues when running inside a Python virtualenv.
+        If Chocolatey is not found, automatically installs it via install_choco.ps1."""
         candidates = [
             r"C:\ProgramData\chocolatey\bin\choco.exe",
             r"C:\ProgramData\chocolatey\choco.exe",
@@ -214,7 +214,39 @@ class ChocoManager:
         for c in candidates:
             if os.path.isfile(c):
                 return c
-        return "choco"  # fallback: rely on PATH
+
+        import shutil
+        if shutil.which("choco"):
+            return "choco"
+
+        # Chocolatey not found — attempt offline auto-install
+        install_script = self._root / "bin" / "chocolatey" / "scripts" / "install_choco.ps1"
+        if not install_script.is_file():
+            raise ChocoManagerError(
+                f"Chocolatey is not installed and the install script was not found: {install_script}"
+            )
+
+        import logging
+        logging.getLogger(__name__).info(
+            "[ChocoManager] Chocolatey not found — running install_choco.ps1 ..."
+        )
+        result = subprocess.run(
+            ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", str(install_script)],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            raise ChocoManagerError(
+                f"Chocolatey auto-install failed (exit {result.returncode}):\n"
+                f"{result.stdout}\n{result.stderr}"
+            )
+
+        for c in candidates:
+            if os.path.isfile(c):
+                return c
+        raise ChocoManagerError(
+            "Chocolatey was installed but choco.exe still not found. "
+            "Please open a new shell and retry."
+        )
 
     def _run(
         self,

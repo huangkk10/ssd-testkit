@@ -141,6 +141,7 @@ class ToolInstaller:
                 assert result.success, (
                     f"Uninstall of '{entry.id}' failed "
                     f"(exit {result.exit_code}):\n{result.output}"
+                    + (f"\n{result.error}" if result.error else "")
                 )
 
             if not mgr.is_installed(entry.id):
@@ -150,6 +151,7 @@ class ToolInstaller:
                 assert result.success, (
                     f"Install of '{entry.id}' failed "
                     f"(exit {result.exit_code}):\n{result.output}"
+                    + (f"\n{result.error}" if result.error else "")
                 )
             else:
                 logger.info(f"[ToolInstaller] {entry.id} already installed — skip")
