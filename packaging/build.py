@@ -69,7 +69,35 @@ class BuildConfig:
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value."""
         return self.config.get(key, default)
-    
+
+    def get_test_projects(self, project_root: Path) -> List[str]:
+        """
+        Return the list of test project paths to package.
+
+        Priority:
+          1. Explicit ``test_projects`` list in build_config.yaml (backward compat).
+          2. Auto-discover every subdirectory under ``test_root`` that contains
+             a ``test_main.py`` file.
+        """
+        explicit = self.config.get('test_projects', [])
+        if explicit:
+            return explicit
+
+        test_root = self.config.get('test_root', '').strip()
+        if not test_root:
+            return []
+
+        root_path = project_root / test_root
+        if not root_path.exists():
+            return []
+
+        discovered = []
+        for d in sorted(root_path.iterdir()):
+            if d.is_dir() and not d.name.startswith(('_', '.')):
+                if (d / 'test_main.py').exists():
+                    discovered.append(f"{test_root}/{d.name}")
+        return discovered
+
     def display(self):
         """Display current configuration."""
         print("\n" + "=" * 70)
@@ -151,8 +179,8 @@ class PyInstallerBuilder:
                             hidden_imports.append(module)
         
         # Get test projects from config
-        test_projects = self.config.get('test_projects', [])
-        
+        test_projects = self.config.get_test_projects(self.project_root)
+
         # Build datas list
         datas_lines = []
         
@@ -359,11 +387,15 @@ exe = EXE(
             today = _date.today().strftime('%Y%m%d')
             return release_name.replace('{date}', today)
 
-        # Default: stc1685_burnin_v1.0.0
-        output_folder_name = self.config.get('output_folder_name', '')
+        # Default: use output_folder_name, or test_root leaf, or first test project leaf
+        output_folder_name = self.config.get('output_folder_name', '').strip()
         if not output_folder_name:
-            test_projects = self.config.get('test_projects', [])
-            output_folder_name = Path(test_projects[0]).name if test_projects else 'RunTest'
+            test_root = self.config.get('test_root', '').strip()
+            if test_root:
+                output_folder_name = Path(test_root).name
+            else:
+                test_projects = self.config.get_test_projects(self.project_root)
+                output_folder_name = Path(test_projects[0]).name if test_projects else 'RunTest'
         version = self.config.get('version', '1.0.0')
         return f"{output_folder_name}_v{version}"
 
@@ -730,7 +762,7 @@ def pre_flight_check(config: 'BuildConfig', project_root: Path) -> bool:
     # ── 1. build_config.yaml 欄位完整性 ──────────────────────────────────
     version = config.get('version', '').strip()
     project_name = config.get('project_name', '').strip()
-    test_projects = config.get('test_projects', [])
+    test_projects = config.get_test_projects(project_root)
 
     if not version:
         errors.append("build_config.yaml: 'version' is empty")

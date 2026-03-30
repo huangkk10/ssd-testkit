@@ -19,32 +19,45 @@ from path_manager import path_manager
 def get_default_test_project() -> Optional[str]:
     """Get default test project from build_config.yaml."""
     try:
-        # In packaged environment, config is in sys._MEIPASS
-        # In development, it's in the packaging directory
         if getattr(sys, 'frozen', False):
-            # Packaged: look in the extracted temp directory
             config_path = Path(sys._MEIPASS) / 'build_config.yaml'
-            print(f"[DEBUG] Looking for config in packaged env: {config_path}")
         else:
-            # Development: look in packaging directory
             config_path = Path(__file__).parent / 'build_config.yaml'
-            print(f"[DEBUG] Looking for config in dev env: {config_path}")
-        
-        print(f"[DEBUG] Config file exists: {config_path.exists()}")
-        if config_path.exists():
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f)
-                test_projects = config.get('test_projects', [])
-                if test_projects:
-                    # Return first test project
-                    print(f"[DEBUG] Found default test project: {test_projects[0]}")
-                    return test_projects[0]
-                else:
-                    print("[DEBUG] No test_projects found in config")
+
+        if not config_path.exists():
+            return None
+
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f) or {}
+
+        # 1. Explicit default_test key
+        default_test = config.get('default_test', '').strip()
+        if default_test:
+            print(f"[DEBUG] default_test from config: {default_test}")
+            return default_test
+
+        # 2. Fall back to first item of test_projects (backward compat)
+        test_projects = config.get('test_projects', [])
+        if test_projects:
+            print(f"[DEBUG] default test (first test_projects): {test_projects[0]}")
+            return test_projects[0]
+
+        # 3. Fall back to first discovered project under test_root
+        test_root = config.get('test_root', '').strip()
+        if test_root:
+            base = Path(sys._MEIPASS if getattr(sys, 'frozen', False)
+                        else Path(__file__).parent.parent)
+            root_path = base / test_root
+            if root_path.exists():
+                for d in sorted(root_path.iterdir()):
+                    if d.is_dir() and not d.name.startswith(('_', '.')):
+                        if (d / 'test_main.py').exists():
+                            result = f"{test_root}/{d.name}"
+                            print(f"[DEBUG] default test (auto-discovered): {result}")
+                            return result
+
     except Exception as e:
         print(f"Warning: Failed to load default test project: {e}")
-        import traceback
-        traceback.print_exc()
     return None
 
 
@@ -205,8 +218,12 @@ def build_pytest_args(args: argparse.Namespace) -> List[str]:
         test_path = path_manager.resolve_path(args.test)
         pytest_args.append(str(test_path))
     else:
-        # Default to tests directory
-        pytest_args.append(str(path_manager.get_tests_dir()))
+        # Default: use default_test from build_config.yaml
+        default_project = get_default_test_project()
+        if default_project:
+            pytest_args.append(str(path_manager.resolve_path(default_project)))
+        else:
+            pytest_args.append(str(path_manager.get_tests_dir()))
     
     # Add pytest.ini if exists
     pytest_ini = path_manager.get_pytest_ini()

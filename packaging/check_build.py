@@ -18,10 +18,14 @@ def _get_release_name(config: dict) -> str:
     if release_name:
         return release_name.replace('{date}', date.today().strftime('%Y%m%d'))
 
-    output_folder_name = config.get('output_folder_name', '')
+    output_folder_name = config.get('output_folder_name', '').strip()
     if not output_folder_name:
-        test_projects = config.get('test_projects', [])
-        output_folder_name = Path(test_projects[0]).name if test_projects else 'RunTest'
+        test_root = config.get('test_root', '').strip()
+        if test_root:
+            output_folder_name = Path(test_root).name
+        else:
+            test_projects = config.get('test_projects', [])
+            output_folder_name = Path(test_projects[0]).name if test_projects else 'RunTest'
     version = config.get('version', '1.0.0')
     return f"{output_folder_name}_v{version}"
 
@@ -45,11 +49,26 @@ def check_build_status():
 
     project_name = config.get('project_name', 'RunTest')
     subfolder_name = _get_release_name(config)
+    default_test = config.get('default_test', '')
+
+    # Resolve test projects: explicit list OR auto-discover from test_root
     test_projects = config.get('test_projects', [])
+    if not test_projects:
+        test_root = config.get('test_root', '').strip()
+        if test_root:
+            root_path = packaging_dir.parent / test_root
+            if root_path.exists():
+                for d in sorted(root_path.iterdir()):
+                    if d.is_dir() and not d.name.startswith(('_', '.')):
+                        if (d / 'test_main.py').exists():
+                            test_projects.append(f"{test_root}/{d.name}")
 
     print(f"  project_name : {project_name}")
     print(f"  release_name : {subfolder_name}")
-    print(f"  test_projects: {test_projects}")
+    print(f"  default_test : {default_test or '(not set)'}")
+    print(f"  test_projects: {len(test_projects)} testcase(s) discovered")
+    for tp in test_projects:
+        print(f"    - {tp}")
     print()
 
     dist_dir = packaging_dir / 'dist' / subfolder_name
