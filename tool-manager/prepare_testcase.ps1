@@ -20,6 +20,19 @@ $Root         = Split-Path $PSScriptRoot
 $ChocoSource  = "https://10.252.170.171/repository/choco-hosted-nas"
 $ChocoApiBase = "https://10.252.170.171/repository/choco-hosted-nas"
 $NasZipBase   = "\\10.250.0.1\mdt\Team\PQ1-3\tool\ssd-testkit-source\windows\zip"
+$NasShare     = "\\10.250.0.1\mdt"
+$NasUser      = "mdt"
+$NasPass      = "p@ssw0rd"
+
+# 確保 NAS share 已掛載（net use 只在當前 session 有效）
+if (-not (Test-Path $NasShare -ErrorAction SilentlyContinue)) {
+    Write-Host "  [NAS] Connecting to $NasShare ..." -ForegroundColor DarkCyan
+    $netResult = net use $NasShare /user:$NasUser $NasPass 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "  [WARN] Failed to connect to NAS: $netResult"
+        Write-Warning "         Installer zip download will be skipped if not available."
+    }
+}
 
 if (-not $TestCase) {
     $prepareYaml = Join-Path $PSScriptRoot "prepare.yaml"
