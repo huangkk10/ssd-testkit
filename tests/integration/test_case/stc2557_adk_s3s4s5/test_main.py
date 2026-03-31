@@ -308,9 +308,10 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @step(6, "Configure BPFS — Boot Performance Fast Startup")
     def test_06_configure_bpfs(self):
         """Open WAC Configure Job page and add Boot Performance Fast Startup (no Run)."""
+        num_iters = self.config.get('adk', {}).get('bpfs_num_iters', 1)
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.open(WAC_EXE)
-        ctrl._ui.add_bpfs_to_configure_job(num_iters=1)
+        ctrl._ui.add_bpfs_to_configure_job(num_iters=num_iters)
         logger.info("[TEST_06] BPFS added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
@@ -321,9 +322,10 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @step(7, "Configure S5 — BPFB")
     def test_07_configure_s5(self):
         """Connect WAC Configure Job page and add BPFB (no submit yet)."""
+        num_iters = self.config.get('adk', {}).get('bpfb_num_iters', 1)
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
-        ctrl._ui.add_bpfb_to_configure_job(num_iters=1)
+        ctrl._ui.add_bpfb_to_configure_job(num_iters=num_iters)
         logger.info("[TEST_07] BPFB added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
@@ -334,9 +336,10 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @step(8, "Configure S3 — Standby Performance")
     def test_08_configure_s3(self):
         """Connect WAC Configure Job page and add Standby Performance (no Run)."""
+        num_iters = self.config.get('adk', {}).get('standby_num_iters', 1)
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
-        ctrl._ui.add_standby_to_configure_job(num_iters=1)
+        ctrl._ui.add_standby_to_configure_job(num_iters=num_iters)
         logger.info("[TEST_08] Standby Performance added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
@@ -347,9 +350,10 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @step(9, "Configure S4 — Hibernate Performance")
     def test_09_configure_s4(self):
         """Connect to WAC Configure Job page and add Hibernate Performance."""
+        num_iters = self.config.get('adk', {}).get('hibernate_num_iters', 1)
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.connect()
-        ctrl._ui.add_hibernate_to_configure_job(num_iters=1)
+        ctrl._ui.add_hibernate_to_configure_job(num_iters=num_iters)
         logger.info("[TEST_09] Hibernate Performance added — WAC on Configure Job page")
 
     # ------------------------------------------------------------------
