@@ -88,7 +88,9 @@ a = Analysis(
         'win32com.server',
         'win32com.shell',
         'win32com.shell.shell',
-        'win32com.shell.shellcon'
+        'win32com.shell.shellcon',
+        # windows_adk result parser
+        'xmltodict',
     ],
     hookspath=[],
     hooksconfig={},
