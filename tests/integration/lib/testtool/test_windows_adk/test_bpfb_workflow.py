@@ -44,7 +44,7 @@ import pytest
 from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.reboot_manager import RebootManager
-from lib.logger import get_module_logger, clear_log_files, write_session_footer
+from lib.logger import get_module_logger, clear_log_files
 from lib.testtool.windows_adk import ADKController
 from lib.testtool.windows_adk.config import WAC_EXE, get_build_number
 from lib.testtool.windows_adk.result_reader import WACRunResult
@@ -80,9 +80,7 @@ class TestBPFBWorkflow(BaseTestCase):
         test_dir = cls._setup_working_directory(__file__)
 
         # Resolve log path: ADK_LOG_DIR env var or test directory
-        base = os.getenv("ADK_LOG_DIR")
-        cls.log_path = str(Path(base) / "bpfb_workflow") if base else str(test_dir / "testlog" / "bpfb_workflow")
-        Path(cls.log_path).mkdir(parents=True, exist_ok=True)
+        cls.log_path = cls._resolve_log_path("ADK_LOG_DIR", "bpfb_workflow", test_dir)
 
         cls.adapter = VersionAdapter(get_build_number())
         cls.reboot_mgr = RebootManager(total_tests=cls._count_test_methods())
@@ -95,9 +93,7 @@ class TestBPFBWorkflow(BaseTestCase):
 
         yield
 
-        cls._teardown_reboot_manager()
-        write_session_footer(cls.__name__)
-        os.chdir(cls.original_cwd)
+        cls._standard_teardown(request.session)
 
     # ------------------------------------------------------------------
     # Step 1 — Precondition (first boot only)

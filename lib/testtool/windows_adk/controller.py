@@ -125,6 +125,14 @@ class ADKController(threading.Thread):
         logger.error("Power state: Unknown")
         return "Unknown"
 
+    @staticmethod
+    def kill_processes() -> None:
+        """Forcibly terminate wac.exe and axe.exe, then wait 1 second for handles to release."""
+        for proc in ("wac.exe", "axe.exe"):
+            subprocess.run(["taskkill", "/f", "/im", proc], capture_output=True)
+        time.sleep(1)
+        logger.info("WAC/AXE processes terminated")
+
     def cleanup_dirs(self) -> None:
         """Remove and recreate WAC result, job, and test directories."""
         for directory in (

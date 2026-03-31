@@ -43,7 +43,7 @@ import pytest
 from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.reboot_manager import RebootManager
-from lib.logger import get_module_logger, logConfig, clear_log_files, write_session_footer
+from lib.logger import get_module_logger, logConfig, clear_log_files
 
 logger = get_module_logger(__name__)
 
@@ -102,9 +102,7 @@ class TestLoopNextReal(BaseTestCase):
 
         yield
 
-        cls._teardown_reboot_manager()
-        write_session_footer(cls.__name__)
-        os.chdir(cls.original_cwd)
+        cls._standard_teardown(request.session)
 
     # ------------------------------------------------------------------
     # test_01 — Precondition (runs only on the very first boot)

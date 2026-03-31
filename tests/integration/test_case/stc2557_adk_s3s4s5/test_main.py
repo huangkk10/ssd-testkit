@@ -62,7 +62,6 @@ Run:
 
 import os
 import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -76,7 +75,7 @@ import pytest
 from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.reboot_manager import RebootManager
-from lib.logger import get_module_logger, clear_log_files, write_session_footer
+from lib.logger import get_module_logger, clear_log_files
 from lib.testtool.tool_installer import ToolInstaller
 from lib.testtool.windows_adk import ADKController
 from lib.testtool.windows_adk.config import WAC_EXE, get_build_number
@@ -111,6 +110,9 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     #          step 10 starts all four assessments with a single click_start.
     _osconfig_controller: "OsConfigController | None" = None
 
+    # Config directory — single source of truth for all Config/* paths
+    _CONFIG_DIR = Path(__file__).parent / "Config"
+
     # ------------------------------------------------------------------
     # Class-level fixture — overrides BaseTestCase.setup_teardown_class
     # ------------------------------------------------------------------
@@ -125,41 +127,17 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
         # ── Config ────────────────────────────────────────────────────────────
         cls.config = testcase_config.tool_config
-
-        # Resolve log path: ADK_LOG_DIR env var or test directory
-        base = os.getenv("ADK_LOG_DIR")
-        cls.log_path = (
-            str(Path(base) / "s3s4s5") if base
-            else str(test_dir / "testlog" / "s3s4s5")
-        )
-        Path(cls.log_path).mkdir(parents=True, exist_ok=True)
+        cls.log_path = cls._resolve_log_path("ADK_LOG_DIR", "s3s4s5", test_dir)  # P6
 
         cls.adapter = VersionAdapter(get_build_number())
-        # ── Resolve auto-login config from osconfig.yaml for RebootManager ─────
-        _osconfig_yaml = Path(__file__).parent / "Config" / "osconfig.yaml"
-        _p = load_profile(_osconfig_yaml)
-        _auto_login_cfg: dict = {}
-        if _p.enable_auto_admin_logon:
-            import getpass
-            _auto_login_cfg = {
-                "auto_login_username": _p.auto_login_username or getpass.getuser(),
-                "auto_login_password": (
-                    _p.auto_login_password
-                    or os.getenv("SSD_TESTKIT_AUTO_LOGIN_PASSWORD", "")
-                ),
-                "auto_login_domain": _p.auto_login_domain or ".",
-            }
+        # ── RebootManager with auto-login resolved from osconfig.yaml ─────────
+        cls._osconfig_profile = load_profile(cls._CONFIG_DIR / "osconfig.yaml")  # cache for test_03
         cls.reboot_mgr = RebootManager(
             total_tests=cls._count_test_methods(),
-            auto_login_config=_auto_login_cfg,
+            auto_login_config=cls._build_auto_login_cfg(cls._osconfig_profile),
         )
 
-        phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
-        _tools_yaml = Path(__file__).parent / "Config" / "tools.yaml"
-        ToolInstaller(_tools_yaml).install_pre_runcard()
-        logger.info(f"[SETUP] SMICLI_PATH (after install) : {os.environ.get('SMICLI_PATH', 'NOT SET')}")
-        smicli_exe = os.environ.get('SMICLI_PATH', '')
-        logger.info(f"[SETUP] SmiCli2.exe exists: {Path(smicli_exe).exists() if smicli_exe else False}")
+        ToolInstaller(cls._CONFIG_DIR / "tools.yaml").install_pre_runcard()
         # ── RunCard ─────────────────────────────────────────────────────────
         if not cls.reboot_mgr.is_recovering():
             cls._init_runcard(runcard_params)
@@ -168,17 +146,12 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
         yield
 
-        cls._teardown_runcard(request.session)
-
-        cls._revert_osconfig(
-            Path(__file__).parent / "Config" / "osconfig.yaml",
+        cls._standard_teardown(
+            request.session,
+            cls._CONFIG_DIR / "osconfig.yaml",
             cls._osconfig_controller,
             logger,
         )
-
-        cls._teardown_reboot_manager()
-        write_session_footer(cls.__name__)
-        os.chdir(cls.original_cwd)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -191,11 +164,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @pytest.mark.order(1)
     @step(1, "Precondition")
     def test_01_precondition(self):
-        """Kill wac/axe, clear logs, and remove stale reboot state."""
-        for proc in ("wac.exe", "axe.exe"):
-            subprocess.run(["taskkill", "/f", "/im", proc], capture_output=True)
-        time.sleep(1)
-
+        """Clear logs and remove stale reboot state."""
         # Clean entire testlog directory so previous run artefacts don't accumulate.
         self._cleanup_testlog_directory()
 
@@ -237,10 +206,8 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         - domain:   osconfig.yaml value, else '.' (local account)
         Controller raises OsConfigActionError immediately if password cannot be resolved.
         """
-        _osconfig_yaml = Path(__file__).parent / "Config" / "osconfig.yaml"
-        profile = load_profile(_osconfig_yaml)
         controller = OsConfigController(
-            profile=profile,
+            profile=self._osconfig_profile,
             state_manager=OsConfigStateManager(),
         )
         controller.apply_all()
@@ -263,6 +230,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         shutdown /r, and calls os._exit(0).  pytest resumes at
         test_05_cdi_before after the system comes back up (Run #2).
         """
+        ADKController.kill_processes()
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl.cleanup_dirs()
         logger.info("[TEST_04] WAC directories cleaned")
@@ -493,6 +461,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
         job_name = os.getenv("ADK_JOB_NAME", "S3S4S5_Workflow_Test")
         ctrl = ADKController(config={"log_path": self.log_path})
         ctrl._ui.take_screenshot(str(adk_dir), result_dir.name, tab_title=job_name)
+        ADKController.kill_processes()
 
         logger.info(
             "[TEST_12] Summary — errors=%d  warnings=%d  result_path=%s",

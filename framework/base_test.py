@@ -10,7 +10,7 @@ from pathlib import Path
 from framework.reboot_manager import RebootManager
 from framework.test_utils import setup_test_environment, cleanup_test_environment
 import lib.logger as logger
-from lib.logger import logConfig
+from lib.logger import logConfig, write_session_footer
 
 class BaseTestCase:
     """
@@ -139,7 +139,7 @@ class BaseTestCase:
         Args:
             session: The pytest ``Session`` object (``request.session``).
         """
-        if cls.runcard is None:
+        if getattr(cls, 'runcard', None) is None:
             return
         from lib.testtool import RunCard as RC
         try:
@@ -210,6 +210,77 @@ class BaseTestCase:
                     log.warning(f"[TEARDOWN] OsConfig post-reboot revert failed \u2014 {exc} (continuing)")
             else:
                 log.info("[TEARDOWN] No OsConfig snapshot on disk \u2014 skipping revert")
+
+    @classmethod
+    def _build_auto_login_cfg(cls, profile) -> dict:
+        """
+        Build the auto_login_config dict for RebootManager from an OsConfigProfile.
+        Returns an empty dict when auto admin logon is not enabled in the profile.
+
+        Args:
+            profile: An OsConfigProfile object (from profile_loader.load_profile).
+        """
+        if not getattr(profile, 'enable_auto_admin_logon', False):
+            return {}
+        import getpass
+        return {
+            "auto_login_username": profile.auto_login_username or getpass.getuser(),
+            "auto_login_password": (
+                profile.auto_login_password
+                or os.getenv("SSD_TESTKIT_AUTO_LOGIN_PASSWORD", "")
+            ),
+            "auto_login_domain": profile.auto_login_domain or ".",
+        }
+
+    @classmethod
+    def _resolve_log_path(cls, env_var: str, subdir: str, test_dir: "Path") -> str:
+        """
+        Resolve the log directory from an environment variable or the test directory.
+        Creates the directory and returns the resolved path as a string.
+
+        Args:
+            env_var:  Environment variable name to check (e.g. ``"ADK_LOG_DIR"``).
+            subdir:   Sub-directory appended to the env-var path or to
+                      ``test_dir / "testlog"`` when the variable is unset.
+            test_dir: Fallback base path (as returned by _setup_working_directory).
+        """
+        base = os.getenv(env_var)
+        resolved = str(Path(base) / subdir) if base else str(test_dir / "testlog" / subdir)
+        Path(resolved).mkdir(parents=True, exist_ok=True)
+        return resolved
+
+    @classmethod
+    def _standard_teardown(
+        cls,
+        session,
+        osconfig_yaml: "Path | None" = None,
+        osconfig_controller: "object | None" = None,
+        log=None,
+    ) -> None:
+        """
+        Standard fixture teardown shared across test cases.
+
+        Executes in order: _teardown_runcard, _revert_osconfig (when
+        osconfig_yaml or osconfig_controller is provided),
+        _teardown_reboot_manager, write_session_footer, os.chdir.
+
+        Args:
+            session:             pytest Session object (``request.session``).
+            osconfig_yaml:       Path to Config/osconfig.yaml.  Pass ``None``
+                                 to skip osconfig revert.
+            osconfig_controller: Live OsConfigController or ``None``
+                                 (post-reboot / not applied).
+            log:                 Logger instance; falls back to the module
+                                 logger when omitted.
+        """
+        cls._teardown_runcard(session)
+        if osconfig_yaml is not None or osconfig_controller is not None:
+            _log = log if log is not None else logger
+            cls._revert_osconfig(osconfig_yaml, osconfig_controller, _log)
+        cls._teardown_reboot_manager()
+        write_session_footer(cls.__name__)
+        os.chdir(cls.original_cwd)
+
     @staticmethod
     def _cleanup_testlog_directory():
         """
