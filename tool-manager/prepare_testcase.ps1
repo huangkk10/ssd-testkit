@@ -5,25 +5,21 @@
 .PARAMETER TestCase
   Test case name, e.g. stc1685_burnin
 
-.PARAMETER Force
-  Re-install even if tool is already installed
-
 .EXAMPLE
   .\tool-manager\prepare_testcase.ps1
   .\tool-manager\prepare_testcase.ps1 stc1685_burnin
-  .\tool-manager\prepare_testcase.ps1 stc1685_burnin -Force
 #>
 param(
-    [string]$TestCase = "",
-    [switch]$Force
+    [string]$TestCase = ""
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Root       = Split-Path $PSScriptRoot
+$Root         = Split-Path $PSScriptRoot
 $ChocoSource  = "https://nexus.internal/repository/choco-hosted"
 $ChocoApiBase = "https://nexus.internal/repository/choco-hosted"
+$NexusRawBase = "https://nexus.internal/repository"
 
 if (-not $TestCase) {
     $prepareYaml = Join-Path $PSScriptRoot "prepare.yaml"
@@ -60,6 +56,8 @@ for t in tools:
         'version':     reg.get('version', ''),
         'install_dir': install_dir,
         'binaries':    binaries,
+        'source_dir':  reg.get('source_dir', ''),
+        'nexus_path':  reg.get('nexus_path', ''),
     })
 print(json.dumps(result))
 "@
@@ -80,25 +78,28 @@ foreach ($entry in $entries) {
                           -OutFile $nupkgFile -UseBasicParsing
     }
 
-    # Step 2: 確保 binary 已安裝
-    $checkPath = if ($entry.binaries -and $entry.binaries.Count -gt 0) {
-        Join-Path $entry.install_dir $entry.binaries[0]
-    } else {
-        $entry.install_dir
+    # Step 1.5: 確保 bin\installers\ 有 installer 檔（供 chocolateyInstall.ps1 使用）
+    if ($entry.source_dir) {
+        $localInstallerDir = Join-Path $Root ($entry.source_dir -replace '/', '\')
+        if (-not (Test-Path $localInstallerDir)) {
+            if ($entry.nexus_path) {
+                $zipUrl = "$NexusRawBase/$($entry.nexus_path)"
+                $tmpZip = Join-Path $env:TEMP "$($entry.id)-installer.zip"
+                Write-Host "  [DOWNLOAD] installer $($entry.id)  $zipUrl" -ForegroundColor Yellow
+                $cred = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("admin:1.a"))
+                Invoke-WebRequest -Uri $zipUrl -Headers @{Authorization="Basic $cred"} `
+                                  -OutFile $tmpZip -UseBasicParsing
+                New-Item -ItemType Directory -Path $localInstallerDir -Force | Out-Null
+                Expand-Archive -Path $tmpZip -DestinationPath $localInstallerDir -Force
+                Remove-Item $tmpZip -Force
+            } else {
+                Write-Warning "  [WARN] $($entry.id): bin\installers missing and no nexus_path defined"
+            }
+        } else {
+            Write-Host "  [SKIP] installer $($entry.id) (bin\installers already present)" -ForegroundColor DarkGray
+        }
     }
 
-    if ((Test-Path $checkPath) -and -not $Force) {
-        Write-Host "  [SKIP] $($entry.id) ($checkPath)" -ForegroundColor DarkGray
-        continue
-    }
-
-    Write-Host "  [INSTALL] $($entry.id)  source: $nupkgDir" -ForegroundColor Cyan
-    $chocoArgs = @("install", $entry.id, "--source", $nupkgDir, "-y", "--no-progress")
-    if ($Force) { $chocoArgs += "--force" }
-    & choco @chocoArgs
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "choco install $($entry.id) exited with code $LASTEXITCODE"
-    }
 }
 
 Write-Host ""
