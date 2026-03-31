@@ -52,14 +52,13 @@ packaging/
 ├── README.md               # 本文件
 ├── build/                  # PyInstaller 中間產物（gitignore）
 ├── dist/                   # 打包輸出目錄（gitignore）
-│   └── stc1685_burnin_v1.0.0/
+│   └── SSD_TestKit_20260330/
 │       ├── RunTest.exe
+│       ├── pytest.ini
 │       ├── bin/
-│       ├── Config/
-│       ├── tests/
-│       └── pytest.ini
+│       └── tests/
 └── release/                # ZIP 壓縮包輸出（gitignore）
-    └── stc1685_burnin_v1.0.0.zip
+    └── SSD_TestKit_20260330.zip
 ```
 
 ---
@@ -67,32 +66,30 @@ packaging/
 ## 3. 設定 build_config.yaml
 
 ```yaml
-# 版本號（附加到輸出資料夾名稱）
+# 版本號
 version: "1.0.0"
 
 # 可執行檔名稱（生成 RunTest.exe）
 project_name: "RunTest"
 
-# 輸出資料夾基礎名稱（組合為 stc1685_burnin_v1.0.0）
-# 不填則自動使用 test_projects 路徑的最後一段
-output_folder_name: "stc1685_burnin"
+# Release 命名（dist 子資料夾名稱 與 ZIP 檔名）
+# 支援 {date} 佔位符，替換為執行當日日期（YYYYMMDD）
+# 留空則使用預設命名：{test_root 最後一段}_v{version}
+release_name: "SSD_TestKit_{date}"
 
-# Release 命名覆寫（同時影響 dist 子資料夾名稱和 ZIP 檔名）
-# 若設定此欄位，會取代預設的 "{output_folder_name}_v{version}" 命名規則。
-# 支援 {date} 佔位符，會自動替換為執行當日的日期（格式：YYYYMMDD）。
-#
-# 範例：
-#   release_name: "STC-1691_S3_S4_Cycling_test_{date}"
-#     → dist/STC-1691_S3_S4_Cycling_test_20260203/
-#     → release/STC-1691_S3_S4_Cycling_test_20260203.zip
-#
-#   release_name: ""   ← 留空則使用預設命名
-release_name: ""
+# 自動打包此目錄下所有含 test_main.py 的子資料夾
+# 新增 testcase 資料夾後不需要修改此檔，會自動被發現
+test_root: tests/integration/test_case
 
-# 要打包的測試專案路徑（相對於專案根目錄）
-test_projects:
-  - tests/integration/client_pcie_lenovo_storagedv/stc1685_burnin
+# RunTest.exe 不帶 --test 參數執行時的預設 testcase
+default_test: tests/integration/test_case/stc2557_adk_s3s4s5
 ```
+
+> 若需要只打包特定 testcase（舊行為），可改用 `test_projects` 明確列出：
+> ```yaml
+> test_projects:
+>   - tests/integration/test_case/stc1685_burnin
+> ```
 
 ---
 
@@ -108,6 +105,7 @@ build.bat
 | 用法 | 說明 |
 |------|------|
 | `build.bat` | 一般打包（重用現有 spec） |
+| `build.bat --check` | 只跑打包前確認，不執行打包 |
 | `build.bat --clean` | 先清除 `dist/` 和 `build/` 再打包 |
 | `build.bat --no-release` | 跳過 ZIP 壓縮包的建立 |
 | `build.bat --spec-only` | 只產生 spec 檔，不編譯 EXE |
@@ -129,10 +127,11 @@ python build.py --no-release
 ## 5. build.py 參數說明
 
 ```
-usage: build.py [--clean] [--no-release] [--spec-only] [--new-spec]
+usage: build.py [--check] [--clean] [--no-release] [--spec-only] [--new-spec]
                 [--show-config] [--config CONFIG]
 
 選項：
+  --check         打包前確認（pre-flight check）：驗證路徑、顯示打包內容預覽後退出，不執行打包
   --clean         打包前先刪除 dist/ 和 build/ 目錄
   --no-release    跳過建立 ZIP 壓縮包
   --spec-only     只產生 run_test.spec，不執行 PyInstaller
@@ -149,38 +148,64 @@ usage: build.py [--clean] [--no-release] [--spec-only] [--new-spec]
 
 ```
 packaging/dist/
-└── stc1685_burnin_v1.0.0/       ← 每次 build 都會先刪除再重建
-    ├── RunTest.exe               # 主程式（onefile 模式，無需 Python）
-    ├── pytest.ini                # pytest 設定（rootdir 錨點）
-    ├── bin/                      # 測試工具（SmiCli、BurnIn 等）
-    ├── Config/
-    │   └── Config.json           # 測試配置
+└── SSD_TestKit_20260330/              ← 每次 build 都會先刪除再重建
+    ├── RunTest.exe                    # 主程式（onefile 模式，無需 Python）
+    ├── pytest.ini                     # pytest 設定（rootdir 錨點）
+    ├── bin/                           # 工具（來自專案根目錄 ssd-testkit/bin/）
+    │   ├── chocolatey/
+    │   └── installers/
+    │       ├── BurnIn/
+    │       ├── CrystalDiskInfo/
+    │       ├── PHM/
+    │       ├── SmiCli/
+    │       ├── SmiWinTools/
+    │       └── WindowsADK/
     └── tests/
         └── integration/
-            └── client_pcie_lenovo_storagedv/
-                └── stc1685_burnin/
+            └── test_case/             ← test_root 下所有 testcase 自動打包
+                ├── stc1685_burnin/
+                │   ├── test_main.py
+                │   ├── conftest.py
+                │   └── Config/
+                ├── stc2557_adk_s3s4s5/    ← default_test（無 --test 時的預設）
+                │   ├── test_main.py
+                │   ├── conftest.py
+                │   └── Config/
+                ├── stc2562_modern_standby/
+                │   ├── test_main.py
+                │   ├── conftest.py
+                │   └── Config/
+                └── stc547_intel_rvp_modern_standby/
+                    ├── test_main.py
                     ├── conftest.py
-                    └── test_*.py
+                    └── Config/
 
 packaging/release/
-└── stc1685_burnin_v1.0.0.zip    # 可交付的壓縮包（約 344 MB）
+└── SSD_TestKit_20260330.zip           # 可交付的壓縮包
 ```
+
+> **新增 testcase 不需要改任何設定**：只要在 `tests/integration/test_case/` 下建立含 `test_main.py` 的資料夾，下次打包時會自動包入。
 
 ---
 
 ## 7. 使用打包後的程式
 
 ```powershell
-cd dist\stc1685_burnin_v1.0.0
+cd dist\SSD_TestKit_20260330
 
-# 執行所有測試
+# 執行預設 testcase（build_config.yaml 的 default_test）
 .\RunTest.exe
 
-# 顯示說明
-.\RunTest.exe --help
+# 執行指定 testcase
+.\RunTest.exe --test tests\integration\test_case\stc1685_burnin\test_main.py
+.\RunTest.exe --test tests\integration\test_case\stc2557_adk_s3s4s5\test_main.py
 
 # 試跑（只顯示 pytest 指令，不實際執行）
 .\RunTest.exe --dry-run
+.\RunTest.exe --test tests\integration\test_case\stc1685_burnin\test_main.py --dry-run
+
+# 顯示說明
+.\RunTest.exe --help
 
 # 顯示路徑資訊（偵錯用）
 .\RunTest.exe --show-paths
