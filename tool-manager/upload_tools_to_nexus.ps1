@@ -23,8 +23,8 @@
   Upload target: POST $NexusUrl/service/rest/v1/components?repository=choco-hosted
 #>
 param(
-    [string]$NexusUrl  = "https://nexus.internal",
-    [string]$Repo      = "choco-hosted",
+    [string]$NexusUrl  = "https://10.252.170.171",
+    [string]$Repo      = "choco-hosted-nas",
     [string]$NexusUser = "admin",
     [string]$NexusPass = "1.a"
 )
@@ -84,10 +84,10 @@ foreach ($entry in $entries) {
     $sizeMB = [math]::Round((Get-Item $nupkg).Length / 1MB, 2)
     Write-Host "  [UPLOAD] $id $version  (${sizeMB} MB)" -ForegroundColor Cyan
 
-    $output = & curl.exe -sk -u "${NexusUser}:${NexusPass}" `
-        -X POST $uploadUrl `
+    $output = & curl.exe -sk --ssl-no-revoke --noproxy "10.252.170.171" -u "${NexusUser}:${NexusPass}" `
         -F "nuget.asset=@$nupkg" `
-        -w "`nHTTP_CODE:%{http_code}" 2>&1
+        -w "`nHTTP_CODE:%{http_code}" `
+        $uploadUrl 2>&1
 
     $httpCode = ($output | Select-String "HTTP_CODE:(\d+)").Matches[0].Groups[1].Value
 
@@ -114,7 +114,7 @@ foreach ($entry in $entries) {
 $NasZipBase = "\\10.250.0.1\mdt\Team\PQ1-3\tool\ssd-testkit-source\windows\zip"
 
 Write-Host ""
-Write-Host "── Installer zips → NAS ──────────────────────────────────────" -ForegroundColor White
+Write-Host "== Installer zips -> NAS ==================================" -ForegroundColor White
 
 $pyScript2 = @"
 import sys, yaml, json

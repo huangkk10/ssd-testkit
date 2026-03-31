@@ -17,8 +17,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $Root         = Split-Path $PSScriptRoot
-$ChocoSource  = "https://nexus.internal/repository/choco-hosted"
-$ChocoApiBase = "https://nexus.internal/repository/choco-hosted"
+$ChocoSource  = "https://10.252.170.171/repository/choco-hosted-nas"
+$ChocoApiBase = "https://10.252.170.171/repository/choco-hosted-nas"
 $NasZipBase   = "\\10.250.0.1\mdt\Team\PQ1-3\tool\ssd-testkit-source\windows\zip"
 
 if (-not $TestCase) {
@@ -73,9 +73,9 @@ foreach ($entry in $entries) {
         $url = "$ChocoApiBase/$($entry.id)/$($entry.version)"
         Write-Host "  [DOWNLOAD] $($entry.id) $($entry.version)" -ForegroundColor Yellow
         New-Item -ItemType Directory -Path $nupkgDir -Force | Out-Null
-        $cred = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("admin:1.a"))
-        Invoke-WebRequest -Uri $url -Headers @{Authorization="Basic $cred"} `
-                          -OutFile $nupkgFile -UseBasicParsing
+        & curl.exe -sk --ssl-no-revoke --noproxy $ChocoApiBase `
+            -u "admin:1.a" -L -o $nupkgFile $url
+        if ($LASTEXITCODE -ne 0) { Write-Warning "  [WARN] $($entry.id): nupkg download failed (curl exit $LASTEXITCODE)" }
     }
 
     # Step 1.5: 確保 bin\installers\ 有 installer 檔（供 chocolateyInstall.ps1 使用）
