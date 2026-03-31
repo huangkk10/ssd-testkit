@@ -614,7 +614,15 @@ exe = EXE(
                 print(f"[WARNING] Test project not found: {tp}")
                 continue
 
-            # Config stays inside testcase dir (Path(__file__).parent / "Config" still works)
+            # Test source files
+            test_rel_path = tp_path.relative_to(self.project_root)
+            test_dst = target_dist_dir / test_rel_path
+            if test_dst.exists():
+                shutil.rmtree(test_dst)
+            shutil.copytree(tp_path, test_dst, ignore=ignore_test_files)
+            print(f"[OK] Copied test files → dist/{subfolder_name}/{test_rel_path}")
+
+            # Config stays inside testcase dir (copy AFTER test files to avoid rmtree)
             config_src = tp_path / 'Config'
             if config_src.exists():
                 tp_rel = tp_path.relative_to(self.project_root)
@@ -623,14 +631,6 @@ exe = EXE(
                     shutil.rmtree(config_dst_tp)
                 shutil.copytree(config_src, config_dst_tp)
                 print(f"[OK] Copied {tp}/Config/ → dist/{subfolder_name}/{tp_rel}/Config")
-
-            # Test source files
-            test_rel_path = tp_path.relative_to(self.project_root)
-            test_dst = target_dist_dir / test_rel_path
-            if test_dst.exists():
-                shutil.rmtree(test_dst)
-            shutil.copytree(tp_path, test_dst, ignore=ignore_test_files)
-            print(f"[OK] Copied test files → dist/{subfolder_name}/{test_rel_path}")
 
             # Ensure __init__.py / conftest.py exist at every ancestor package level
             parent = tp_path.parent
