@@ -164,9 +164,17 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @pytest.mark.order(1)
     @step(1, "Precondition")
     def test_01_precondition(self):
-        """Clear logs and remove stale reboot state."""
-        # Clean entire testlog directory so previous run artefacts don't accumulate.
-        self._cleanup_testlog_directory()
+        """Kill wac/axe and remove stale reboot state.
+
+        NOTE: testlog cleanup is intentionally omitted here — RunCard.start_test()
+        has already written Runcard.ini to testlog during setup_test_class.
+        Cleaning testlog again would delete that file.  The cleanup before
+        RunCard initialisation is handled by setup_test_class (via
+        _setup_working_directory → BaseTestCase.setup_teardown_class).
+        """
+        for proc in ("wac.exe", "axe.exe"):
+            subprocess.run(["taskkill", "/f", "/im", proc], capture_output=True)
+        time.sleep(1)
 
         clear_log_files()
         Path(self.log_path).mkdir(parents=True, exist_ok=True)
