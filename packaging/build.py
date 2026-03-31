@@ -510,26 +510,44 @@ exe = EXE(
         required_tools = self._collect_required_tool_ids()
         if required_tools:
             print(f"[INFO] Required tools from tools.yaml: {sorted(required_tools)}")
+            # Build tool ID → installers/ folder mapping from chocolateyInstall.ps1
+            tool_installer_map = self._build_tool_installer_map()
+            required_installer_folders = {
+                tool_installer_map[tid] for tid in required_tools if tid in tool_installer_map
+            }
+            if required_installer_folders:
+                print(f"[INFO] Required installer folders: {sorted(required_installer_folders)}")
         else:
             print("[INFO] No tools.yaml found — including all bin/ packages")
+            tool_installer_map = {}
+            required_installer_folders = set()
 
-        def _make_bin_ignore(required):
-            """Return an ignore function that filters bin/chocolatey/packages/."""
+        def _make_bin_ignore(required_pkg, required_inst):
+            """Return an ignore function that filters bin/chocolatey/packages/ and bin/installers/."""
             def _ignore(dir_path, names):
                 p = Path(dir_path)
-                # Only filter inside the packages/ folder whose parent is chocolatey/
-                if p.name == 'packages' and p.parent.name == 'chocolatey' and required:
+                # Filter bin/chocolatey/packages/  (folder name == tool ID)
+                if p.name == 'packages' and p.parent.name == 'chocolatey' and required_pkg:
                     skip = [
                         name for name in names
-                        if (p / name).is_dir() and name not in required
+                        if (p / name).is_dir() and name not in required_pkg
                     ]
                     if skip:
                         print(f"  [SKIP] bin/chocolatey/packages/{', '.join(sorted(skip))} (not in tools.yaml)")
                     return skip
+                # Filter bin/installers/  (folder name != tool ID, use resolved map)
+                if p.name == 'installers' and p.parent.name == 'bin' and required_inst:
+                    skip = [
+                        name for name in names
+                        if (p / name).is_dir() and name not in required_inst
+                    ]
+                    if skip:
+                        print(f"  [SKIP] bin/installers/{', '.join(sorted(skip))} (not in tools.yaml)")
+                    return skip
                 return ignore_venv(dir_path, names)
             return _ignore
 
-        bin_ignore = _make_bin_ignore(required_tools)
+        bin_ignore = _make_bin_ignore(required_tools, required_installer_folders)
 
         bin_sources = []
         project_bin = self.project_root / 'bin'
@@ -638,6 +656,39 @@ exe = EXE(
         for tp in test_projects:
             print(f"            +-- {Path(tp).name}/")
     
+    def _build_tool_installer_map(self) -> dict:
+        """
+        Walk bin/chocolatey/packages/{tool_id}/*/tools/chocolateyInstall.ps1 and
+        extract the bin/installers/{FolderName} path to build a mapping:
+            {tool_id: installer_folder_name}
+        e.g. {'cdi': 'CrystalDiskInfo', 'burnin': 'BurnIn', 'windows-adk': 'WindowsADK'}
+        """
+        import re
+        mapping: dict = {}
+        packages_dir = self.project_root / 'bin' / 'chocolatey' / 'packages'
+        if not packages_dir.exists():
+            return mapping
+        for tool_dir in packages_dir.iterdir():
+            if not tool_dir.is_dir() or tool_dir.name.startswith('.'):
+                continue
+            tool_id = tool_dir.name
+            # Check version subdirs (sorted descending = newest first)
+            for version_dir in sorted(tool_dir.iterdir(), reverse=True):
+                if not version_dir.is_dir():
+                    continue
+                install_script = version_dir / 'tools' / 'chocolateyInstall.ps1'
+                if not install_script.exists():
+                    continue
+                try:
+                    content = install_script.read_text(encoding='utf-8', errors='ignore')
+                    m = re.search(r'bin[/\\]installers[/\\]([^\/\\\$\s"\' ]+)', content)
+                    if m:
+                        mapping[tool_id] = m.group(1)
+                        break
+                except Exception:
+                    pass
+        return mapping
+
     def _collect_required_tool_ids(self) -> set:
         """
         Read Config/tools.yaml from the default_test testcase and return the
