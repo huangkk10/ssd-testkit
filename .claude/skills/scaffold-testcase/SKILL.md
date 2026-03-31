@@ -1,37 +1,42 @@
 ````skill
 ---
 name: scaffold-testcase
-description: Scaffold a new integration test case under tests/integration/<client>/<stcXXXX_name>/ using STC-1685 as the standard template. Use when user asks to create a new test case, add an integration test, write a test script for a specific STC, or mentions 建 test case, 新增測試, 寫測試腳本, 建立 STC, or similar. Also provides guidance on test step ordering, pytest markers, RunCard integration, concurrent controller usage, and Config.json design.
+description: Scaffold a new integration test case under tests/integration/test_case/<stcXXXX_name>/ using STC-2557 as the canonical template. Use when user asks to create a new test case, add an integration test, write a test script for a specific STC, or mentions 建 test case, 新增測試, 寫測試腳本, 建立 STC, or similar. Also provides guidance on test step ordering, fixed steps 01-04, pytest markers, RunCard integration, osconfig.yaml, tools.yaml, Runcard.ini, and Config/ design.
 ---
 
 # Scaffold Integration Test Case Skill
 
-Generate a new integration test case under `tests/integration/<client>/<stcXXXX_name>/`
-following the standard architecture defined by `tests/integration/client_pcie_lenovo_storagedv/stc1685_burnin/`.
+Generate a new integration test case under `tests/integration/test_case/<stcXXXX_name>/`
+following the standard architecture defined by `tests/integration/test_case/stc2557_adk_s3s4s5/`.
+
+> **Canonical template:** `tests/integration/test_case/stc2557_adk_s3s4s5/`
+> This is the **reference implementation** for all new test cases. It demonstrates
+> the complete fixed-steps pattern (01–04), multi-file Config/, setup_test_class,
+> and _standard_teardown. Read it before scaffolding any new test.
 
 ---
 
 ## Standard Directory Structure
 
 ```
-tests/integration/<client>/<stcXXXX_name>/
+tests/integration/test_case/<stcXXXX_name>/
 ├── Config/
-│   └── Config.json           # Tool path + execution params
-├── bin/                      # Test executables (committed or pre-placed)
-│   └── <ToolDir>/
-│       └── <executable>
+│   ├── Config.json           # Tool paths + execution params
+│   ├── osconfig.yaml         # OS configuration (power, tasks, auto-login)
+│   └── tools.yaml            # Tool installation declarations
 ├── conftest.py               # testcase_config fixture (local)
 ├── test_main.py              # Main test class (all steps)
 ├── README.md                 # Test overview and run instructions
 └── __init__.py               # Empty, required for pytest discovery
 ```
 
-### Client / STC naming conventions
+### STC naming convention
 
 | Part | Rule | Example |
 |------|------|---------|
-| `<client>` | `client_<interface>_<brand>_<project>` | `client_pcie_lenovo_storagedv` |
-| `<stcXXXX_name>` | `stc<id>_<short_description>` (lowercase, underscores) | `stc1685_burnin` |
+| `<stcXXXX_name>` | `stc<id>_<short_description>` (lowercase, underscores) | `stc2557_adk_s3s4s5` |
+
+> **Note:** New test cases go directly under `tests/integration/test_case/` — no client subdirectory.
 
 ---
 
@@ -43,14 +48,15 @@ Ask the user (or parse from description):
 
 | Field | Question |
 |-------|---------|
-| `stc_id` | STC 編號？（如 `1685`） |
-| `short_name` | 測試簡稱（snake_case）？（如 `burnin`） |
-| `client` | 客戶/平台目錄名稱？（如 `client_pcie_lenovo_storagedv`） |
+| `stc_id` | STC 編號？（如 `2557`） |
+| `short_name` | 測試簡稱（snake_case）？（如 `adk_s3s4s5`） |
 | `description` | 這個測試做什麼？（一句話說明） |
-| `tools_used` | 用到哪些 lib/testtool 的 Controller？（如 BurnIn, CDI, SmartCheck） |
-| `steps` | 有哪些測試步驟？（step 1, 2, 3...） |
-| `has_concurrent` | 是否有並行測試步驟？（如 BurnIN + SmartCheck 同時跑） |
-| `needs_reboot` | 測試中是否需要重開機？ |
+| `tools_used` | 用到哪些 lib/testtool 的 Controller？（如 CDI, ADKController） |
+| `steps` | 步驟 5 開始的自訂步驟有哪些？（注意：步驟 1–4 固定，見下方） |
+| `has_concurrent` | 是否有並行測試步驟？（如兩個 Controller 同時跑） |
+| `needs_reboot` | 測試中是否需要重開機（steps 5+）？ |
+
+> **注意**：步驟 01~04 是**固定不變**的，所有 testcase 都要包含，見下方「Fixed Workflow Steps 01–04」。
 
 ### Step 2 — Generate Files
 
@@ -58,91 +64,209 @@ Generate each file in this order:
 
 1. `__init__.py` — empty
 2. `Config/Config.json` — tool paths + execution parameters
-3. `conftest.py` — `testcase_config` session fixture
-4. `test_main.py` — main test class with all steps
-5. `README.md` — overview, structure, run instructions
+3. `Config/osconfig.yaml` — OS configuration settings (copy from stc2557 and modify)
+4. `Config/tools.yaml` — tool installation declarations
+5. `conftest.py` — `testcase_config` session fixture
+6. `test_main.py` — main test class with all steps
+7. `README.md` — overview, structure, run instructions
 
 **For complete file templates**, see `references/testcase_templates.md`
-**For a complete worked example**, see `references/stc1685_example.md`
+**For complete worked example**, see `tests/integration/test_case/stc2557_adk_s3s4s5/`
 **For structure rules**, see `references/testcase_structure.md`
-
-### Step 2.5 — Copy Test Tools to bin/
-
-**Important**: For each tool used in the test case, copy its executable files to the test case's `/bin` directory:
-
-| Tool Controller | Source Path | Dest Path (in test case bin/) | Notes |
-|---|---|---|---|
-| BurnIN | `./bin/SmiWinTools/bin/x64/burnin/` | `./bin/SmiWinTools/bin/x64/burnin/` | Full directory with DLLs, INI configs |
-| CDI | `./bin/SmiWinTools/bin/x64/DiskInfo/` | `./bin/SmiWinTools/bin/x64/DiskInfo/` | Executable + companion DLLs |
-| SleepStudy | System path or embedded | `./bin/sleepstudy/` | Analyze tool; may use system source |
-| PwrTest | `./bin/SmiWinTools/bin/x64/pwrtest/` | `./bin/SmiWinTools/bin/x64/pwrtest/` | OS-specific subdirs (win11, win10) |
-| SmiCli2 | `./bin/SmiWinTools/bin/x64/` | `./bin/SmiWinTools/bin/x64/` | CLI front-end for SSD queries |
-| SmartCheck | `./bin/SmiWinTools/bin/x64/smartcheck/` | `./bin/SmiWinTools/bin/x64/smartcheck/` | SMART health validator |
-| OsReboot | Framework built-in | (no copy needed) | Uses Windows API |
-| OsConfig | Framework built-in | (no copy needed) | Uses Windows Registry |
-| PHM Installer | Provide via `Config.json` installer path | Copy to `./bin/phm_installer/` | Extract installer MSI if needed |
-
-**Workflow:**
-```
-For each tool_used in test_tools:
-  1. Identify source dir from workspace (e.g., ./bin/SmiWinTools/...)
-  2. Create target dir in test case: {test_case_dir}/bin/SmiWinTools/... (same structure)
-  3. Copy files recursively (shutil.copytree or PowerShell Copy-Item)
-  4. Update Config.json paths to use relative ./bin/ paths
-```
-
-**Example: STC-2562 (Modern Standby test)**
-```powershell
-# Test uses: PwrTest + SleepStudy + CDI + SmiCli2
-Source:     C:\automation\ssd-testkit\bin\SmiWinTools\bin\x64\
-Dest:       C:\automation\ssd-testkit\tests\integration\client_pcie_lenovo_storagedv\stc2562_modern_standby\bin\SmiWinTools\bin\x64\
-
-# Copy pwrtest, sleepstudy, DiskInfo, SmiCli2.exe, plus any supporting DLLs
-Copy-Item -Path "C:\automation\ssd-testkit\bin\SmiWinTools\bin\x64\pwrtest" `
-          -Destination ".\stc2562_modern_standby\bin\SmiWinTools\bin\x64\" -Recurse -Force
-Copy-Item -Path "C:\automation\ssd-testkit\bin\SmiWinTools\bin\x64\DiskInfo" `
-          -Destination ".\stc2562_modern_standby\bin\SmiWinTools\bin\x64\" -Recurse -Force
-Copy-Item -Path "C:\automation\ssd-testkit\bin\SmiWinTools\bin\x64\SmiCli2.exe" `
-          -Destination ".\stc2562_modern_standby\bin\SmiWinTools\bin\x64\" -Force
-
-# Config.json then uses
-{
-  "pwrtest": {
-    "pwrtest_base_dir": "./bin/SmiWinTools/bin/x64/pwrtest",
-    ...
-  },
-  "cdi": {
-    "ExePath": "./bin/SmiWinTools/bin/x64/DiskInfo/DiskInfo.exe",
-    ...
-  },
-  "smicli_executable": "./bin/SmiWinTools/bin/x64/SmiCli2.exe"
-}
-```
 
 ### Step 3 — Verify
 
 ```powershell
 # 1. Check for syntax errors
-python -m py_compile tests/integration/<client>/<stcXXXX_name>/test_main.py
+python -m py_compile tests/integration/test_case/<stcXXXX_name>/test_main.py
 
-# 2. Verify bin/ directory contents (all required tools present)
-Test-Path tests/integration/<client>/<stcXXXX_name>/bin/SmiWinTools/bin/x64/pwrtest
-Test-Path tests/integration/<client>/<stcXXXX_name>/bin/SmiWinTools/bin/x64/DiskInfo
-# ... etc for other tools
+# 2. Run collection test (discovers test methods without executing them)
+python -m pytest tests/integration/test_case/<stcXXXX_name>/test_main.py --collect-only
 
-# 3. Run collection test (discovers test methods without executing them)
-python -m pytest tests/integration/<client>/<stcXXXX_name>/test_main.py --collect-only
-
-# Full run (requires real executables in bin/ and CONFIG)
-python -m pytest tests/integration/<client>/<stcXXXX_name>/test_main.py -v -s
+# Full run (requires hardware + installed tools)
+python -m pytest tests/integration/test_case/<stcXXXX_name>/test_main.py -v -s
 ```
 
 **Verification checklist:**
 - [ ] `test_main.py` syntax is valid (py_compile succeeds)
-- [ ] All test methods (test_01, test_02, ...) are collected
-- [ ] `/bin` directory contains all tools referenced in Config.json
-- [ ] Config.json paths (e.g., `"./bin/SmiWinTools/..."`) match actual file locations
+- [ ] All test methods (test_01 through test_NN) are collected
+- [ ] `Config/Config.json`, `Config/osconfig.yaml`, `Config/tools.yaml` all exist
 - [ ] No missing imports or fixtures
+
+---
+
+## Fixed Workflow Steps 01–04
+
+**Every** test case must include these four steps unchanged. They establish a clean,
+reproducible environment before any test-specific logic begins.
+
+### test_01 — Precondition
+
+```python
+@pytest.mark.order(1)
+@step(1, "Precondition")
+def test_01_precondition(self):
+    """Clean testlog (preserve Runcard.ini) and remove stale reboot state."""
+    self._cleanup_testlog_directory()          # clears testlog/, preserves Runcard.ini
+    clear_log_files()                          # clears log.txt / log.err
+    Path(self.log_path).mkdir(parents=True, exist_ok=True)
+
+    # Remove stale reboot state so a re-run always starts fresh.
+    state_file = Path(RebootManager.STATE_FILE)
+    if state_file.exists():
+        state_file.unlink()
+        self.reboot_mgr.state = self.reboot_mgr._load_state()
+        logger.info(f"[TEST_01] Removed stale reboot state: {state_file}")
+```
+
+### test_02 — Install Tools
+
+```python
+@pytest.mark.order(2)
+@step(2, "Install tools")
+def test_02_install_tools(self):
+    """Install tools declared in Config/tools.yaml."""
+    _tools_yaml = Path(__file__).parent / "Config" / "tools.yaml"
+    ToolInstaller(_tools_yaml).install_all()
+    logger.info("[TEST_02] Tools installed")
+```
+
+### test_03 — Apply OS Configuration
+
+```python
+@pytest.mark.order(3)
+@step(3, "Apply OS configuration")
+def test_03_apply_osconfig(self):
+    """Apply OS configuration from Config/osconfig.yaml."""
+    controller = OsConfigController(
+        profile=self._osconfig_profile,
+        state_manager=OsConfigStateManager(),
+    )
+    controller.apply_all()
+    TestSTC<XXXX><Name>._osconfig_controller = controller
+    logger.info("[TEST_03] OsConfig applied successfully")
+```
+
+### test_04 — Clean Environment + Reboot
+
+```python
+@pytest.mark.order(4)
+@step(4, "Clean Environment")
+def test_04_clean_environment(self, request):
+    """Remove stale tool dirs, then reboot for a clean platform environment."""
+    # Kill and clean tool-specific dirs here (tool-specific, adapt as needed)
+    # e.g.: SomeController.kill_processes(); ctrl.cleanup_dirs()
+
+    # REQUIRED: pre-mark BEFORE setup_reboot() calls os._exit(0)
+    self.reboot_mgr.pre_mark_completed(request.node.name)
+
+    self.reboot_mgr.setup_reboot(
+        delay=10,
+        reason="test_04_clean_environment: clean platform environment",
+        test_file=__file__,
+    )
+    # os._exit(0) called inside setup_reboot — code below never executes
+```
+
+> **Steps 5+ are test-specific.** Start numbering custom steps from 5.
+> Reference implementation: `tests/integration/test_case/stc2557_adk_s3s4s5/test_main.py`
+
+---
+
+## Config/ Files Reference
+
+### Config.json
+
+Contains tool executable paths and execution parameters. Loaded automatically by
+`testcase_config.tool_config` (lazy JSON parse).
+
+```json
+{
+  "<tool1>": {
+    "ExePath": "C:\\tools\\<Tool>\\<exe>.exe",
+    "LogPath": "./testlog/<ToolLog>",
+    "ScreenShotDriveLetter": "C:"
+  },
+  "adk": {
+    "bpfs_num_iters": 4,
+    "bpfb_num_iters": 4,
+    "standby_num_iters": 4,
+    "hibernate_num_iters": 4
+  },
+  "smart_check": {
+    "drive_letter": "C:",
+    "no_increase_attributes": ["Unsafe Shutdowns"],
+    "must_be_zero_attributes": []
+  }
+}
+```
+
+### osconfig.yaml
+
+Declares which OS-level settings to apply in `test_03_apply_osconfig`.
+Copy from `tests/integration/test_case/stc2557_adk_s3s4s5/Config/osconfig.yaml` and
+adjust flags for the new testcase.
+
+Key fields (all default to `false`/disabled unless set):
+
+| Field | What it does |
+|-------|-------------|
+| `disable_system_restore` | Disables C:\\ system restore via `Disable-ComputerRestore` |
+| `disable_memory_diagnostic_tasks` | Disables `\Microsoft\Windows\MemoryDiagnostic\RunFullMemoryDiagnostic` |
+| `disable_mcafee_tasks` | Disables McAfee scheduled tasks (no-op if not installed) |
+| `disable_fast_startup` | Sets `HiberbootEnabled=0` in registry |
+| `enable_hibernation` | Runs `powercfg /hibernate on` |
+| `power_plan` | Switches power plan (`"balanced"` / `"high performance"`) |
+| `enable_auto_admin_logon` | Enables auto admin logon (requires password resolution) |
+| `auto_login_password` | Password for auto-login; leave empty and set env `SSD_TESTKIT_AUTO_LOGIN_PASSWORD` |
+| `disable_test_signing` | Runs `bcdedit /set testsigning off` |
+| `disable_uac` | Sets `EnableLUA=0` in registry |
+
+### tools.yaml
+
+Declares tools to install via `ToolInstaller`. Tools listed under `phase: pre_runcard`
+are installed during `setup_test_class` (before RunCard init). Others are installed
+by `test_02_install_tools`.
+
+```yaml
+tools:
+  - id: smicli
+    reinstall: false
+    phase: pre_runcard    # RunCard needs SmiCli2.exe to collect DUT info
+
+  - id: windows-adk
+    reinstall: false
+
+  - id: cdi
+    reinstall: false
+```
+
+Tool IDs correspond to entries in `tool-manager/tools-registry.yaml`.
+
+---
+
+## Runcard.ini
+
+`Runcard.ini` is the test result record written by `RunCard.start_test()`. It is
+stored under `./testlog/Runcard.ini` (the `TESTLOG_DIR` path).
+
+**How it is generated:**
+1. `setup_test_class` calls `cls._init_runcard(runcard_params)` → `RunCard.start_test()`
+2. `start_test()` collects DUT info via SmiCli and writes `Runcard.ini` to `./testlog/`
+3. At teardown, `cls._teardown_runcard(request.session)` writes PASS/FAIL into the file
+
+**Why it is preserved during cleanup:**
+`_cleanup_testlog_directory()` in `test_01_precondition` skips `Runcard.ini` so it
+is not destroyed before the test finishes:
+
+```python
+# In BaseTestCase._cleanup_testlog_directory:
+if item.name == 'Runcard.ini':
+    continue  # preserve RunCard.ini written by start_test()
+```
+
+`Runcard.ini` contains: `[Info]` (case ID, script version, DUT model/FW/SN)
+and `[Result]` (PASS/FAIL, start/end time).
 
 ---
 
@@ -206,62 +330,71 @@ pytest session
     └── mark_completed(test_name)                       ← auto-mark
 ```
 
-#### Canonical Template
+#### Canonical Template (stc2557 pattern)
+
+The stc2557 fixture is the reference. Copy and adapt for each new testcase:
 
 ```python
+# Required imports in test_main.py:
+# from framework.reboot_manager import RebootManager
+# from lib.logger import get_module_logger, clear_log_files
+# from lib.testtool.tool_installer import ToolInstaller
+# from lib.testtool.windows_adk.version_adapter import VersionAdapter  # if needed
+# from lib.testtool.osconfig import OsConfigController
+# from lib.testtool.osconfig.state_manager import OsConfigStateManager
+# from lib.testtool.osconfig.profile_loader import load_profile
+
+_CONFIG_DIR = Path(__file__).parent / "Config"
+
 @pytest.fixture(scope="class", autouse=True)
 def setup_test_class(self, request, testcase_config, runcard_params):
-    """Load configuration and initialize test class (runs before all tests)."""
+    """Initialise working directory, RebootManager, OsConfig profile, and RunCard."""
     cls = request.cls
     cls.original_cwd = os.getcwd()
 
     # ── 1. Working directory + logging ────────────────────────────────
-    # FIRST — all relative paths anchor to this directory.
-    # Handles packaged (path_manager.app_dir) vs dev (Path(__file__).parent) automatically.
     test_dir = cls._setup_working_directory(__file__)
 
     # ── 2. Config ──────────────────────────────────────────────────────
     cls.config = testcase_config.tool_config   # parsed Config/Config.json
-    cls.bin_path = testcase_config.bin_directory
+    cls.log_path = cls._resolve_log_path("TOOL_LOG_DIR", "subdir_name", test_dir)
 
-    # ── 3. RebootManager ─────────────────────────────────────────────
-    # MUST come AFTER os.chdir — STATE_FILE is relative ("./pytest_reboot_state.json").
-    # Only include RebootManager when the test needs reboots; omit for simple tests.
-    cls.reboot_mgr = RebootManager(total_tests=cls._count_test_methods())
+    # ── 3. OsConfig profile (cached for test_03) ──────────────────────
+    cls._osconfig_profile = load_profile(cls._CONFIG_DIR / "osconfig.yaml")
 
-    phase = "POST-REBOOT (recovering)" if cls.reboot_mgr.is_recovering() else "PRE-REBOOT"
-    logger.info(f"[SETUP] Phase: {phase}")
-    logger.info(f"[SETUP] Test case: {testcase_config.case_id}  version: {testcase_config.case_version}")
-    logger.info(f"[SETUP] Working directory: {test_dir}")
+    # ── 4. RebootManager ─────────────────────────────────────────────
+    # MUST come AFTER os.chdir — STATE_FILE is relative.
+    cls.reboot_mgr = RebootManager(
+        total_tests=cls._count_test_methods(),
+        auto_login_config=cls._build_auto_login_cfg(cls._osconfig_profile),
+    )
 
-    # ── 4. RunCard ────────────────────────────────────────────────────
-    cls._init_runcard(runcard_params)   # non-fatal; cls.runcard = None on failure
+    # ── 5. Pre-RunCard tool install ───────────────────────────────────
+    ToolInstaller(cls._CONFIG_DIR / "tools.yaml").install_pre_runcard()
+
+    # ── 6. RunCard ────────────────────────────────────────────────────
+    if not cls.reboot_mgr.is_recovering():
+        cls._init_runcard(runcard_params)
+    else:
+        cls.runcard = None
 
     yield   # ← all test_XX methods execute here
 
-    # ── 5. (Optional) test-specific teardown ─────────────────────────
-    # Example: revert OS changes applied mid-test (best-effort)
-    # if cls._osconfig_controller is not None:
-    #     try:
-    #         cls._osconfig_controller.revert_all()
-    #     except Exception as exc:
-    #         logger.warning(f"[TEARDOWN] revert failed — {exc}")
-
-    # ── 6. RunCard end ────────────────────────────────────────────────
-    cls._teardown_runcard(request.session)   # PASS/FAIL based on session.testsfailed
-
-    # ── 7. RebootManager cleanup ──────────────────────────────────────
-    cls._teardown_reboot_manager()   # removes state file + Startup BAT; swallows exceptions
-
-    write_session_footer(cls.__name__)   # symmetric banner to SESSION START
-    os.chdir(cls.original_cwd)
+    # ── 7. Standard teardown ─────────────────────────────────────────
+    cls._standard_teardown(
+        request.session,
+        cls._CONFIG_DIR / "osconfig.yaml",
+        cls._osconfig_controller,   # set by test_03; None if not reached
+        logger,
+    )
 ```
 
-`write_session_footer` is imported from `lib.logger` and writes a prominent `SESSION COMPLETE` banner directly to `app.log` and `error.log`, matching the `SESSION START` style.
+`_standard_teardown` calls (in order): `_teardown_runcard` → `_revert_osconfig` →
+`_teardown_reboot_manager` → `write_session_footer` → `os.chdir(original_cwd)`.
 
-> **Tests without reboots**: omit lines 3 / `_teardown_reboot_manager()`.
-> `BaseTestCase.setup_teardown_class` already creates a default `RebootManager()`
-> when none is set, but for simple tests you can ignore it entirely.
+> **Tests without OsConfig**: pass `osconfig_yaml=None, osconfig_controller=None` or omit those args.
+> **Tests without reboots**: still include `RebootManager` — it is lightweight and auto-skip
+> requires it. Just omit `auto_login_config` for tests that don't need auto-login.
 
 ---
 
@@ -621,7 +754,8 @@ Always wrap RunCard calls in `try/except`; RunCard failure must not block the te
 
 | STC | Directory | Description |
 |-----|-----------|-------------|
-| **STC-1685** | `tests/integration/client_pcie_lenovo_storagedv/stc1685_burnin/` | BurnIN install + 24h disk stress + SMART monitor |
+| **STC-2557** ⭐ | `tests/integration/test_case/stc2557_adk_s3s4s5/` | **Canonical template** — ADK S3/S4/S5 power state tests with fixed steps 01–04, OsConfig, ToolInstaller, RebootManager |
+| **STC-1685** | `tests/integration/client_pcie_lenovo_storagedv/stc1685_burnin/` | Legacy template — BurnIN install + 24h disk stress + SMART monitor (older pattern, no osconfig.yaml/tools.yaml) |
 
 ---
 
@@ -634,126 +768,96 @@ Always wrap RunCard calls in `try/except`; RunCard failure must not block the te
 ### 範例 A — 最簡短的開場白（讓 AI 主動提問）
 
 **User:**
-> 幫我在 tests/integration 底下建立一個新的 STC 測試案例。
+> 幫我在 tests/integration/test_case 底下建立一個新的 STC 測試案例。
 
 **AI 回應（依 Workflow Step 1 逐一確認）：**
 > 好的！請提供以下資訊：
-> 1. STC 編號？（如 `1720`）
+> 1. STC 編號？（如 `2600`）
 > 2. 測試簡稱？（snake_case，如 `smart_monitor`）
-> 3. 客戶/平台目錄？（如 `client_pcie_lenovo_storagedv`，或需要新建？）
-> 4. 這個測試做什麼？（一句話說明）
-> 5. 用到哪些 testtool Controller？（BurnIn / CDI / SmartCheck / PwrTest / OsReboot...）
-> 6. 測試步驟有哪些？（依序列出）
-> 7. 是否有並行步驟？是否需要重開機？
+> 3. 這個測試做什麼？（一句話說明）
+> 4. 用到哪些 testtool Controller？（CDI / ADKController / ...）
+> 5. 步驟 5 開始的自訂步驟有哪些？（步驟 1–4 固定，無需列出）
+> 6. 是否有並行步驟？步驟 5+ 是否需要重開機？
 
 ---
 
 ### 範例 B — 一次提供所有資訊
 
 **User:**
-> 幫我建立 STC-1720 的 integration test case。
-> - 客戶目錄：`client_pcie_lenovo_storagedv`
+> 幫我建立 STC-2600 的 integration test case。
 > - 簡稱：`power_cycle`
 > - 說明：對 SSD 執行 100 次電源循環，並在前後用 CDI 擷取 SMART 數據比對。
-> - 用到的工具：PwrTest、CDI
-> - 步驟：
->   1. CDI before（取 SMART baseline）
->   2. PwrTest 電源循環 100 次
->   3. CDI after（取 SMART 數據）
->   4. SMART 比對（Unsafe Shutdowns 不能增加，錯誤計數必須為 0）
+> - 用到的工具：CDI
+> - 自訂步驟（step 5+）：
+>   5. CDI before（取 SMART baseline）
+>   6. 電源循環 100 次（透過外部工具）
+>   7. CDI after（取 SMART 數據）
+>   8. SMART 比對（Unsafe Shutdowns 不能增加，錯誤計數必須為 0）
 > - 無並行，無需重開機
 
 **AI 行為：** 直接進入 Step 2，依序產生以下檔案：
 
 ```
-tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cycle/
+tests/integration/test_case/stc2600_power_cycle/
 ├── __init__.py
-├── Config/Config.json
+├── Config/
+│   ├── Config.json
+│   ├── osconfig.yaml
+│   └── tools.yaml
 ├── conftest.py
 ├── test_main.py
 └── README.md
 ```
 
-**AI 行為（Step 2.5 — 工具複製）：** 自動複製所有使用的工具到 test case 的 `/bin` 目錄：
+test_main.py 包含 test_01~test_04（固定），加上 test_05~test_08（自訂）。
+
+**AI 行為（Step 3 — 驗證）：**
 ```powershell
-# 複製 PwrTest
-Copy-Item -Path ".\bin\SmiWinTools\bin\x64\pwrtest" `
-          -Destination ".\tests\integration\client_pcie_lenovo_storagedv\stc1720_power_cycle\bin\SmiWinTools\bin\x64\" `
-          -Recurse -Force
-
-# 複製 CDI (DiskInfo)
-Copy-Item -Path ".\bin\SmiWinTools\bin\x64\DiskInfo" `
-          -Destination ".\tests\integration\client_pcie_lenovo_storagedv\stc1720_power_cycle\bin\SmiWinTools\bin\x64\" `
-          -Recurse -Force
-
-# 複製 SmiCli2.exe
-Copy-Item -Path ".\bin\SmiWinTools\bin\x64\SmiCli2.exe" `
-          -Destination ".\tests\integration\client_pcie_lenovo_storagedv\stc1720_power_cycle\bin\SmiWinTools\bin\x64\" `
-          -Force
-```
-
-**AI 行為（Step 3 — 驗證）：** 檢查所有工具都正確複製到位
-```powershell
-python -m pytest tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cycle/ --collect-only -q
+python -m pytest tests/integration/test_case/stc2600_power_cycle/ --collect-only -q
 ```
 
 ---
 
-### 範例 C — 並行測試（BurnIN + SmartCheck 同時跑）
+### 範例 C — 並行測試（兩個 Controller 同時跑）
 
 **User:**
-> 建立 STC-1730，客戶是 `client_sata_samsung_flagship`，測試名稱 `burnin_smart_concurrent`。
-> 步驟：
-> 1. CDI before
-> 2. BurnIN + SmartCheck 同時跑 8 小時
-> 3. CDI after + SMART 比對
-> 沒有重開機需求。
+> 建立 STC-2610，名稱 `burnin_smart_concurrent`。
+> 自訂步驟（5+）：
+> 5. CDI before
+> 6. BurnIN + SmartCheck 同時跑 8 小時
+> 7. CDI after + SMART 比對
+> 沒有重開機需求（步驟 5+ 無需 reboot）。
 
 **AI 行為：**
-- 在 `test_02_burnin_with_smart` 內套用 **Concurrent Test Pattern**（`burnin.start()` / `smartcheck.start()` + cross-stop 迴圈）
-- 在 `test_03_cdi_after` 套用 **CDI Before/After SMART Comparison Pattern**
-- Config.json 同時包含 `burnin`、`smartcheck`、`cdi` 三個 key
+- 固定步驟 01–04 照常產生
+- 在 `test_06_burnin_with_smart` 套用 **Concurrent Test Pattern**
+- Config.json 包含 `burnin`、`smartcheck`、`cdi` 三個 key
 
 ---
 
-### 範例 D — 需要重開機的測試
+### 範例 D — 只想加步驟到現有 test case
 
 **User:**
-> STC-1750，`client_pcie_lenovo_storagedv`，`os_reboot_stress`。
-> 測試內容：OS 重開機 50 次，記錄每次開機時間，最後用 CDI 確認無 SMART 錯誤。
-> 工具：OsReboot、CDI。
-
-**AI 行為：**
-- 在 `test_main.py` 加入 `@pytest.mark.reboot` marker
-- 使用 `OsRebootController`（來自 `lib/testtool/reboot/`）
-- 在 `setup_test_class` 加入 `framework.reboot_manager` 必要的 hook 說明
-- Config.json 加入 `reboot` key（cycle count、timeout）
-
----
-
-### 範例 E — 只想加步驟到現有 test case
-
-**User:**
-> STC-1685（stc1685_burnin）目前最後一步是 `test_05_cdi_after`，
-> 我想在後面加一個 `test_06_validate_log`，用來確認 burnin log 裡沒有 error 字串。
+> STC-2557（stc2557_adk_s3s4s5）目前最後一步是 `test_14_smart_compare`，
+> 我想在後面加一個 `test_15_validate_log`，用來確認 AxeLog.txt 裡沒有 error 字串。
 
 **AI 行為：**
 - 讀取現有 `test_main.py` 結尾
-- 在 `test_05_cdi_after` 之後插入新方法 `test_06_validate_log`
-- 加上 `@pytest.mark.order(6)` 與 `@step(6, "Validate BurnIN log for errors")`
-- 不修改其他步驟或 Config.json
+- 在 `test_14_smart_compare` 之後插入新方法 `test_15_validate_log`
+- 加上 `@pytest.mark.order(15)` 與 `@step(15, "Validate AxeLog for errors")`
+- 不修改其他步驟或 Config 檔
 
 ---
 
-### 範例 F — 確認已建立的 test case 可以被 pytest 收集
+### 範例 E — 確認已建立的 test case 可以被 pytest 收集
 
 **User:**
-> 幫我確認剛剛建的 STC-1720 可以正確被 pytest 收集。
+> 幫我確認剛剛建的 STC-2600 可以正確被 pytest 收集。
 
 **AI 行為（執行 Workflow Step 3）：**
 ```powershell
-python -m py_compile tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cycle/test_main.py
-python -m pytest tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cycle/test_main.py --collect-only
+python -m py_compile tests/integration/test_case/stc2600_power_cycle/test_main.py
+python -m pytest tests/integration/test_case/stc2600_power_cycle/test_main.py --collect-only
 ```
 並回報輸出結果，確認所有 test methods 都被正確收集。
 
@@ -763,31 +867,25 @@ python -m pytest tests/integration/client_pcie_lenovo_storagedv/stc1720_power_cy
 
 | 你想做的事 | 建議的開場白 |
 |-----------|------------|
-| 從零建立完整 test case | `建立 STC-XXXX 的 integration test case，客戶 <client>，步驟如下：...` |
+| 從零建立完整 test case | `建立 STC-XXXX 的 integration test case，步驟如下：...` |
 | 讓 AI 主動問你 | `幫我建一個新的 integration test case` |
 | 只加一個步驟 | `在 stcXXXX 的 test_main.py 最後加入步驟 test_0N_<name>，做的事是...` |
 | 並行步驟 | 在步驟描述中明確說 `同時跑` 或 `concurrent` |
-| 需要重開機 | 在步驟中說明 `重開機 N 次` 或 `needs_reboot: true` |
-| 複製工具到 bin/ | `建立完 test case 後，把用到的工具複製到 bin/ 目錄裡` 或 `包括工具複製` |
+| 步驟 5+ 需要重開機 | 在步驟中說明 `重開機` 或 `needs_reboot: true` |
 | 確認語法正確 | `幫我 compile 並 collect-only 確認 STC-XXXX` |
-
-**自動工具複製說明：**
-當 AI 建立新 test case 時，應自動執行以下步驟：
-1. 解析 Config.json 找出所有工具路徑（如 `./bin/SmiWinTools/bin/x64/pwrtest`）
-2. 找到工作區中對應的來源工具目錄
-3. 複製到 test case 的 `/bin` 目錄（保持相同的目錄結構）
-4. 確認所有工具都成功複製（file check）
 
 ---
 
 ## Related Files
 
-- **Canonical test case**: `tests/integration/client_pcie_lenovo_storagedv/stc1685_burnin/`
+- **Canonical template** ⭐: `tests/integration/test_case/stc2557_adk_s3s4s5/` — read `test_main.py`, `conftest.py`, and all `Config/` files before scaffolding
 - **Shared conftest/fixtures**: `tests/integration/conftest.py` — `TestCaseConfiguration`, `runcard_params`
-- **Base test class**: `framework/base_test.py` — `BaseTestCase`
+- **Base test class**: `framework/base_test.py` — `BaseTestCase`, `_standard_teardown`, `_build_auto_login_cfg`, `_resolve_log_path`
 - **Step decorator**: `framework/decorators.py` — `@step(N, "description")`
-- **Logger**: `lib/logger.py` — `get_module_logger(__name__)`, `logConfig()`, `write_session_footer()`
-- **Full STC-1685 example**: `.claude/skills/scaffold-testcase/references/stc1685_example.md`
+- **Logger**: `lib/logger.py` — `get_module_logger(__name__)`, `logConfig()`, `write_session_footer()`, `clear_log_files()`
+- **Tool installer**: `lib/testtool/tool_installer.py` — `ToolInstaller(tools_yaml).install_all()` / `.install_pre_runcard()`
+- **OsConfig**: `lib/testtool/osconfig/` — `OsConfigController`, `OsConfigStateManager`, `load_profile`
+- **Tools registry**: `tool-manager/tools-registry.yaml` — tool IDs used in `tools.yaml`
 - **File templates**: `.claude/skills/scaffold-testcase/references/testcase_templates.md`
 - **Structure rules**: `.claude/skills/scaffold-testcase/references/testcase_structure.md`
 
