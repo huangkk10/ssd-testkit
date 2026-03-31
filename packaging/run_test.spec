@@ -41,7 +41,11 @@ a = Analysis(
         'pytest_asyncio',
         'pywinauto',
         'pyautogui',
-        'PIL',
+        # PIL/Pillow: list only the submodules actually needed by pyautogui,
+        # rather than 'PIL' (whole package). This is more precise and avoids
+        # unnecessary scanning of unused PIL submodules.
+        'PIL.Image',
+        'PIL.ImageGrab',
         'jsonschema',
         'psutil',
         'wmi',
@@ -101,6 +105,9 @@ a = Analysis(
         'numpy',
         'scipy',
         'pandas',
+        # PIL.ImageFilter is not used by this project; excluding it reduces
+        # bundle scan time.
+        'PIL.ImageFilter',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

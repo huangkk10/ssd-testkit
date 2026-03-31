@@ -333,8 +333,13 @@ exe = EXE(
         print("RUNNING PYINSTALLER")
         print("=" * 70)
         
+        # Use the pyinstaller from the same Python environment that is running
+        # this script, not whatever happens to be first in PATH.
+        pyinstaller_exe = Path(sys.executable).parent / 'pyinstaller.exe'
+        if not pyinstaller_exe.exists():
+            pyinstaller_exe = Path(sys.executable).parent / 'pyinstaller'
         cmd = [
-            'pyinstaller',
+            str(pyinstaller_exe),
             '--clean',
             '--noconfirm',
             str(self.spec_file),
@@ -522,12 +527,39 @@ exe = EXE(
             tool_installer_map = {}
             required_installer_folders = set()
 
-        def _make_bin_ignore(required_pkg, required_inst):
-            """Return an ignore function that filters bin/chocolatey/packages/ and bin/installers/."""
+        def _make_bin_ignore(bin_src_path, project_bin_path, required_pkg, required_inst):
+            """Return an ignore function that filters:
+            - project-root bin/ root: keeps only chocolatey/, installers/
+            - testcase bin/ root: skips ALL dirs (redundant with project-root bin/installers/)
+            - bin/chocolatey/packages/: keeps only dirs whose name is in required_pkg
+            - bin/installers/: keeps only dirs in required_inst
+            """
+            BIN_ALWAYS_KEEP = {'chocolatey', 'installers'}
+
             def _ignore(dir_path, names):
                 p = Path(dir_path)
-                # Filter bin/chocolatey/packages/  (folder name == tool ID)
-                if p.name == 'packages' and p.parent.name == 'chocolatey' and required_pkg:
+                parts = p.parts
+
+                # --- project-root bin/ root: keep only chocolatey/ and installers/ ---
+                if p == project_bin_path:
+                    skip = [
+                        name for name in names
+                        if (p / name).is_dir() and name not in BIN_ALWAYS_KEEP
+                    ]
+                    if skip:
+                        print(f"  [SKIP] bin/{', '.join(sorted(skip))} (use installers/ instead)")
+                    return skip
+
+                # --- testcase bin/ root: skip ALL dirs (they're redundant copies) ---
+                if p == bin_src_path and bin_src_path != project_bin_path:
+                    skip = [name for name in names if (p / name).is_dir()]
+                    if skip:
+                        print(f"  [SKIP] {bin_src_path.parent.name}/bin/{', '.join(sorted(skip))} (redundant, covered by project-root bin/)")
+                    return skip
+
+                # --- bin/chocolatey/packages/: filter by tool ID ---
+                if (len(parts) >= 2 and p.name == 'packages'
+                        and parts[-2] == 'chocolatey' and required_pkg):
                     skip = [
                         name for name in names
                         if (p / name).is_dir() and name not in required_pkg
@@ -535,8 +567,9 @@ exe = EXE(
                     if skip:
                         print(f"  [SKIP] bin/chocolatey/packages/{', '.join(sorted(skip))} (not in tools.yaml)")
                     return skip
-                # Filter bin/installers/  (folder name != tool ID, use resolved map)
-                if p.name == 'installers' and p.parent.name == 'bin' and required_inst:
+
+                # --- bin/installers/: filter by resolved folder name ---
+                if p.name == 'installers' and required_inst:
                     skip = [
                         name for name in names
                         if (p / name).is_dir() and name not in required_inst
@@ -544,10 +577,9 @@ exe = EXE(
                     if skip:
                         print(f"  [SKIP] bin/installers/{', '.join(sorted(skip))} (not in tools.yaml)")
                     return skip
+
                 return ignore_venv(dir_path, names)
             return _ignore
-
-        bin_ignore = _make_bin_ignore(required_tools, required_installer_folders)
 
         bin_sources = []
         project_bin = self.project_root / 'bin'
@@ -560,6 +592,7 @@ exe = EXE(
 
         first = True
         for label, bin_src in bin_sources:
+            bin_ignore = _make_bin_ignore(bin_src, project_bin, required_tools, required_installer_folders)
             if first and bin_dst.exists():
                 def _force_remove(func, path, exc_info):
                     import stat as _stat, os as _os
@@ -658,21 +691,31 @@ exe = EXE(
     
     def _build_tool_installer_map(self) -> dict:
         """
-        Walk bin/chocolatey/packages/{tool_id}/*/tools/chocolateyInstall.ps1 and
-        extract the bin/installers/{FolderName} path to build a mapping:
-            {tool_id: installer_folder_name}
-        e.g. {'cdi': 'CrystalDiskInfo', 'burnin': 'BurnIn', 'windows-adk': 'WindowsADK'}
+        Build a mapping of {tool_id: installer_folder_name} for filtering
+        bin/installers/ during packaging.
+
+        Step 1 — parse chocolateyInstall.ps1 for explicit bin/installers/... paths.
+                  (works for cdi→CrystalDiskInfo, burnin→BurnIn, etc.)
+        Step 2 — fuzzy fallback: for tool IDs not yet mapped, compare
+                  normalised names (lowercase, strip -/_) against actual
+                  bin/installers/ folder names.
+                  (works for smicli→SmiCli, windows-adk→WindowsADK, etc.)
         """
         import re
+
+        def _norm(s: str) -> str:
+            return s.lower().replace('-', '').replace('_', '')
+
         mapping: dict = {}
         packages_dir = self.project_root / 'bin' / 'chocolatey' / 'packages'
         if not packages_dir.exists():
             return mapping
+
+        # Step 1: parse chocolateyInstall.ps1
         for tool_dir in packages_dir.iterdir():
             if not tool_dir.is_dir() or tool_dir.name.startswith('.'):
                 continue
             tool_id = tool_dir.name
-            # Check version subdirs (sorted descending = newest first)
             for version_dir in sorted(tool_dir.iterdir(), reverse=True):
                 if not version_dir.is_dir():
                     continue
@@ -687,6 +730,23 @@ exe = EXE(
                         break
                 except Exception:
                     pass
+
+        # Step 2: fuzzy fallback for tools without chocolateyInstall.ps1
+        installers_dir = self.project_root / 'bin' / 'installers'
+        if installers_dir.exists():
+            installer_folders = [d.name for d in installers_dir.iterdir() if d.is_dir()]
+            for tool_dir in packages_dir.iterdir():
+                if not tool_dir.is_dir() or tool_dir.name.startswith('.'):
+                    continue
+                tool_id = tool_dir.name
+                if tool_id in mapping:
+                    continue  # already resolved in step 1
+                norm_id = _norm(tool_id)
+                for folder in installer_folders:
+                    if _norm(folder) == norm_id:
+                        mapping[tool_id] = folder
+                        break
+
         return mapping
 
     def _collect_required_tool_ids(self) -> set:
