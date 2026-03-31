@@ -674,6 +674,19 @@ exe = EXE(
             shutil.copy2(str(pytest_ini_src), str(pytest_ini_dst))
             print(f"[OK] Copied pytest.ini to dist/{subfolder_name}/")
 
+        # ── Config/ at dist root (for ./Config/Config.json relative-path access) ──
+        # RunCard.load_dut_info(), base_test.get_config(), and DiskPrd.py all use
+        # './Config/Config.json' relative to CWD (dist root in packaged mode).
+        default_tp = self.config.get('default_test', '').strip()
+        if default_tp:
+            root_config_src = self.project_root / default_tp / 'Config'
+            root_config_dst = target_dist_dir / 'Config'
+            if root_config_src.exists():
+                if root_config_dst.exists():
+                    shutil.rmtree(root_config_dst)
+                shutil.copytree(root_config_src, root_config_dst)
+                print(f"[OK] Copied Config/ to dist/{subfolder_name}/ (relative-path access)")
+
         # ── Print final structure ─────────────────────────────────────────────
         print(f"\n[OK] Final structure:")
         print(f"  dist/")

@@ -104,9 +104,7 @@ class BaseTestCase:
         except ImportError:
             test_dir = Path(caller_file).parent
             logger.LogEvt(f"[SETUP] Development environment: {test_dir}")
-        # Always chdir to the testcase directory so that relative paths like
-        # "./Config/Config.json" resolve correctly in both modes.
-        os.chdir(Path(caller_file).parent)
+        os.chdir(test_dir)
         logConfig()
         return test_dir
 
