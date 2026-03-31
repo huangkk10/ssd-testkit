@@ -290,12 +290,17 @@ class BaseTestCase:
         testlog_path = Path('./testlog')
         if testlog_path.exists():
             logger.LogEvt(f"[Framework] Cleaning testlog directory: {testlog_path.absolute()}")
-            shutil.rmtree(testlog_path)
-            logger.LogEvt("[Framework] testlog directory cleaned")
-        
-        # Recreate empty testlog directory
-        testlog_path.mkdir(parents=True, exist_ok=True)
-        logger.LogEvt(f"[Framework] Created clean testlog directory: {testlog_path.absolute()}")
+            for item in testlog_path.iterdir():
+                if item.name == 'Runcard.ini':
+                    continue  # preserve RunCard.ini written by start_test()
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+            logger.LogEvt("[Framework] testlog directory cleaned (Runcard.ini preserved)")
+        else:
+            testlog_path.mkdir(parents=True, exist_ok=True)
+        logger.LogEvt(f"[Framework] Testlog directory ready: {testlog_path.absolute()}")
     
     def get_config(self, key, default=None):
         """Read configuration"""
