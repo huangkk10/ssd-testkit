@@ -165,11 +165,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @pytest.mark.order(1)
     @step(1, "Precondition")
     def test_01_precondition(self):
-        """Kill wac/axe, clean testlog (preserve Runcard.ini), remove stale reboot state."""
-        for proc in ("wac.exe", "axe.exe"):
-            subprocess.run(["taskkill", "/f", "/im", proc], capture_output=True)
-        time.sleep(1)
-
+        """Clean testlog (preserve Runcard.ini) and remove stale reboot state."""
         # Clean testlog but skip Runcard.ini (already written by start_test() in setup).
         self._cleanup_testlog_directory()
 
