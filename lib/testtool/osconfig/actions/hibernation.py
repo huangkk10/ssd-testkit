@@ -133,6 +133,62 @@ _HIBERFIL = os.path.join(
 )
 
 
+class EnableHibernationAction(AbstractOsAction):
+    """
+    Enable Windows Hibernation (``powercfg /hibernate on``).
+
+    Required when the DUT must support hibernate-based assessments such as
+    BPFS (Boot Performance Fast Startup), S4, or S5 in Windows ADK WAC.
+
+    Args:
+        snapshot_store: Optional shared snapshot dict.
+    """
+
+    name = "EnableHibernationAction"
+
+    def __init__(self, snapshot_store: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(snapshot_store)
+
+    @classmethod
+    def supported_on(cls, build_info: WindowsBuildInfo) -> bool:
+        return is_supported(_CAP_HIBERNATION, build_info)
+
+    def check(self) -> bool:
+        """Return ``True`` when hiberfil.sys exists (hibernation already on)."""
+        return os.path.exists(_HIBERFIL)
+
+    def apply(self) -> None:
+        """Enable hibernation (``powercfg /hibernate on``)."""
+        self._log_apply_start()
+
+        if self.check():
+            self._log_apply_skip()
+            return
+
+        rc = run_command("powercfg /hibernate on")
+        if rc != 0:
+            raise OsConfigActionError(
+                f"{self.name}: 'powercfg /hibernate on' returned rc={rc}"
+            )
+
+        logger.debug(f"[{self.name}] Hibernation enabled")
+        self._log_apply_done()
+
+    def revert(self) -> None:
+        """Disable hibernation (``powercfg /hibernate off``)."""
+        self._log_revert_start()
+
+        rc = run_command("powercfg /hibernate off")
+        if rc != 0:
+            logger.warning(
+                f"[{self.name}] 'powercfg /hibernate off' returned rc={rc}"
+            )
+        else:
+            logger.debug(f"[{self.name}] Hibernation disabled (reverted)")
+
+        self._log_revert_done()
+
+
 class HibernationAction(AbstractOsAction):
     """
     Disable Windows Hibernation (``powercfg /hibernate off``).

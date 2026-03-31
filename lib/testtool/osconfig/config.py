@@ -78,6 +78,7 @@ class OsConfigProfile:
         disable_hibernate_timeout:  Set hibernate timeout to 0 (never).
         disable_disk_timeout:       Set disk spindown timeout to 0 (never).
         disable_hibernation:        Run ``powercfg /hibernate off``.
+        enable_hibernation:         Run ``powercfg /hibernate on`` (required for BPFS/S4/S5 assessments).
         disable_unattended_sleep:   Set unattended-sleep timeout to 0.
 
         # ── Schedule ──────────────────────────────────────────────────────
@@ -145,6 +146,7 @@ class OsConfigProfile:
     disable_hibernate_timeout: bool = False
     disable_disk_timeout: bool = False
     disable_hibernation: bool = False
+    enable_hibernation: bool = False
     disable_unattended_sleep: bool = False
 
     # ── Schedule ──────────────────────────────────────────────────────────

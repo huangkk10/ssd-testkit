@@ -35,7 +35,7 @@ from .memory_dump import MemoryDumpAction
 # ── Phase 4: Power Actions ────────────────────────────────────────────────
 from .power_plan import PowerPlanAction
 from .power_timeout import PowerTimeoutAction
-from .hibernation import HibernationAction, UnattendedSleepAction
+from .hibernation import EnableHibernationAction, HibernationAction, UnattendedSleepAction
 
 # ── Phase 4: Schedule Actions ─────────────────────────────────────────────
 from .defrag_schedule import DefragScheduleAction

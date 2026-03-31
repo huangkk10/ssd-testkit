@@ -24,6 +24,15 @@ disable_mcafee_tasks: true
 #       需要 Fast Startup 啟用才能執行；WAC 會自行管理 Fast Startup 狀態
 disable_fast_startup: false
 
+# Hibernation：確保 powercfg /h on，BPFS/S4/S5 assessment 需要 hiberfil.sys
+# apply: powercfg /hibernate on
+# revert: powercfg /hibernate off
+enable_hibernation: true
+
+# Power Plan：ADK 要求 Balanced 才能取得準確量測結果
+# apply: 切換至 Balanced；revert: 還原原始 plan
+power_plan: "balanced"
+
 # 自動登入：開機後自動以指定帳號登入（僅限 lab 機器；密碼儲存為明文）
 # Registry: HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
 #           AutoAdminLogon = "1"
