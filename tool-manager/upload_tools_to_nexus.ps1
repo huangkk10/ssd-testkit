@@ -71,13 +71,13 @@ foreach ($entry in $entries) {
             New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
             choco pack $nuspec.FullName --outputdirectory $pkgDir --version $version
         } else {
-            Write-Warning "[SKIP] $id: no .nupkg at $nupkg and no .nuspec in $nuspecDir"
+            Write-Warning "[SKIP] ${id}: no .nupkg at $nupkg and no .nuspec in $nuspecDir"
             continue
         }
     }
 
     if (-not (Test-Path $nupkg)) {
-        Write-Warning "[SKIP] $id: .nupkg still missing after pack"
+        Write-Warning "[SKIP] ${id}: .nupkg still missing after pack"
         continue
     }
 
