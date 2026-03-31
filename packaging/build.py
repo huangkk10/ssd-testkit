@@ -332,14 +332,11 @@ exe = EXE(
         print("\n" + "=" * 70)
         print("RUNNING PYINSTALLER")
         print("=" * 70)
-        
-        # Use the pyinstaller from the same Python environment that is running
-        # this script, not whatever happens to be first in PATH.
-        pyinstaller_exe = Path(sys.executable).parent / 'pyinstaller.exe'
-        if not pyinstaller_exe.exists():
-            pyinstaller_exe = Path(sys.executable).parent / 'pyinstaller'
+
+        # Prefer python -m PyInstaller so we always use the correct environment,
+        # regardless of whether pyinstaller.exe is on PATH or in the venv Scripts/.
         cmd = [
-            str(pyinstaller_exe),
+            sys.executable, '-m', 'PyInstaller',
             '--clean',
             '--noconfirm',
             str(self.spec_file),
