@@ -127,7 +127,7 @@ class UnattendedSleepAction(AbstractOsAction):
 # HibernationAction
 # ---------------------------------------------------------------------------
 
-_CAP_HIBERNATION = "hibernation"
+_CAP_HIBERNATION = "hibernation_file"
 _HIBERFIL = os.path.join(
     os.environ.get("SystemRoot", r"C:\Windows"), "hiberfil.sys"
 )
