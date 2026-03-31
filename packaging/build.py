@@ -505,9 +505,9 @@ exe = EXE(
         #   2. Each testcase's own bin/ (if present)  — merged on top
         bin_dst = target_dist_dir / 'bin'
 
-        # Collect required tool IDs from every testcase's Config/tools.yaml so
-        # we only bundle the packages that are actually needed.
-        required_tools = self._collect_required_tool_ids(test_projects)
+        # Collect required tool IDs from the default_test's Config/tools.yaml
+        # so we only bundle the packages that are actually needed.
+        required_tools = self._collect_required_tool_ids()
         if required_tools:
             print(f"[INFO] Required tools from tools.yaml: {sorted(required_tools)}")
         else:
@@ -638,26 +638,28 @@ exe = EXE(
         for tp in test_projects:
             print(f"            +-- {Path(tp).name}/")
     
-    def _collect_required_tool_ids(self, test_projects: List[str]) -> set:
+    def _collect_required_tool_ids(self) -> set:
         """
-        Read Config/tools.yaml from every test project and return the union of
-        all tool IDs.  Returns an empty set when no tools.yaml is found (caller
-        interprets this as "include everything").
+        Read Config/tools.yaml from the default_test testcase and return the
+        set of required tool IDs.  Returns an empty set when no tools.yaml is
+        found (caller interprets this as "include everything").
         """
+        default_test = self.config.get('default_test', '').strip()
+        if not default_test:
+            return set()
+        tools_yaml = self.project_root / default_test / 'Config' / 'tools.yaml'
+        if not tools_yaml.exists():
+            return set()
         required: set = set()
-        for tp in test_projects:
-            tools_yaml = self.project_root / tp / 'Config' / 'tools.yaml'
-            if not tools_yaml.exists():
-                continue
-            try:
-                with open(tools_yaml, 'r', encoding='utf-8') as fh:
-                    data = yaml.safe_load(fh) or {}
-                for entry in data.get('tools', []):
-                    tool_id = entry.get('id', '').strip()
-                    if tool_id:
-                        required.add(tool_id)
-            except Exception as exc:
-                print(f"[WARNING] Could not parse {tools_yaml}: {exc}")
+        try:
+            with open(tools_yaml, 'r', encoding='utf-8') as fh:
+                data = yaml.safe_load(fh) or {}
+            for entry in data.get('tools', []):
+                tool_id = entry.get('id', '').strip()
+                if tool_id:
+                    required.add(tool_id)
+        except Exception as exc:
+            print(f"[WARNING] Could not parse {tools_yaml}: {exc}")
         return required
 
     def _unload_kernel_driver(self, sys_path: str) -> bool:
