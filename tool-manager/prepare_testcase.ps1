@@ -87,11 +87,18 @@ foreach ($entry in $entries) {
                 $tmpZip = Join-Path $env:TEMP "$($entry.id)-installer.zip"
                 Write-Host "  [DOWNLOAD] installer $($entry.id)  $zipUrl" -ForegroundColor Yellow
                 $cred = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("admin:1.a"))
-                Invoke-WebRequest -Uri $zipUrl -Headers @{Authorization="Basic $cred"} `
-                                  -OutFile $tmpZip -UseBasicParsing
-                New-Item -ItemType Directory -Path $localInstallerDir -Force | Out-Null
-                Expand-Archive -Path $tmpZip -DestinationPath $localInstallerDir -Force
-                Remove-Item $tmpZip -Force
+                try {
+                    Invoke-WebRequest -Uri $zipUrl -Headers @{Authorization="Basic $cred"} `
+                                      -OutFile $tmpZip -UseBasicParsing
+                    New-Item -ItemType Directory -Path $localInstallerDir -Force | Out-Null
+                    Expand-Archive -Path $tmpZip -DestinationPath $localInstallerDir -Force
+                    Remove-Item $tmpZip -Force
+                } catch {
+                    Write-Warning "  [WARN] $($entry.id): failed to download installer from Nexus ($($_.Exception.Message))"
+                    Write-Warning "         URL: $zipUrl"
+                    Write-Warning "         Please upload the zip to Nexus or manually place files in: $localInstallerDir"
+                    if (Test-Path $tmpZip) { Remove-Item $tmpZip -Force }
+                }
             } else {
                 Write-Warning "  [WARN] $($entry.id): bin\installers missing and no nexus_path defined"
             }
