@@ -41,21 +41,19 @@ class TestCaseConfiguration:
         self.case_version = "1.0.0"
         self.autoit_version = f"{self.case_id}_v{self.case_version}"
         
-        # Determine base directory for paths
-        # In packaged environment: use exe directory (flat structure)
-        # In development: use test case directory (original structure)
+        # Determine base directory for binary tools
+        # In packaged environment: bin/ is at the exe directory (dist root)
+        # In development: bin/ is inside the test case directory
         try:
             from path_manager import path_manager
-            # Packaged environment: bin/Config at exe level
-            base_dir = path_manager.app_dir
+            bin_base_dir = path_manager.app_dir
         except ImportError:
-            # Development environment: bin/Config in test directory
-            base_dir = case_root_dir
-        
-        # Path configurations (works for both environments)
-        self.bin_directory = base_dir / "bin"
-        self.config_file = base_dir / "Config" / "Config.json"
-        self.smicli_executable = base_dir / "bin/SmiCli/SmiCli2.exe"
+            bin_base_dir = case_root_dir
+
+        # Config is always co-located with the test case (both dev and packaged)
+        self.bin_directory = bin_base_dir / "bin"
+        self.config_file = case_root_dir / "Config" / "Config.json"
+        self.smicli_executable = bin_base_dir / "bin/SmiCli/SmiCli2.exe"
         
         # RunCard configurations
         self.runcard_log_path = TESTLOG_DIR
