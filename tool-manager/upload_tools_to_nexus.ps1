@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-  Upload .nupkg files from bin\chocolatey\packages\ to Nexus choco-hosted repo.
-  If a .nupkg is missing, it is built first via 'choco pack' from the nuspec source.
+  1. Upload .nupkg files from bin\chocolatey\packages\ to Nexus choco-hosted repo.
+     If a .nupkg is missing, it is built first via 'choco pack' from the nuspec source.
+  2. Zip bin\installers\<tool>\ and copy to NAS ssd-testkit-source\windows\zip\.
 
 .PARAMETER NexusUrl
   Nexus base URL, default https://nexus.internal
@@ -106,6 +107,58 @@ foreach ($entry in $entries) {
             Write-Warning "[FAIL] $id  HTTP $httpCode"
             Write-Host ($output -join "`n")
         }
+    }
+}
+
+# ── Installer zips → NAS ────────────────────────────────────────────────────
+$NasZipBase = "\\10.250.0.1\mdt\Team\PQ1-3\tool\ssd-testkit-source\windows\zip"
+
+Write-Host ""
+Write-Host "── Installer zips → NAS ──────────────────────────────────────" -ForegroundColor White
+
+$pyScript2 = @"
+import sys, yaml, json
+with open(sys.argv[1], encoding='utf-8') as f:
+    registry = yaml.safe_load(f).get('tools', {})
+result = []
+for tid, reg in registry.items():
+    sd = reg.get('source_dir', '')
+    np = reg.get('nexus_path', '')
+    if sd and np:
+        result.append({'id': tid, 'source_dir': sd, 'nexus_path': np})
+print(json.dumps(result))
+"@
+
+$zipEntries = python -c $pyScript2 $Registry | ConvertFrom-Json
+
+if (-not (Test-Path $NasZipBase)) {
+    Write-Warning "NAS not accessible: $NasZipBase"
+    Write-Warning "Skipping installer zip upload."
+} else {
+    foreach ($entry in $zipEntries) {
+        $zipName       = ($entry.nexus_path -split '/')[-1]
+        $nasZipTarget  = Join-Path $NasZipBase $zipName
+        $localSourceDir = Join-Path $Root ($entry.source_dir -replace '/', '\')
+        $tmpZip        = Join-Path $env:TEMP $zipName
+
+        if (Test-Path $nasZipTarget) {
+            Write-Host "  [EXISTS] $($entry.id)  ($nasZipTarget)" -ForegroundColor DarkGray
+            continue
+        }
+
+        if (-not (Test-Path $localSourceDir)) {
+            Write-Warning "  [SKIP] $($entry.id): source not found: $localSourceDir"
+            continue
+        }
+
+        Write-Host "  [ZIP]    $($entry.id)  $localSourceDir" -ForegroundColor DarkYellow
+        Compress-Archive -Path "$localSourceDir\*" -DestinationPath $tmpZip -Force
+
+        $sizeMB = [math]::Round((Get-Item $tmpZip).Length / 1MB, 2)
+        Write-Host "  [COPY]   $($entry.id)  → $nasZipTarget  (${sizeMB} MB)" -ForegroundColor Cyan
+        Copy-Item -Path $tmpZip -Destination $nasZipTarget -Force
+        Remove-Item $tmpZip -Force
+        Write-Host "  [OK]     $($entry.id)" -ForegroundColor Green
     }
 }
 

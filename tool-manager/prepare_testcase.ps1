@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 $Root         = Split-Path $PSScriptRoot
 $ChocoSource  = "https://nexus.internal/repository/choco-hosted"
 $ChocoApiBase = "https://nexus.internal/repository/choco-hosted"
-$NexusRawBase = "https://nexus.internal/repository"
+$NasZipBase   = "\\10.250.0.1\mdt\Team\PQ1-3\tool\ssd-testkit-source\windows\zip"
 
 if (-not $TestCase) {
     $prepareYaml = Join-Path $PSScriptRoot "prepare.yaml"
@@ -83,20 +83,23 @@ foreach ($entry in $entries) {
         $localInstallerDir = Join-Path $Root ($entry.source_dir -replace '/', '\')
         if (-not (Test-Path $localInstallerDir)) {
             if ($entry.nexus_path) {
-                $zipUrl = "$NexusRawBase/$($entry.nexus_path)"
-                $tmpZip = Join-Path $env:TEMP "$($entry.id)-installer.zip"
-                Write-Host "  [DOWNLOAD] installer $($entry.id)  $zipUrl" -ForegroundColor Yellow
-                $cred = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("admin:1.a"))
+                $zipName = ($entry.nexus_path -split '/')[-1]
+                $nasZip  = Join-Path $NasZipBase $zipName
+                $tmpZip  = Join-Path $env:TEMP $zipName
+                Write-Host "  [COPY] installer $($entry.id)  $nasZip" -ForegroundColor Yellow
                 try {
-                    Invoke-WebRequest -Uri $zipUrl -Headers @{Authorization="Basic $cred"} `
-                                      -OutFile $tmpZip -UseBasicParsing
-                    New-Item -ItemType Directory -Path $localInstallerDir -Force | Out-Null
-                    Expand-Archive -Path $tmpZip -DestinationPath $localInstallerDir -Force
-                    Remove-Item $tmpZip -Force
+                    if (-not (Test-Path $nasZip)) {
+                        Write-Warning "  [WARN] $($entry.id): zip not found on NAS: $nasZip"
+                        Write-Warning "         Please run upload_tools_to_nexus.bat to publish the zip first."
+                    } else {
+                        Copy-Item -Path $nasZip -Destination $tmpZip -Force
+                        New-Item -ItemType Directory -Path $localInstallerDir -Force | Out-Null
+                        Expand-Archive -Path $tmpZip -DestinationPath $localInstallerDir -Force
+                        Remove-Item $tmpZip -Force
+                    }
                 } catch {
-                    Write-Warning "  [WARN] $($entry.id): failed to download installer from Nexus ($($_.Exception.Message))"
-                    Write-Warning "         URL: $zipUrl"
-                    Write-Warning "         Please upload the zip to Nexus or manually place files in: $localInstallerDir"
+                    Write-Warning "  [WARN] $($entry.id): failed to copy installer from NAS ($($_.Exception.Message))"
+                    Write-Warning "         NAS path: $nasZip"
                     if (Test-Path $tmpZip) { Remove-Item $tmpZip -Force }
                 }
             } else {
