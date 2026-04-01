@@ -46,7 +46,7 @@ from .memory_diagnostic_tasks import MemoryDiagnosticTasksAction
 from .mcafee_tasks import McAfeeTasksAction
 # ── Phase 4: System Actions ───────────────────────────────────────────────
 from .system_restore import SystemRestoreAction
-from .fast_startup import FastStartupAction
+from .fast_startup import FastStartupAction, EnableFastStartupAction
 from .notifications import NotificationAction
 from .cortana import CortanaAction
 from .background_apps import BackgroundAppsAction
@@ -92,6 +92,7 @@ __all__ = [
     # Phase 4 – System
     "SystemRestoreAction",
     "FastStartupAction",
+    "EnableFastStartupAction",
     "NotificationAction",
     "CortanaAction",
     "BackgroundAppsAction",

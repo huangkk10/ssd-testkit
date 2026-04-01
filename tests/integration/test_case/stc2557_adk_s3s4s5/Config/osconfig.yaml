@@ -17,12 +17,11 @@ disable_memory_diagnostic_tasks: true
 #        \McAfee\DAD.WPS.Execute.Updates
 disable_mcafee_tasks: true
 
-# Fast Startup：停用 HiberbootEnabled，確保每次 shutdown/reboot 為完整 power cycle
+# Fast Startup：明確啟用 HiberbootEnabled=1，確保 BPFS assessment 的 ETW AutoLogger 正常初始化
+# 若前次測試遺留 HiberbootEnabled=0 而未還原，此欄位保證在 step 3 正確設回 1。
 # Registry: HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power
-#           HiberbootEnabled = 0
-# NOTE: 必須設為 false，BPFS (Boot Performance Fast Startup) assessment
-#       需要 Fast Startup 啟用才能執行；WAC 會自行管理 Fast Startup 狀態
-disable_fast_startup: false
+#           HiberbootEnabled = 1
+enable_fast_startup: true
 
 # Hibernation：確保 powercfg /h on，BPFS/S4/S5 assessment 需要 hiberfil.sys
 # apply: powercfg /hibernate on

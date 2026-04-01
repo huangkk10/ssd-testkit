@@ -95,3 +95,65 @@ class FastStartupAction(AbstractOsAction):
         """Re-enable Fast Startup (``HiberbootEnabled = 1``, Windows default)."""
         write_value("HKLM", _FS_KEY, _VAL_FS, 1, REG_DWORD)
         logger.info(f"[{self.name}] Fast Startup re-enabled (HiberbootEnabled=1)")
+
+
+_SNAP_ENABLE_FS = "enable_fast_startup_orig"
+_CAP_ENABLE_KEY = "enable_fast_startup"
+
+
+class EnableFastStartupAction(AbstractOsAction):
+    """
+    Explicitly enable Fast Startup (``HiberbootEnabled = 1``).
+
+    Required for BPFS (Boot Performance Fast Startup) WAC assessments.
+    Snapshots the original value so ``revert()`` can restore it.
+
+    This is the symmetric counterpart to :class:`FastStartupAction`.
+
+    Args:
+        snapshot_store: Optional shared snapshot dict.
+    """
+
+    name = "EnableFastStartupAction"
+
+    def __init__(self, snapshot_store: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(snapshot_store)
+
+    @classmethod
+    def supported_on(cls, build_info: WindowsBuildInfo) -> bool:
+        return is_supported(_CAP_KEY, build_info)
+
+    def check(self) -> bool:
+        """Return ``True`` when ``HiberbootEnabled == 1`` (already enabled)."""
+        v = read_value_safe("HKLM", _FS_KEY, _VAL_FS, default=None)
+        if v is None:
+            return False
+        return int(v) == 1
+
+    def apply(self) -> None:
+        """Set ``HiberbootEnabled = 1``."""
+        self._log_apply_start()
+
+        if self.check():
+            self._log_apply_skip()
+            return
+
+        orig = read_value_safe("HKLM", _FS_KEY, _VAL_FS, default=None)
+        self._save_snapshot(_SNAP_ENABLE_FS, orig)
+        logger.debug(f"[{self.name}] snapshot: {_VAL_FS}={orig}")
+
+        write_value("HKLM", _FS_KEY, _VAL_FS, 1, REG_DWORD)
+        logger.debug(f"[{self.name}] {_VAL_FS}=1 written")
+
+        self._log_apply_done()
+
+    def revert(self) -> None:
+        """Restore ``HiberbootEnabled`` to its pre-apply value (default: 0)."""
+        self._log_revert_start()
+
+        orig = self._load_snapshot(_SNAP_ENABLE_FS, default=None)
+        restore = int(orig) if orig is not None else 0
+        write_value("HKLM", _FS_KEY, _VAL_FS, restore, REG_DWORD)
+        logger.debug(f"[{self.name}] {_VAL_FS} restored to {restore}")
+
+        self._log_revert_done()

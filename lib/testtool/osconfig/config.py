@@ -99,6 +99,10 @@ class OsConfigProfile:
         # ── System ────────────────────────────────────────────────────────
         disable_system_restore:     Disable System Restore on C:\\.
         disable_fast_startup:       Disable fast startup (hiberboot).
+        enable_fast_startup:        Enable fast startup / Hiberboot (HiberbootEnabled=1).
+                                    Required when a previous test left it disabled; use this
+                                    before BPFS WAC assessments to guarantee the ETW
+                                    AutoLogger session will be active.
         disable_notifications:      Disable Action Centre / notification toast.
         disable_cortana:            Disable Cortana via policy.
         disable_background_apps:    Block apps from running in background.
@@ -161,6 +165,7 @@ class OsConfigProfile:
     # ── System ────────────────────────────────────────────────────────────
     disable_system_restore: bool = False
     disable_fast_startup: bool = False
+    enable_fast_startup: bool = False
     disable_notifications: bool = False
     disable_cortana: bool = False
     disable_background_apps: bool = False
