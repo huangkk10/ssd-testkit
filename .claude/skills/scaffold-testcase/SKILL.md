@@ -295,106 +295,56 @@ test_03_<next_action>
 - Zero-padded two-digit numbers ensure correct ordering
 - Each test method has a single responsibility
 
-### setup_test_class Fixture Pattern
+### New-style Class Variable Pattern (current standard)
 
-`setup_test_class` is the **single class-scoped fixture** that initialises everything the
-test needs — working directory, config, `RebootManager`, RunCard — and tears it all down
-after the session.
-
-#### Two-fixture architecture in `BaseTestCase`
-
-`BaseTestCase` provides two autouse fixtures that run alongside `setup_test_class`:
-
-| Fixture | Scope | Purpose |
-|---------|-------|---------|
-| `setup_teardown_class` | `class` | Default minimal setup (generic `RebootManager`, `log_path`) — **overridden** by your `setup_test_class` |
-| `setup_teardown_function` | `function` | Auto-skip via `is_completed()` + `mark_completed()` after each test  — **always runs automatically**, no code needed in your class |
-
-The per-test auto-skip/mark mechanism comes **for free** — you never call it explicitly:
-
-```
-pytest session
-└── setup_test_class (your fixture, class scope)
-    ├── _setup_working_directory(__file__)
-    ├── RebootManager(total_tests=N)       ← MUST come after os.chdir
-    ├── _init_runcard(runcard_params)
-    ├── [yield — tests run here]
-    ├── [optional teardown: revert OS changes, etc.]
-    ├── _teardown_runcard(request.session)
-    ├── _teardown_reboot_manager()
-    └── os.chdir(original_cwd)
-
-    For each test_XX method (BaseTestCase.setup_teardown_function, automatic):
-    ├── is_completed(test_name) → pytest.skip if True   ← auto-skip
-    ├── [yield — test body]
-    └── mark_completed(test_name)                       ← auto-mark
-```
-
-#### Canonical Template (stc2557 pattern)
-
-The stc2557 fixture is the reference. Copy and adapt for each new testcase:
+**`setup_test_class` は不要** — BaseTestCase が自動で処理する。
+testcase は class variables を宣告するだけ：
 
 ```python
-# Required imports in test_main.py:
-# from framework.reboot_manager import RebootManager
-# from lib.logger import get_module_logger, clear_log_files
-# from lib.testtool.tool_installer import ToolInstaller
-# from lib.testtool.windows_adk.version_adapter import VersionAdapter  # if needed
-# from lib.testtool.osconfig import OsConfigController
-# from lib.testtool.osconfig.state_manager import OsConfigStateManager
-# from lib.testtool.osconfig.profile_loader import load_profile
+class TestSTCXXXX<Name>(BaseTestCase):
+    # ── 必填：這 4 行取代整個 setup_test_class ───────────────────────
+    _TESTCASE_FILE = __file__                          # BaseTestCase が __file__ を受け取る
+    _CONFIG_DIR    = Path(__file__).parent / "Config"
+    _LOG_ENV_VAR   = "TOOL_LOG_DIR"   # log base path の env var（空ならデフォルト）
+    _LOG_SUBDIR    = "subdir_name"    # testlog 下的子目錄
+    # ──────────────────────────────────────────────────────────────────
+    _osconfig_controller = None       # test_03 が設定する
 
-_CONFIG_DIR = Path(__file__).parent / "Config"
+    # ADK 等の testcase-specific init があれば override（不要なら省略）：
+    @classmethod
+    def _on_extra_setup(cls, test_dir: Path) -> None:
+        cls.adapter = VersionAdapter(get_build_number())
 
-@pytest.fixture(scope="class", autouse=True)
-def setup_test_class(self, request, testcase_config, runcard_params):
-    """Initialise working directory, RebootManager, OsConfig profile, and RunCard."""
-    cls = request.cls
-    cls.original_cwd = os.getcwd()
-
-    # ── 1. Working directory + logging ────────────────────────────────
-    test_dir = cls._setup_working_directory(__file__)
-
-    # ── 2. Config ──────────────────────────────────────────────────────
-    cls.config = testcase_config.tool_config   # parsed Config/Config.json
-    cls.log_path = cls._resolve_log_path("TOOL_LOG_DIR", "subdir_name", test_dir)
-
-    # ── 3. OsConfig profile (cached for test_03) ──────────────────────
-    cls._osconfig_profile = load_profile(cls._CONFIG_DIR / "osconfig.yaml")
-
-    # ── 4. RebootManager ─────────────────────────────────────────────
-    # MUST come AFTER os.chdir — STATE_FILE is relative.
-    cls.reboot_mgr = RebootManager(
-        total_tests=cls._count_test_methods(),
-        auto_login_config=cls._build_auto_login_cfg(cls._osconfig_profile),
-    )
-
-    # ── 5. Pre-RunCard tool install ───────────────────────────────────
-    ToolInstaller(cls._CONFIG_DIR / "tools.yaml").install_pre_runcard()
-
-    # ── 6. RunCard ────────────────────────────────────────────────────
-    if not cls.reboot_mgr.is_recovering():
-        cls._init_runcard(runcard_params)
-    else:
-        cls.runcard = None
-
-    yield   # ← all test_XX methods execute here
-
-    # ── 7. Standard teardown ─────────────────────────────────────────
-    cls._standard_teardown(
-        request.session,
-        cls._CONFIG_DIR / "osconfig.yaml",
-        cls._osconfig_controller,   # set by test_03; None if not reached
-        logger,
-    )
+    # test_01 ~ test_NN のみ
 ```
 
-`_standard_teardown` calls (in order): `_teardown_runcard` → `_revert_osconfig` →
-`_teardown_reboot_manager` → `write_session_footer` → `os.chdir(original_cwd)`.
+**BaseTestCase.setup_test_class が自動でやること：**
+```
+_setup_working_directory(_TESTCASE_FILE)
+→ load Config/Config.json へ cls.config
+→ _resolve_log_path(_LOG_ENV_VAR, _LOG_SUBDIR) へ cls.log_path
+→ load Config/osconfig.yaml（存在する場合）へ cls._osconfig_profile
+→ RebootManager(total_tests, auto_login_config)
+→ ToolInstaller(Config/tools.yaml).install_pre_runcard()（存在する場合）
+→ _on_extra_setup(test_dir)       ← subclass hook
+→ _init_runcard(runcard_params)   or cls.runcard = None（recovering 時）
+yield
+→ _standard_teardown(session, osconfig_yaml, _osconfig_controller, logger)
+```
 
-> **Tests without OsConfig**: pass `osconfig_yaml=None, osconfig_controller=None` or omit those args.
-> **Tests without reboots**: still include `RebootManager` — it is lightweight and auto-skip
-> requires it. Just omit `auto_login_config` for tests that don't need auto-login.
+**設計原則：**
+- `osconfig.yaml` がない testcase → profile load をスキップ、auto_login = `{}`
+- `tools.yaml` がない testcase → install_pre_runcard をスキップ
+- `_LOG_ENV_VAR` / `_LOG_SUBDIR` が空 → `cls.log_path = str(test_dir / "testlog")`
+- `_on_extra_setup` は no-op がデフォルト。override 不要なら書かなくていい
+
+**Function-level の auto-skip/mark は引き続き自動：**
+```
+For each test_XX method (BaseTestCase.setup_teardown_function, automatic):
+├── is_completed(test_name) → pytest.skip if True   ← auto-skip
+├── [yield — test body]
+└── mark_completed(test_name)                       ← auto-mark
+```
 
 ---
 
@@ -432,6 +382,7 @@ def test_04_clean_environment(self, request):   # ← add `request` parameter
     )
     # os._exit(0) is called inside setup_reboot — code below never executes
 ```
+
 
 ### Checklist
 
