@@ -208,3 +208,16 @@ class AutoAdminLogonAction(AbstractOsAction):
                 logger.debug(f"[{self.name}] {_VAL_DOMAIN} restored to {orig_dom!r}")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """
+        Disable auto-logon and remove stored credentials (Windows default: disabled).
+
+        Sets ``AutoAdminLogon = "0"`` and deletes ``DefaultPassword``.
+        Does not change ``DefaultUserName`` or ``DefaultDomainName``.
+        """
+        write_value("HKLM", _WL_KEY, _VAL_LOGON, "0", REG_SZ)
+        logger.debug(f"[{self.name}] {_VAL_LOGON}='0' written")
+        delete_value("HKLM", _WL_KEY, _VAL_PASSWORD)
+        logger.debug(f"[{self.name}] {_VAL_PASSWORD} deleted")
+        logger.info(f"[{self.name}] AutoAdminLogon disabled, DefaultPassword removed")

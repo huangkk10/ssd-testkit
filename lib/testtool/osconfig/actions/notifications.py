@@ -101,3 +101,13 @@ class NotificationAction(AbstractOsAction):
                 logger.debug(f"[{self.name}] {hive} {_VAL_NOTIF} deleted (was absent)")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Remove notification policy values so Windows uses its default (enabled)."""
+        for hive, key in [
+            ("HKLM", _NOTIF_KEY_LM),
+            ("HKCU", _NOTIF_KEY_CU),
+        ]:
+            delete_value(hive, key, _VAL_NOTIF)
+            logger.debug(f"[{self.name}] {hive} {_VAL_NOTIF} deleted")
+        logger.info(f"[{self.name}] Notification policy removed (notifications re-enabled)")

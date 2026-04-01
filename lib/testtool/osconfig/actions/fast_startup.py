@@ -90,3 +90,8 @@ class FastStartupAction(AbstractOsAction):
         logger.debug(f"[{self.name}] {_VAL_FS} restored to {restore}")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Re-enable Fast Startup (``HiberbootEnabled = 1``, Windows default)."""
+        write_value("HKLM", _FS_KEY, _VAL_FS, 1, REG_DWORD)
+        logger.info(f"[{self.name}] Fast Startup re-enabled (HiberbootEnabled=1)")

@@ -118,6 +118,9 @@ class BaseServiceAction(AbstractOsAction):
     service_name: str = ""
     #: Capability key in CAPABILITIES dict.  Override in subclass.
     capability_key: str = ""
+    #: Windows out-of-box default start type (2=auto, 3=demand/manual).
+    #: Override in subclasses that differ from Automatic (2).
+    default_start_type: int = 2
 
     def __init__(self, snapshot_store: Optional[Dict[str, Any]] = None) -> None:
         super().__init__(snapshot_store)
@@ -232,3 +235,20 @@ class BaseServiceAction(AbstractOsAction):
             return is_supported(cls.capability_key, build_info)
         except KeyError:
             return True
+
+    def restore_os_default(self) -> None:
+        """Re-enable the service to its Windows out-of-box start type and start it."""
+        sc_arg = _sc_start_type_arg(self.default_start_type)
+        rc = run_command(f"sc config {self.service_name} start= {sc_arg}")
+        if rc != 0:
+            logger.warning(
+                f"[{self.name}] restore_os_default: sc config returned rc={rc}"
+            )
+            return
+        logger.info(f"[{self.name}] service start type restored to {sc_arg}")
+        if self.default_start_type in (1, 2):  # system or auto → start it
+            rc2 = run_command(f"sc start {self.service_name}")
+            if rc2 not in (0, 1056):  # 1056 = already running
+                logger.warning(
+                    f"[{self.name}] restore_os_default: sc start returned rc={rc2}"
+                )

@@ -18,3 +18,4 @@ class WerAction(BaseServiceAction):
     name = "WerAction"
     service_name = "WerSvc"
     capability_key = "wer"
+    default_start_type = 3  # Manual

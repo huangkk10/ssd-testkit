@@ -91,3 +91,8 @@ class AutoRebootAction(AbstractOsAction):
         logger.debug(f"[{self.name}] {_VAL_REBOOT} restored to {restore}")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Re-enable automatic reboot on BSOD (``AutoReboot = 1``, Windows default)."""
+        write_value("HKLM", _CC_KEY, _VAL_REBOOT, 1, REG_DWORD)
+        logger.info(f"[{self.name}] AutoReboot re-enabled (AutoReboot=1)")

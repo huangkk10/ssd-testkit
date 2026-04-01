@@ -110,3 +110,11 @@ class SystemRestoreAction(AbstractOsAction):
         logger.debug(f"[{self.name}] {_VAL_SR} restored to {restore}")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Re-enable System Restore on C:\\ (Windows default: enabled)."""
+        ps_rc, _, _ = run_powershell(f'Enable-ComputerRestore -Drive "{_DRIVE}"')
+        if ps_rc != 0:
+            logger.warning(f"[{self.name}] restore_os_default: Enable-ComputerRestore returned rc={ps_rc}")
+        delete_value("HKLM", _SR_KEY, _VAL_SR)
+        logger.info(f"[{self.name}] System Restore re-enabled (DisableSR removed)")

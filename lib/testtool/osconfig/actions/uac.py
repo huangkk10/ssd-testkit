@@ -100,3 +100,13 @@ class UacAction(AbstractOsAction):
         logger.debug(f"[{self.name}] {_VAL_LUA} restored to {restore_val}")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Re-enable UAC (``EnableLUA = 1``, Windows default)."""
+        write_value("HKLM", _UAC_KEY, _VAL_LUA, 1, REG_DWORD)
+        logger.info(f"[{self.name}] UAC re-enabled (EnableLUA=1)")
+
+    def restore_os_default(self) -> None:
+        """Re-enable UAC (``EnableLUA = 1``, Windows default)."""
+        write_value("HKLM", _UAC_KEY, _VAL_LUA, 1, REG_DWORD)
+        logger.info(f"[{self.name}] UAC re-enabled (EnableLUA=1)")

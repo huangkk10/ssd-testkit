@@ -141,3 +141,12 @@ class PowerPlanAction(AbstractOsAction):
             logger.debug(f"[{self.name}] Power plan restored to {orig_guid}")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Restore the power plan to Balanced (Windows default)."""
+        balanced_guid = _PLAN_GUIDS["balanced"]
+        rc = run_command(f"powercfg /setactive {balanced_guid}")
+        if rc != 0:
+            logger.warning(f"[{self.name}] restore_os_default: returned rc={rc}")
+        else:
+            logger.info(f"[{self.name}] Power plan restored to Balanced")

@@ -126,3 +126,13 @@ class FirewallAction(AbstractOsAction):
             logger.debug(f"[{self.name}] Firewall re-enabled on all profiles")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Re-enable Windows Firewall on all profiles (Windows default: on)."""
+        rc = run_command("netsh advfirewall set allprofiles state on")
+        if rc != 0:
+            logger.warning(
+                f"[{self.name}] restore_os_default: netsh returned rc={rc}"
+            )
+        else:
+            logger.info(f"[{self.name}] Firewall re-enabled on all profiles")

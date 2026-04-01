@@ -395,3 +395,42 @@ class OsConfigController:
                     )
                     results[action.name] = None
         return results
+
+    def reset_all(self, only: Optional[List[str]] = None) -> Dict[str, str]:
+        """
+        Restore every action to the Windows out-of-box default value.
+
+        Does **not** require or touch the snapshot file.  Actions that have
+        not implemented :meth:`~AbstractOsAction.restore_os_default` will log
+        a warning and report ``"not_implemented"``.
+
+        Args:
+            only: Optional list of action names to reset.  When provided,
+                  only actions whose :attr:`~AbstractOsAction.name` appears
+                  in this list are reset; others are skipped.
+
+        Returns:
+            Dict mapping action name → ``"reset"``, ``"skipped"``,
+            ``"unsupported"``, or ``"error:<message>"``.
+        """
+        results: Dict[str, str] = {}
+
+        for action in self._actions:
+            name = action.name
+
+            if only is not None and name not in only:
+                results[name] = "skipped"
+                continue
+
+            if not action.supported_on(self._build_info):
+                results[name] = "unsupported"
+                continue
+
+            try:
+                action.restore_os_default()
+                results[name] = "reset"
+            except Exception as exc:
+                logger.error(f"[OsConfigController] {name}.restore_os_default() failed: {exc}")
+                results[name] = f"error:{exc}"
+
+        return results

@@ -90,3 +90,11 @@ class DefenderScanScheduleAction(AbstractOsAction):
             logger.debug(f"[{self.name}] Defender Scheduled Scan re-enabled")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Re-enable Defender Scheduled Scan (Windows default: enabled)."""
+        rc = run_command(f'schtasks /Change /TN "{_TASK_NAME}" /ENABLE')
+        if rc != 0:
+            logger.warning(f"[{self.name}] restore_os_default: schtasks /ENABLE returned rc={rc}")
+        else:
+            logger.info(f"[{self.name}] Defender Scheduled Scan re-enabled")

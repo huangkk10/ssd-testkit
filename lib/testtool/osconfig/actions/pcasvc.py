@@ -20,3 +20,4 @@ class PcaSvcAction(BaseServiceAction):
     name = "PcaSvcAction"
     service_name = "PcaSvc"
     capability_key = "pcasvc"
+    default_start_type = 3  # Manual

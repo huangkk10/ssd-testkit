@@ -167,3 +167,18 @@ class OneDriveTasksAction(AbstractOsAction):
                 logger.debug(f"[{self.name}] Re-enabled: {task}")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Re-enable all present OneDrive tasks (Windows default: enabled if installed)."""
+        all_tasks: List[str] = []
+        for prefix in _PREFIXES:
+            all_tasks.extend(query_tasks_by_prefix(prefix))
+        if not all_tasks:
+            logger.debug(f"[{self.name}] restore_os_default: no OneDrive tasks found")
+            return
+        for task in all_tasks:
+            rc = run_command(f'schtasks /Change /TN "{task}" /ENABLE')
+            if rc != 0:
+                logger.warning(f"[{self.name}] restore_os_default: failed to enable {task} (rc={rc})")
+            else:
+                logger.info(f"[{self.name}] Re-enabled: {task}")

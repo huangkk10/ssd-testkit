@@ -90,3 +90,8 @@ class CortanaAction(AbstractOsAction):
             logger.debug(f"[{self.name}] {_VAL_CORTANA} deleted (was absent)")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Remove AllowCortana policy value so Cortana uses its default (enabled)."""
+        delete_value("HKLM", _CORTANA_KEY, _VAL_CORTANA)
+        logger.info(f"[{self.name}] AllowCortana policy removed (Cortana re-enabled)")

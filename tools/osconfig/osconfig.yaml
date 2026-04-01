@@ -1,0 +1,42 @@
+# osconfig.yaml — 開發機設定檔
+#
+# 用途：配合 osconfig_tool.py 在開發機上套用 / 還原 OS 設定
+# 執行：python tools/osconfig/osconfig_tool.py apply --config tools/osconfig/osconfig.yaml
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# 注意：以下設定會影響系統安全性與功能，僅適用於隔離的開發 / 測試機器
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 停用 Windows Update（避免開發過程中自動重開機）
+disable_windows_update: true
+
+# 停用 Defender Real-time Monitoring（避免干擾工具執行）
+disable_defender: false
+
+# 停用 Windows Firewall（如需要，可改為 true）
+disable_firewall: false
+
+# 停用 UAC（設為 true 後需要重開機才生效）
+disable_uac: false
+
+# 停用 Windows Search Index（減少背景 I/O）
+disable_search_index: true
+
+# 停用 SysMain / SuperFetch
+disable_sysmain: true
+
+# 停用快速啟動（Fast Startup）
+disable_fast_startup: true
+
+# 停用休眠（釋放磁碟空間）
+disable_hibernation: false
+
+# 電源計劃（balanced / high_performance / power_saver）
+power_plan: "balanced"
+
+# 停用排程磁碟重組
+disable_defrag_schedule: true
+
+# ─────── 不建議在開發機開啟的設定 ───────────────────────────────────────────
+# enable_auto_admin_logon: false   # 需要明文密碼，僅用於 lab 機器
+# disable_auto_reboot: false       # 建議只在測試壓測時開啟

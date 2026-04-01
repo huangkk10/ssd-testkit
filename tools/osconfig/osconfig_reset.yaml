@@ -1,0 +1,59 @@
+# osconfig_reset.yaml — reset 範圍設定檔
+#
+# 用途：定義 osconfig_reset.bat 要重置哪些項目
+#       將設定還原為 Windows 出廠預設值
+#
+# 規則：設為 true → 納入重置範圍
+#       設為 false → 跳過（不動）
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Services ──────────────────────────────────────────────────────────────────
+disable_search_index:   false    # WSearch → 自動（出廠預設）
+disable_sysmain:        false    # SysMain  → 自動（出廠預設）
+disable_windows_update: false    # wuauserv → 自動（出廠預設）
+disable_wer:            false    # WerSvc   → 手動（出廠預設）
+disable_telemetry:      false    # DiagTrack → 自動（出廠預設）
+disable_pcasvc:         false    # PcaSvc    → 手動（出廠預設）
+
+# ── Security ──────────────────────────────────────────────────────────────────
+disable_defender:   true    # 刪除 GPO 停用機碼，重新啟用 Defender 即時保護
+disable_firewall:   true    # netsh → allprofiles state on
+disable_uac:        true    # EnableLUA=1（需重開機生效）
+
+# ── Boot / Crash ──────────────────────────────────────────────────────────────
+disable_auto_reboot: true   # AutoReboot=1（BSOD 後自動重開機，出廠預設）
+
+# ── Power ─────────────────────────────────────────────────────────────────────
+power_plan:           "high_performance"   # 切回平衡模式（出廠預設）
+disable_hibernation:  true         # restore_os_default() → powercfg /hibernate on
+disable_fast_startup: true         # HiberbootEnabled=1（出廠預設）
+
+# ── Schedule ──────────────────────────────────────────────────────────────────
+disable_defrag_schedule:          true   # 重新啟用磁碟重組排程
+disable_defender_scan_schedule:   true   # 重新啟用 Defender 掃描排程
+disable_edge_update_tasks:        true   # 重新啟用 Edge 更新任務
+disable_onedrive_tasks:           true   # 重新啟用 OneDrive 任務
+disable_memory_diagnostic_tasks:  true   # 重新啟用記憶體診斷任務
+disable_mcafee_tasks:             true   # 重新啟用 McAfee 任務（若存在）
+
+# ── System ────────────────────────────────────────────────────────────────────
+disable_system_restore:   true   # 重新啟用系統還原
+disable_notifications:    true   # 刪除通知中心停用機碼
+disable_cortana:          true   # 刪除 AllowCortana GPO 機碼
+disable_background_apps:  true   # 刪除 LetAppsRunInBackground 機碼
+
+# ── 不納入重置（原因見備註）──────────────────────────────────────────────────
+# disable_onedrive:           false  # OneDrive policy 不同機器差異大，略過
+# enable_auto_admin_logon:    false  # 需要明文密碼欄位，由 CLI 另行處理
+# disable_memory_integrity:   false  # 需重開機，影響大
+# disable_vuln_driver_blocklist: false
+# enable_test_signing:        false  # bcdedit 異動，略過
+# disable_test_signing:       false
+# disable_recovery:           false  # winrecovery 設定，略過
+# set_small_memory_dump:      false  # crash dump 設定，略過
+# disable_monitor_timeout:    false  # 電源逾時另外管理
+# disable_standby_timeout:    false
+# disable_hibernate_timeout:  false
+# disable_disk_timeout:       false
+# disable_unattended_sleep:   false
+# manage_pagefile:            false  # pagefile 設定，略過

@@ -95,3 +95,11 @@ class MemoryDiagnosticTasksAction(AbstractOsAction):
             logger.debug(f"[{self.name}] RunFullMemoryDiagnostic re-enabled")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Re-enable the Memory Diagnostic task (Windows default: enabled)."""
+        rc = run_command(f'schtasks /Change /TN "{_TASK_NAME}" /ENABLE')
+        if rc != 0:
+            logger.warning(f"[{self.name}] restore_os_default: schtasks /ENABLE returned rc={rc}")
+        else:
+            logger.info(f"[{self.name}] RunFullMemoryDiagnostic re-enabled")

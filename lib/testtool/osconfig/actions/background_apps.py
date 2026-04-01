@@ -95,3 +95,8 @@ class BackgroundAppsAction(AbstractOsAction):
             logger.debug(f"[{self.name}] {_VAL_BG} deleted (was absent)")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Remove LetAppsRunInBackground policy value (Windows default: 0 = user controlled)."""
+        delete_value("HKLM", _BG_KEY, _VAL_BG)
+        logger.info(f"[{self.name}] LetAppsRunInBackground policy removed (user controlled)")

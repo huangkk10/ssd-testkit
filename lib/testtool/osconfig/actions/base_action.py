@@ -14,6 +14,9 @@ Design contract
                  ``False`` otherwise.  Must never modify any system state.
 * ``supported_on(build_info)`` – class-method; return ``True`` when the action
                  can be applied on the given OS build/edition.
+* ``restore_os_default()`` – restore the setting to the Windows out-of-box default
+                 value.  Does not require a snapshot.  Concrete actions should
+                 override this with the known factory default.
 
 Snapshot / revert pattern
 -------------------------
@@ -122,6 +125,15 @@ class AbstractOsAction(ABC):
     # ------------------------------------------------------------------ #
     # Non-abstract helpers available to every concrete action              #
     # ------------------------------------------------------------------ #
+
+    def restore_os_default(self) -> None:
+        """
+        Restore this setting to the Windows out-of-box default value.
+
+        The default implementation logs a warning.  Concrete actions that
+        have a known factory default should override this method.
+        """
+        logger.warning(f"[{self.name}] restore_os_default() not implemented – skipping")
 
     def _log_apply_start(self) -> None:
         logger.info(f"[{self.name}] Applying …")

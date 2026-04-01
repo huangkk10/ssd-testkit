@@ -72,3 +72,9 @@ class TelemetryAction(BaseServiceAction):
         else:
             delete_value("HKLM", _TELEMETRY_KEY, _TELEMETRY_VAL)
             logger.debug(f"[{self.name}] AllowTelemetry deleted (was absent)")
+
+    def restore_os_default(self) -> None:
+        """Re-enable DiagTrack service and remove AllowTelemetry GPO policy."""
+        delete_value("HKLM", _TELEMETRY_KEY, _TELEMETRY_VAL)
+        logger.debug(f"[{self.name}] AllowTelemetry GPO deleted")
+        super().restore_os_default()

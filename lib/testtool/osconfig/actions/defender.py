@@ -167,3 +167,13 @@ class DefenderAction(AbstractOsAction):
             logger.debug(f"[{self.name}] {_VAL_DISABLE} deleted (was absent)")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Re-enable Defender Real-time Monitoring (Windows default: enabled)."""
+        delete_value("HKLM", _DEF_KEY, _VAL_DISABLE)
+        logger.debug(f"[{self.name}] {_VAL_DISABLE} GPO key deleted")
+        ps_rc, _, _ = run_powershell("Set-MpPreference -DisableRealtimeMonitoring $false")
+        if ps_rc != 0:
+            logger.warning(f"[{self.name}] restore_os_default PowerShell returned rc={ps_rc}")
+        else:
+            logger.info(f"[{self.name}] Defender Real-time Monitoring re-enabled")

@@ -145,3 +145,16 @@ class EdgeUpdateTasksAction(AbstractOsAction):
                 logger.debug(f"[{self.name}] Re-enabled: {task}")
 
         self._log_revert_done()
+
+    def restore_os_default(self) -> None:
+        """Re-enable all present Edge Update tasks (Windows default: enabled if installed)."""
+        present = query_tasks_by_prefix(_PREFIX)
+        if not present:
+            logger.debug(f"[{self.name}] restore_os_default: no Edge Update tasks found")
+            return
+        for task in present:
+            rc = run_command(f'schtasks /Change /TN "{task}" /ENABLE')
+            if rc != 0:
+                logger.warning(f"[{self.name}] restore_os_default: failed to enable {task} (rc={rc})")
+            else:
+                logger.info(f"[{self.name}] Re-enabled: {task}")

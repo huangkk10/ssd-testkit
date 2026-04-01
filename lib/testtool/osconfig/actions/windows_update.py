@@ -77,3 +77,9 @@ class WindowsUpdateAction(BaseServiceAction):
             # Was not set before – remove it
             delete_value("HKLM", _GPO_KEY, _GPO_VAL)
             logger.debug(f"[{self.name}] NoAutoUpdate GPO deleted (was absent)")
+
+    def restore_os_default(self) -> None:
+        """Re-enable Windows Update service and remove NoAutoUpdate GPO."""
+        delete_value("HKLM", _GPO_KEY, _GPO_VAL)
+        logger.debug(f"[{self.name}] NoAutoUpdate GPO deleted")
+        super().restore_os_default()
