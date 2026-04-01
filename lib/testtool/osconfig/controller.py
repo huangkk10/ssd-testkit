@@ -155,12 +155,15 @@ def _build_action_list(
             "[OsConfigController] AutoAdminLogon: username=%r  domain=%r  password=<redacted>",
             _username, _domain,
         )
-        actions.append(AutoAdminLogonAction(
+        _action = AutoAdminLogonAction(
             username=_username,
             password=_password,
             domain=_domain,
             snapshot_store=s,
-        ))
+        )
+        if not profile.revert_auto_admin_logon:
+            _action.skip_revert = True
+        actions.append(_action)
     if profile.set_small_memory_dump:
         actions.append(MemoryDumpAction(snapshot_store=s))
 
@@ -344,6 +347,11 @@ class OsConfigController:
             name = action.name
             if not action.supported_on(self._build_info):
                 results[name] = "unsupported"
+                continue
+
+            if getattr(action, 'skip_revert', False):
+                results[name] = "skip_revert"
+                logger.info(f"[OsConfigController] {name}.revert() skipped (skip_revert=True)")
                 continue
 
             try:

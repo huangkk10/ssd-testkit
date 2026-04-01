@@ -134,6 +134,7 @@ class OsConfigProfile:
     disable_recovery: bool = False
     disable_auto_reboot: bool = False
     enable_auto_admin_logon: bool = False
+    revert_auto_admin_logon: bool = True   # set False to keep auto-logon after teardown
     auto_login_username: str = ""
     auto_login_password: str = ""
     auto_login_domain: str = ""
