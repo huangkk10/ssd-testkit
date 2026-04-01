@@ -111,7 +111,7 @@ class BaseTestCase:
         if not cls.reboot_mgr.is_recovering():
             cls._init_runcard(runcard_params)
         else:
-            cls.runcard = None
+            cls._recover_runcard(runcard_params)
 
         yield
 
@@ -201,6 +201,30 @@ class BaseTestCase:
             logger.LogEvt("[RunCard] Started")
         except Exception as exc:
             logger.LogEvt(f"[RunCard] Init failed — {exc} (continuing)")
+            cls.runcard = None
+
+    @classmethod
+    def _recover_runcard(cls, runcard_params: dict) -> None:
+        """
+        Attach to an existing Runcard.ini after a reboot (recovery mode).
+
+        Does NOT call start_test() — that would overwrite the original Start Time
+        and DUT info.  Instead calls initialize_with_reload() to load the persisted
+        state so that _teardown_runcard can later call end_test(PASS/FAIL).
+        Failures are non-fatal — cls.runcard is set to None on error.
+
+        Args:
+            runcard_params: Dict with key ``'initialization'`` as expected by the
+                            RunCard API.
+        """
+        from lib.testtool import RunCard as RC
+        cls.runcard = None
+        try:
+            cls.runcard = RC.Runcard(**runcard_params['initialization'])
+            cls.runcard.initialize_with_reload()
+            logger.LogEvt("[RunCard] Recovered (reload from existing Runcard.ini)")
+        except Exception as exc:
+            logger.LogEvt(f"[RunCard] Recovery failed — {exc} (continuing)")
             cls.runcard = None
 
     @classmethod
