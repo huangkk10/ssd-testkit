@@ -383,7 +383,9 @@ class WmiDutInfoCollector:
                 f"-KeyName 'DEVPKEY_Device_DriverVersion' "
                 f"-ErrorAction SilentlyContinue).Data }} else {{ '' }}"
             )
-            return out.strip() or ""
+            result = out.strip()
+            if result:
+                return result
         except Exception:
             pass
 
