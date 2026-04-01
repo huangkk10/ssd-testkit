@@ -76,11 +76,23 @@ class ChocoManager:
         elif os.environ.get("SSD_TESTKIT_ROOT"):
             self._root = Path(os.environ["SSD_TESTKIT_ROOT"])
         else:
-            # lib/testtool/choco_manager.py  ->  lib/testtool  ->  lib  ->  root
-            self._root = Path(__file__).resolve().parent.parent.parent
+            # In a PyInstaller frozen exe, __file__ resolves to the ephemeral
+            # _MEIPASS temp dir, not the dist folder where bin/ and installers
+            # live.  Use path_manager.app_dir (= the .exe's parent directory)
+            # so that SSD_TESTKIT_ROOT points at the real distribution root.
+            try:
+                from path_manager import path_manager as _pm
+                self._root = Path(_pm.app_dir)
+            except ImportError:
+                # Development: lib/testtool/choco_manager.py -> lib/testtool -> lib -> root
+                self._root = Path(__file__).resolve().parent.parent.parent
 
         self._packages_dir = self._root / "bin" / "chocolatey" / "packages"
-        self._testtool_dir = self._root / "lib" / "testtool"
+        # package_meta.yaml files live alongside the tool modules in lib/testtool/.
+        # In a frozen exe PyInstaller extracts them to _MEIPASS/lib/testtool/,
+        # which is exactly where __file__ (this file) lives — so using __file__
+        # works correctly in both frozen and development environments.
+        self._testtool_dir = Path(__file__).resolve().parent
         self._choco = self._find_choco()
 
     # ── public API ─────────────────────────────────────────────────────────
