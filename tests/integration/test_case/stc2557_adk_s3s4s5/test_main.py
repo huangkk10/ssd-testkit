@@ -62,7 +62,6 @@ Run:
 
 import os
 import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -79,9 +78,8 @@ from framework.reboot_manager import RebootManager
 from lib.logger import get_module_logger, clear_log_files
 from lib.testtool.tool_installer import ToolInstaller
 from lib.testtool.windows_adk import ADKController
-from lib.testtool.windows_adk.config import WAC_EXE, get_build_number
+from lib.testtool.windows_adk.config import WAC_EXE
 from lib.testtool.windows_adk.result_reader import WACRunResult
-from lib.testtool.windows_adk.version_adapter import VersionAdapter
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.state_manager import OsConfigStateManager
 from lib.testtool.osconfig.profile_loader import load_profile
@@ -106,57 +104,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     # Class-level state: populated by test_11, consumed by test_12
     _wac_result: "WACRunResult | None" = None
-
-    # Comment: steps 6-9 configure BPFS + S3/S4/S5 in one Configure Job;
-    #          step 10 starts all four assessments with a single click_start.
     _osconfig_controller: "OsConfigController | None" = None
-
-    # Config directory — single source of truth for all Config/* paths
-    _CONFIG_DIR = Path(__file__).parent / "Config"
-
-    # ------------------------------------------------------------------
-    # Class-level fixture — overrides BaseTestCase.setup_teardown_class
-    # ------------------------------------------------------------------
-
-    @pytest.fixture(scope="class", autouse=True)
-    def setup_test_class(self, request, testcase_config, runcard_params):
-        """Initialise working directory, VersionAdapter, RebootManager, and RunCard."""
-        cls = request.cls
-        cls.original_cwd = os.getcwd()
-
-        test_dir = cls._setup_working_directory(__file__)
-
-        # ── Config ────────────────────────────────────────────────────────────
-        cls.config = testcase_config.tool_config
-        cls.log_path = cls._resolve_log_path("ADK_LOG_DIR", "s3s4s5", test_dir)  # P6
-
-        cls.adapter = VersionAdapter(get_build_number())
-        # ── RebootManager with auto-login resolved from osconfig.yaml ─────────
-        cls._osconfig_profile = load_profile(cls._CONFIG_DIR / "osconfig.yaml")  # cache for test_03
-        cls.reboot_mgr = RebootManager(
-            total_tests=cls._count_test_methods(),
-            auto_login_config=cls._build_auto_login_cfg(cls._osconfig_profile),
-        )
-
-        ToolInstaller(cls._CONFIG_DIR / "tools.yaml").install_pre_runcard()
-        # ── RunCard ─────────────────────────────────────────────────────────
-        if not cls.reboot_mgr.is_recovering():
-            cls._init_runcard(runcard_params)
-        else:
-            cls.runcard = None
-
-        yield
-
-        cls._standard_teardown(
-            request.session,
-            cls._CONFIG_DIR / "osconfig.yaml",
-            cls._osconfig_controller,
-            logger,
-        )
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
     # Step 1 — Precondition
@@ -166,7 +114,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
     @step(1, "Precondition")
     def test_01_precondition(self):
         """Clean testlog (preserve Runcard.ini) and remove stale reboot state."""
-        # Clean testlog but skip Runcard.ini (already written by start_test() in setup).
+        # Clean testlog but skip Runcard.ini (already written by start_test() in setup).ii
         self._cleanup_testlog_directory()
 
         clear_log_files()

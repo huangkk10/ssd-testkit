@@ -21,42 +21,107 @@ class BaseTestCase:
             def test_step_01(self):
                 # test logic
                 pass
+
+    New-style testcase (no setup_test_class needed in subclass):
+        class TestSTCXXXX(BaseTestCase):
+            _TESTCASE_FILE = __file__
+            _CONFIG_DIR    = Path(__file__).parent / "Config"
+            _LOG_ENV_VAR   = "TOOL_LOG_DIR"   # env var for log base path (optional)
+            _LOG_SUBDIR    = "subdir_name"     # log sub-directory name (optional)
+            _osconfig_controller = None
+
+            @classmethod
+            def _on_extra_setup(cls, test_dir):  # optional, for testcase-specific init
+                pass
+
+    Legacy testcase (defines its own setup_test_class — still supported):
+        The subclass fixture overrides this one; BaseTestCase.setup_test_class
+        will NOT run for classes that define their own fixture of the same name.
     """
-    
-    # ========== Class-level Setup/Teardown ==========
+
+    # ── Class variables for the new-style setup (all optional) ───────────────
+    _TESTCASE_FILE: str = ""      # auto-derived via inspect.getfile; set only to override
+    _CONFIG_DIR: "Path | None" = None  # auto-derived as <testcase_dir>/Config; set only to override
+    _LOG_ENV_VAR: str = ""        # env var name; empty → use default testlog path
+    _LOG_SUBDIR: str = ""         # subdir under testlog; empty → use default
+
+    # ========== New-style class-level fixture ==========
     @pytest.fixture(scope="class", autouse=True)
-    def setup_teardown_class(self, request):
-        """Class-level setup and teardown"""
-        # Setup：初始化測試環境
+    def setup_test_class(self, request, testcase_config, runcard_params):
+        """
+        Generalised class-level fixture for new-style testcases.
+
+        Subclasses with a Config/Config.json get full setup/teardown for free.
+        Legacy subclasses that define their own setup_test_class override this
+        fixture and this code never runs for them.
+        """
         cls = request.cls
-        cls.test_name = request.node.name
-        cls.log_path = "./testlog"
-        cls.reboot_mgr = RebootManager()
-        
-        # Only initialize on first run (skip during recovery)
-        if not cls.reboot_mgr.is_recovering():
-            logger.LogEvt("=" * 60)
-            logger.LogEvt(f"Setting up test: {cls.test_name}")
-            logger.LogEvt("=" * 60)
-            
-            # Clean up testlog directory (framework standard behavior)
-            cls._cleanup_testlog_directory()
-            
-            setup_test_environment(cls.log_path)
+
+        # Auto-derive testcase file from subclass; subclass can override via _TESTCASE_FILE.
+        _testcase_file = getattr(cls, '_TESTCASE_FILE', '') or inspect.getfile(cls)
+
+        # Fall through for bare test classes (no Config/Config.json).
+        # Legacy subclasses override this fixture entirely and never reach here.
+        if not getattr(cls, '_CONFIG_DIR', None):
+            if not (Path(_testcase_file).parent / "Config" / "Config.json").exists():
+                cls.log_path = "./testlog"
+                cls.reboot_mgr = RebootManager()
+                yield
+                return
+
+        cls.original_cwd = os.getcwd()
+        test_dir = cls._setup_working_directory(_testcase_file)
+
+        # ── Config ────────────────────────────────────────────────────────────
+        cls.config = testcase_config.tool_config
+
+        # ── log_path ──────────────────────────────────────────────────────────
+        if getattr(cls, '_LOG_ENV_VAR', ''):
+            cls.log_path = cls._resolve_log_path(cls._LOG_ENV_VAR, cls._LOG_SUBDIR, test_dir)
         else:
-            logger.LogEvt("=" * 60)
-            logger.LogEvt(f"Recovering test: {cls.test_name}")
-            logger.LogEvt("=" * 60)
-        
-        yield  # test execution
-        
-        # Teardown: clean up test environment
-        if cls.reboot_mgr.all_tests_completed():
-            logger.LogEvt("=" * 60)
-            logger.LogEvt("All tests completed, cleaning up...")
-            logger.LogEvt("=" * 60)
-            cleanup_test_environment()
-            cls.reboot_mgr.cleanup()
+            cls.log_path = str(test_dir / "testlog")
+
+        # ── osconfig profile (optional — only when osconfig.yaml exists) ──────
+        _config_dir = getattr(cls, '_CONFIG_DIR', None) or (test_dir / "Config")
+        _osconfig_yaml = _config_dir / "osconfig.yaml"
+        if _osconfig_yaml.exists():
+            from lib.testtool.osconfig.profile_loader import load_profile
+            cls._osconfig_profile = load_profile(_osconfig_yaml)
+            auto_login = cls._build_auto_login_cfg(cls._osconfig_profile)
+        else:
+            cls._osconfig_profile = None
+            auto_login = {}
+
+        # ── RebootManager ─────────────────────────────────────────────────────
+        cls.reboot_mgr = RebootManager(
+            total_tests=cls._count_test_methods(),
+            auto_login_config=auto_login,
+        )
+
+        # ── tools.yaml (optional — only when tools.yaml exists) ───────────────
+        _tools_yaml = _config_dir / "tools.yaml"
+        if _tools_yaml.exists():
+            from lib.testtool.tool_installer import ToolInstaller
+            ToolInstaller(_tools_yaml).install_pre_runcard()
+
+        # ── Subclass-specific init hook ───────────────────────────────────────
+        cls._on_extra_setup(test_dir)
+
+        # ── RunCard ───────────────────────────────────────────────────────────
+        if not cls.reboot_mgr.is_recovering():
+            cls._init_runcard(runcard_params)
+        else:
+            cls.runcard = None
+
+        yield
+
+        # ── Teardown ──────────────────────────────────────────────────────────
+        cls._standard_teardown(
+            request.session,
+            _osconfig_yaml if _osconfig_yaml.exists() else None,
+            getattr(cls, '_osconfig_controller', None),
+            logger,
+        )
     
     # ========== Function-level Setup/Teardown ==========
     @pytest.fixture(autouse=True)
@@ -83,6 +148,16 @@ class BaseTestCase:
             1 for name, _ in inspect.getmembers(cls, predicate=inspect.isfunction)
             if name.startswith('test_')
         )
+
+    @classmethod
+    def _on_extra_setup(cls, test_dir: "Path") -> None:
+        """
+        Hook for testcase-specific initialisation that runs inside
+        setup_test_class after RebootManager and before RunCard.
+
+        Override in subclass when extra setup is needed (e.g. VersionAdapter).
+        Default is no-op.
+        """
 
     @classmethod
     def _setup_working_directory(cls, caller_file: str) -> Path:
@@ -233,7 +308,7 @@ class BaseTestCase:
     @classmethod
     def _resolve_log_path(cls, env_var: str, subdir: str, test_dir: "Path") -> str:
         """
-        Resolve the log directory from an environment variable or the test directory.
+        Resolve the log directory from an environment variable or the test directory.   
         Creates the directory and returns the resolved path as a string.
 
         Args:
@@ -243,7 +318,10 @@ class BaseTestCase:
             test_dir: Fallback base path (as returned by _setup_working_directory).
         """
         base = os.getenv(env_var)
-        resolved = str(Path(base) / subdir) if base else str(test_dir / "testlog" / subdir)
+        if base:
+            resolved = str(Path(base) / subdir) if subdir else str(Path(base))
+        else:
+            resolved = str(test_dir / "testlog" / subdir) if subdir else str(test_dir / "testlog")
         Path(resolved).mkdir(parents=True, exist_ok=True)
         return resolved
 
