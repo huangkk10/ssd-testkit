@@ -120,7 +120,7 @@ class BaseTestCase:
             request.session,
             _osconfig_yaml if _osconfig_yaml.exists() else None,
             getattr(cls, '_osconfig_controller', None),
-            logger,
+            logger.get_module_logger('main'),
         )
     
     # ========== Function-level Setup/Teardown ==========
