@@ -73,15 +73,14 @@ foreach ($entry in $entries) {
 
     # Build .nupkg via choco pack if not present
     if (-not (Test-Path $nupkg)) {
-        $nuspecDir = Join-Path $Root "bin\chocolatey\packages\$id"
-        $nuspec    = Get-ChildItem $nuspecDir -Filter "*.nuspec" -ErrorAction SilentlyContinue |
-                     Select-Object -First 1
+        # nuspec lives inside the version directory (e.g. packages\smicli\2026.2.13\smicli.nuspec)
+        $nuspec = Get-ChildItem $pkgDir -Filter "*.nuspec" -ErrorAction SilentlyContinue |
+                  Select-Object -First 1
         if ($nuspec) {
             Write-Host "  [PACK]   $id $version" -ForegroundColor DarkYellow
-            New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
             choco pack $nuspec.FullName --outputdirectory $pkgDir --version $version
         } else {
-            Write-Warning "[SKIP] ${id}: no .nupkg at $nupkg and no .nuspec in $nuspecDir"
+            Write-Warning "[SKIP] ${id}: no .nupkg at $nupkg and no .nuspec in $pkgDir"
             continue
         }
     }
