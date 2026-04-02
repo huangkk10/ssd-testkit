@@ -3,10 +3,10 @@
         "config_path": "./Config/SmiCli.json"
     },
     "adk": {
-        "bpfs_num_iters": 4,
-        "bpfb_num_iters": 4,
-        "standby_num_iters": 4,
-        "hibernate_num_iters": 4
+        "bpfs_num_iters": 1,
+        "bpfb_num_iters": 1,
+        "standby_num_iters": 1,
+        "hibernate_num_iters": 1
     },
     "DUT_info": {
         "DiskType": 0

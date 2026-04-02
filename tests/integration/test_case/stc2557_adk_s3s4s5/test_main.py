@@ -97,7 +97,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     Runs Standby Performance (S3), Hibernate Performance (S4), and Boot
     Performance Full Boot (S5) as a single WAC Configure Job.  The three
-    assessments are configured across steps 6–9 and started in step 10 with
+    assessments are configured across steps 6–9 and started in step 10 withDDD
     a single click_start.  RebootManager handles state persistence across the
     S4 hibernate and S5 cold reboot.
     """

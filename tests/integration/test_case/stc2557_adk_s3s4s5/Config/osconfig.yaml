@@ -23,14 +23,6 @@ disable_mcafee_tasks: true
 #           HiberbootEnabled = 1
 enable_fast_startup: true
 
-# Boot Performance AutoLogger：確保 ETW AutoLogger session 在 Fast Startup 期間啟動
-# Win11 24H2 (build 26100) 預設 Start=0，導致 WAC BPFS assessment 失敗 (0xC0040477)
-# Win11 25H2+ 預設已是 Start=1，此設定為 no-op
-# Registry: HKLM\SYSTEM\CurrentControlSet\Control\WMI\Autologger\
-#           Microsoft-Windows-Boot-Performance-Diagnostics
-#           Start = 1
-enable_boot_perf_autologger: true
-
 # Hibernation：確保 powercfg /h on，BPFS/S4/S5 assessment 需要 hiberfil.sys
 # apply: powercfg /hibernate on
 # revert: powercfg /hibernate off
@@ -47,10 +39,17 @@ power_plan: "balanced"
 # username：不填 → test_03 自動使用目前登入的使用者（getpass.getuser()）
 # password：不填 → 必須設定環境變數 SSD_TESTKIT_AUTO_LOGIN_PASSWORD；否則 test_03 直接 fail
 # domain  ：不填 → 預設 "." (本機帳號)
+#
+# ⚠ 必須為 true：S4 hibernate、S5 cold reboot 後需自動登入，
+#   startup BAT 才能觸發並讓 pytest 繼續執行。
+#   若 OS 本身沒有預設 auto-login（例如全新安裝的 24H2）且此欄位設為 false，
+#   reboot 後會停在鎖定畫面，看起來像「機器掛掉」。
+#   25H2 機器若事先已手動設定 auto-login，即使此欄位為 false 也不會壞，
+#   但建議永遠設為 true 確保行為一致。
 enable_auto_admin_logon: false
 revert_auto_admin_logon: true         # 測試結束後保留 auto-logon 設定，不還原
 # auto_login_username: "Administrator"  # 若需強制指定帳號名稱請取消此行註解
-auto_login_password: ""                # 填入測試機登入密碼，或留空並設定 SSD_TESTKIT_AUTO_LOGIN_PASSWORD 環境變數
+auto_login_password: ""                # ⚠ 必須填入登入密碼，或設定 SSD_TESTKIT_AUTO_LOGIN_PASSWORD 環境變數
 # auto_login_domain: "."               # 本機帳號留空或用 "."
 
 # Test Signing：關閉 bcdedit testsigning，確保 kernel 驅動程式簽章驗證正常
@@ -61,3 +60,22 @@ disable_test_signing: true
 # Registry: HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Policies\System
 #           EnableLUA = 0
 disable_uac: true
+
+# ──────────────────────────────────────────────────────────────────────────────
+# build_overrides：依 Windows build 號碼套用額外設定（需 profile_loader 支援）
+#
+# 規則：
+#   - 每個 key 是「最低 build 號碼」(inclusive)
+#   - 所有 key <= current_build 的 entry 都會套用（由小到大疊加，大的 key 覆蓋小的）
+#   - 值會覆蓋 base 設定，不符合的 entry 完全忽略
+#
+# 為什麼 24H2 需要 enable_boot_perf_autologger 但 25H2 不需要：
+#   Win11 24H2 (build 26100) ETW AutoLogger Start 預設值 = 0
+#   → WAC BPFS assessment 失敗 (error 0xC0040477)
+#   Win11 25H2+ (build > 26100) 預設值已改為 1，不需要此設定
+# ──────────────────────────────────────────────────────────────────────────────
+build_overrides:
+  26100:    # Win11 24H2+ (build >= 26100)：ETW AutoLogger Start 預設為 0，需強制設為 1
+    # Registry: HKLM\SYSTEM\CurrentControlSet\Control\WMI\Autologger\
+    #           Microsoft-Windows-Boot-Performance-Diagnostics  Start = 1
+    enable_boot_perf_autologger: true
