@@ -67,6 +67,7 @@ from .actions import (
     PowerTimeoutAction,
     HibernationAction,
     EnableHibernationAction,
+    DisableHybridSleepAction,
     UnattendedSleepAction,
     # ── Phase 4: Schedule ─────────────────────────────────────────────────
     DefragScheduleAction,
@@ -184,6 +185,8 @@ def _build_action_list(
         actions.append(HibernationAction(snapshot_store=s))
     if profile.enable_hibernation:
         actions.append(EnableHibernationAction(snapshot_store=s))
+    if profile.disable_hybrid_sleep:
+        actions.append(DisableHybridSleepAction(snapshot_store=s))
     if profile.disable_unattended_sleep:
         actions.append(UnattendedSleepAction(snapshot_store=s))
 

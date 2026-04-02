@@ -203,6 +203,11 @@ CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "exclude_editions": [],
         "description": "Disable Hibernation file (powercfg /h off)",
     },
+    "hybrid_sleep": {
+        "min_build": 0,
+        "exclude_editions": [],
+        "description": "Disable Hybrid Sleep (fixes BPFS wake-timer failures during training iterations)",
+    },
     # ── Schedule ─────────────────────────────────────────────────
     "defrag_schedule": {
         "min_build": 0,

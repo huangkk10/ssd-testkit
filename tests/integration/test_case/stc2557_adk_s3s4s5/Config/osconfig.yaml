@@ -28,6 +28,13 @@ enable_fast_startup: true
 # revert: powercfg /hibernate off
 enable_hibernation: true
 
+# Hybrid Sleep：停用 Hybrid Sleep，確保 BPFS Fast Startup hibernate 的 wake timer 正常觸發
+# 原因：Hybrid Sleep = ON 時，Windows 在 S3(sleep+hibernate file) 與 S4(pure hibernate)
+#       之間的電源狀態轉換會造成 wake timer 在後續 training iteration 2~6 失敗，
+#       機器停在 hibernate 狀態永遠不 resume（螢幕關閉，看起來像「壞掉」）。
+# powercfg: setacvalueindex / setdcvalueindex SCHEME_CURRENT SUB_SLEEP HYBRIDSLEEP 0
+disable_hybrid_sleep: true
+
 # Power Plan：ADK 要求 Balanced 才能取得準確量測結果
 # apply: 切換至 Balanced；revert: 還原原始 plan
 power_plan: "balanced"

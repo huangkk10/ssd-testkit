@@ -156,6 +156,7 @@ class OsConfigProfile:
     disable_disk_timeout: bool = False
     disable_hibernation: bool = False
     enable_hibernation: bool = False
+    disable_hybrid_sleep: bool = False
     disable_unattended_sleep: bool = False
 
     # ── Schedule ──────────────────────────────────────────────────────────
