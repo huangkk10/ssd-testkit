@@ -23,6 +23,14 @@ disable_mcafee_tasks: true
 #           HiberbootEnabled = 1
 enable_fast_startup: true
 
+# Boot Performance AutoLogger：確保 ETW AutoLogger session 在 Fast Startup 期間啟動
+# Win11 24H2 (build 26100) 預設 Start=0，導致 WAC BPFS assessment 失敗 (0xC0040477)
+# Win11 25H2+ 預設已是 Start=1，此設定為 no-op
+# Registry: HKLM\SYSTEM\CurrentControlSet\Control\WMI\Autologger\
+#           Microsoft-Windows-Boot-Performance-Diagnostics
+#           Start = 1
+enable_boot_perf_autologger: true
+
 # Hibernation：確保 powercfg /h on，BPFS/S4/S5 assessment 需要 hiberfil.sys
 # apply: powercfg /hibernate on
 # revert: powercfg /hibernate off

@@ -245,6 +245,11 @@ CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "exclude_editions": [],
         "description": "Disable Fast Startup",
     },
+    "boot_perf_autologger": {
+        "min_build": 0,
+        "exclude_editions": [],
+        "description": "Enable Boot Performance Diagnostics ETW AutoLogger (fixes BPFS 0xC0040477 on Win11 24H2)",
+    },
     "notifications": {
         "min_build": 0,
         "exclude_editions": [],

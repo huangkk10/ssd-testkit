@@ -103,6 +103,10 @@ class OsConfigProfile:
                                     Required when a previous test left it disabled; use this
                                     before BPFS WAC assessments to guarantee the ETW
                                     AutoLogger session will be active.
+        enable_boot_perf_autologger: Set ``Start = 1`` on the Boot Performance Diagnostics
+                                    ETW AutoLogger registry key.  Required on Windows 11 24H2
+                                    where the default is 0, causing WAC BPFS assessment to
+                                    fail with 0xC0040477.  No-op on 25H2+ (already 1).
         disable_notifications:      Disable Action Centre / notification toast.
         disable_cortana:            Disable Cortana via policy.
         disable_background_apps:    Block apps from running in background.
@@ -166,6 +170,7 @@ class OsConfigProfile:
     disable_system_restore: bool = False
     disable_fast_startup: bool = False
     enable_fast_startup: bool = False
+    enable_boot_perf_autologger: bool = False
     disable_notifications: bool = False
     disable_cortana: bool = False
     disable_background_apps: bool = False

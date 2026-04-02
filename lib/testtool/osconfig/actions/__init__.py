@@ -47,6 +47,7 @@ from .mcafee_tasks import McAfeeTasksAction
 # ── Phase 4: System Actions ───────────────────────────────────────────────
 from .system_restore import SystemRestoreAction
 from .fast_startup import FastStartupAction, EnableFastStartupAction
+from .boot_perf_autologger import BootPerfAutologgerAction
 from .notifications import NotificationAction
 from .cortana import CortanaAction
 from .background_apps import BackgroundAppsAction
@@ -93,6 +94,7 @@ __all__ = [
     "SystemRestoreAction",
     "FastStartupAction",
     "EnableFastStartupAction",
+    "BootPerfAutologgerAction",
     "NotificationAction",
     "CortanaAction",
     "BackgroundAppsAction",

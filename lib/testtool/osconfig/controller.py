@@ -79,6 +79,7 @@ from .actions import (
     SystemRestoreAction,
     FastStartupAction,
     EnableFastStartupAction,
+    BootPerfAutologgerAction,
     NotificationAction,
     CortanaAction,
     BackgroundAppsAction,
@@ -207,6 +208,8 @@ def _build_action_list(
         actions.append(FastStartupAction(snapshot_store=s))
     if profile.enable_fast_startup:
         actions.append(EnableFastStartupAction(snapshot_store=s))
+    if profile.enable_boot_perf_autologger:
+        actions.append(BootPerfAutologgerAction(snapshot_store=s))
     if profile.disable_notifications:
         actions.append(NotificationAction(snapshot_store=s))
     if profile.disable_cortana:
