@@ -531,7 +531,7 @@ del "%LOCK%" 2>nul
 """
 
         os.makedirs(os.path.dirname(bat_path), exist_ok=True)
-        with open(bat_path, 'w') as f:
+        with open(bat_path, 'w', encoding='utf-8') as f:
             f.write(bat_content)
 
         _log.info("[RebootManager] Auto-start script created: %s", bat_path)
