@@ -157,6 +157,7 @@ class OsConfigProfile:
     disable_hibernation: bool = False
     enable_hibernation: bool = False
     disable_hybrid_sleep: bool = False
+    enable_rtc_wake: bool = False
     disable_unattended_sleep: bool = False
 
     # ── Schedule ──────────────────────────────────────────────────────────

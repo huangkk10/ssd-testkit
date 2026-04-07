@@ -208,6 +208,11 @@ CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "exclude_editions": [],
         "description": "Disable Hybrid Sleep (fixes BPFS wake-timer failures during training iterations)",
     },
+    "rtc_wake": {
+        "min_build": 0,
+        "exclude_editions": [],
+        "description": "Enable RTC Wake Timer (RTCWAKE=2) — allows FAS.exe to register wake alarms for BPFS",
+    },
     # ── Schedule ─────────────────────────────────────────────────
     "defrag_schedule": {
         "min_build": 0,

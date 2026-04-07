@@ -11,7 +11,7 @@ tools:
     phase: pre_runcard    # RunCard 需要 SmiCli2.exe 來收集 DUT 資訊
 
   - id: windows-adk
-    reinstall: true
+    reinstall: false
 
   - id: cdi
     reinstall: false

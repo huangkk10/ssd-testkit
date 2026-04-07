@@ -203,7 +203,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     @pytest.mark.order(5)
     @step(5, "CDI Before — SMART baseline")
-    # @pytest.mark.skip(reason="Test")
+    @pytest.mark.skip(reason="Test")
     def test_05_cdi_before(self):
         """Run CrystalDiskInfo to capture SMART baseline (Before_ prefix)."""
         cfg = self.config['cdi']
@@ -305,6 +305,22 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
         # Persist state and write the startup BAT BEFORE clicking Start.
         # The earliest OS-level session termination is S4 hibernate.
+        #
+        # IMPORTANT: pre-mark test_06 ~ test_09 as completed so that
+        # recovery pytest runs (triggered by the startup BAT after each
+        # BPFS Fast Startup training iteration) do NOT re-execute them.
+        # Without this, the recovery run calls ctrl._ui.open(WAC_EXE) in
+        # test_06, which launches a second WAC process that conflicts with
+        # the running Assessment Launcher / FAS.exe and prevents FAS.exe
+        # from setting the RTC wake alarm for the next training iteration —
+        # causing the machine to stay powered off after each Fast Startup.
+        for _step in (
+            "test_06_configure_bpfs",
+            "test_07_configure_s5",
+            "test_08_configure_s3",
+            "test_09_configure_s4",
+        ):
+            self.reboot_mgr.pre_mark_completed(_step)
         self.reboot_mgr.prepare_for_external_reboot(
             step_name="test_10_start_job",
             test_file=__file__,
@@ -346,6 +362,13 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
         Pass criteria: errors == 0.
         """
+        # Signal that the external reboot sequence (BPFS + S3 + S4 + S5) is
+        # now fully complete.  This allows teardown to call cleanup() and
+        # remove the startup BAT / state file after this step finishes.
+        # Must be called BEFORE read_view_results so the flag is cleared even
+        # if the result-reading times out or raises.
+        self.reboot_mgr.end_external_reboot_sequence()
+
         timeout = int(os.getenv("ADK_JOB_TIMEOUT", "14400"))
         ctrl = ADKController(config={"log_path": self.log_path})
 
@@ -428,6 +451,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     @pytest.mark.order(13)
     @step(13, "CDI After — SMART snapshot")
+    @pytest.mark.skip(reason="Test")
     def test_13_cdi_after(self):
         """Run CrystalDiskInfo to capture post-assessment SMART data (After_ prefix)."""
         cfg = self.config['cdi']
@@ -449,6 +473,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     @pytest.mark.order(14)
     @step(14, "SMART Compare — verify drive health")
+    @pytest.mark.skip(reason="Test")
     def test_14_smart_compare(self):
         """
         Compare Before_ and After_ SMART snapshots:

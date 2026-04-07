@@ -41,7 +41,7 @@ from .config import OsConfigProfile
 from .exceptions import OsConfigNotSupportedError, OsConfigActionError
 from .os_compat import get_build_info, WindowsBuildInfo
 from .state_manager import OsConfigStateManager
-from .actions import (
+from .actions import (  # noqa: E501
     AbstractOsAction,
     # ── Phase 2: Services ────────────────────────────────────────────────
     SearchIndexAction,
@@ -68,6 +68,7 @@ from .actions import (
     HibernationAction,
     EnableHibernationAction,
     DisableHybridSleepAction,
+    EnableRtcWakeAction,
     UnattendedSleepAction,
     # ── Phase 4: Schedule ─────────────────────────────────────────────────
     DefragScheduleAction,
@@ -187,6 +188,8 @@ def _build_action_list(
         actions.append(EnableHibernationAction(snapshot_store=s))
     if profile.disable_hybrid_sleep:
         actions.append(DisableHybridSleepAction(snapshot_store=s))
+    if profile.enable_rtc_wake:
+        actions.append(EnableRtcWakeAction(snapshot_store=s))
     if profile.disable_unattended_sleep:
         actions.append(UnattendedSleepAction(snapshot_store=s))
 

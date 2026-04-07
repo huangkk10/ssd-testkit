@@ -35,6 +35,13 @@ enable_hibernation: true
 # powercfg: setacvalueindex / setdcvalueindex SCHEME_CURRENT SUB_SLEEP HYBRIDSLEEP 0
 disable_hybrid_sleep: true
 
+# RTC Wake Timer：設定 RTCWAKE=2（Enabled），允許**任何**程式設定 RTC 喚醒計時器
+# 預設值 RTCWAKE=1（Important only）會導致 FAS.exe（BPFS assessment）設的 wake alarm
+# 被 Windows kernel 靜默丟棄，機器在 BPFS shutdown /h 後永遠不會自動喚醒。
+# 值說明：0=Disable, 1=Important wake timers only, 2=Enable（全部允許）
+# powercfg: setacvalueindex / setdcvalueindex SCHEME_CURRENT SUB_SLEEP RTCWAKE 2
+enable_rtc_wake: true
+
 # Power Plan：ADK 要求 Balanced 才能取得準確量測結果
 # apply: 切換至 Balanced；revert: 還原原始 plan
 power_plan: "balanced"
@@ -53,11 +60,11 @@ power_plan: "balanced"
 #   reboot 後會停在鎖定畫面，看起來像「機器掛掉」。
 #   25H2 機器若事先已手動設定 auto-login，即使此欄位為 false 也不會壞，
 #   但建議永遠設為 true 確保行為一致。
-enable_auto_admin_logon: false
-revert_auto_admin_logon: true         # 測試結束後保留 auto-logon 設定，不還原
+enable_auto_admin_logon: true
+revert_auto_admin_logon: true         # 測試結束後還原 auto-logon 設定
 # auto_login_username: "Administrator"  # 若需強制指定帳號名稱請取消此行註解
-auto_login_password: ""                # ⚠ 必須填入登入密碼，或設定 SSD_TESTKIT_AUTO_LOGIN_PASSWORD 環境變數
-# auto_login_domain: "."               # 本機帳號留空或用 "."
+auto_login_password: "1.a"                # ⚠ 填入此機器的 Windows 登入密碼（或設定 SSD_TESTKIT_AUTO_LOGIN_PASSWORD 環境變數）
+auto_login_domain: "DOMAIN"           # ⚠ 此機器原本是 DOMAIN 帳號登入，必須與原始設定一致
 
 # Test Signing：關閉 bcdedit testsigning，確保 kernel 驅動程式簽章驗證正常
 # Command: bcdedit /set testsigning off

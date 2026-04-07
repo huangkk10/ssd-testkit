@@ -7,12 +7,16 @@ Responsibilities:
 - Track completed tests to avoid re-running steps after recovery
 """
 import json
+import logging
 import os
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 import getpass
 import pytest
+
+_log = logging.getLogger(__name__)
 
 _UNSET = object()  # sentinel for auto_login_config default
 
@@ -47,7 +51,7 @@ class RebootManager:
             lock_file = Path(os.getcwd()) / ".pytest_running.lock"
             if lock_file.exists():
                 lock_file.unlink()
-                print(f"[RebootManager] Cleared stale lock file: {lock_file}")
+                _log.info("[RebootManager] Cleared stale lock file: %s", lock_file)
         self.state = self._load_state()
     
     def _load_state(self):
@@ -58,6 +62,7 @@ class RebootManager:
             # backward-compat: old state files won't have these keys
             state.setdefault("step_reboot_counts", {})
             state.setdefault("loop_groups", {})
+            state.setdefault("external_reboot_pending", False)
             return state
         return {
             "completed_tests": [],
@@ -66,6 +71,7 @@ class RebootManager:
             "reboot_count": 0,
             "step_reboot_counts": {},
             "loop_groups": {},
+            "external_reboot_pending": False,
         }
     
     def _save_state(self):
@@ -170,14 +176,15 @@ class RebootManager:
                        correct test file after the system boots.
         """
         self.state["is_recovering"] = True
+        self.state["external_reboot_pending"] = True  # preserved until end_external_reboot_sequence()
         self.state["reboot_count"] += 1
         if step_name not in self.state["completed_tests"]:
             self.state["completed_tests"].append(step_name)
         self._save_state()
         self._setup_auto_start(test_file)
-        print(f"\n[RebootManager] prepare_for_external_reboot: step='{step_name}'")
-        print(f"[RebootManager] State persisted — reboot_count={self.state['reboot_count']}")
-        print(f"[RebootManager] Auto-start BAT written (will resume after reboot)")
+        _log.info("[RebootManager] prepare_for_external_reboot: step='%s'", step_name)
+        _log.info("[RebootManager] State persisted — reboot_count=%s", self.state['reboot_count'])
+        _log.info("[RebootManager] Auto-start BAT written (will resume after reboot)")
 
     # ------------------------------------------------------------------
     # Multi-reboot API
@@ -342,6 +349,8 @@ class RebootManager:
                        the startup script so the packaged runner resumes the
                        right test file after the system boots).
         """
+        _log.info("[RebootManager] setup_reboot called: delay=%s reason=%s", delay, reason)
+
         # Ensure auto-login is set so the system resumes the test after reboot
         # Default: use the config supplied at __init__ time (pass None to skip).
         if auto_login_config is _UNSET:
@@ -355,30 +364,48 @@ class RebootManager:
                     domain=auto_login_config.get('auto_login_domain') or None,
                 )
                 if not _al.check():
-                    print('[RebootManager] Auto-login not enabled - applying AutoAdminLogon')
+                    _log.info('[RebootManager] Auto-login not enabled - applying AutoAdminLogon')
                     _al.apply()
-                    print('[RebootManager] AutoAdminLogon applied')
+                    _log.info('[RebootManager] AutoAdminLogon applied')
                 else:
-                    print('[RebootManager] Auto-login already enabled - skipping')
+                    _log.info('[RebootManager] Auto-login already enabled - skipping')
             except Exception as _exc:
-                print(f'[RebootManager] WARNING: auto-login check/apply failed: {_exc}')
+                _log.warning('[RebootManager] auto-login check/apply failed: %s\n%s',
+                             _exc, traceback.format_exc())
 
         # Mark that we're about to reboot and persist state
         self.state["is_recovering"] = True
         self.state["reboot_count"] += 1
-        self._save_state()
+        try:
+            self._save_state()
+            _log.info("[RebootManager] State saved (reboot_count=%s)", self.state["reboot_count"])
+        except Exception as _exc:
+            _log.error("[RebootManager] _save_state failed: %s\n%s", _exc, traceback.format_exc())
+            raise
 
         # Create a startup entry so the packaged runner will resume after boot
-        self._setup_auto_start(test_file)
+        try:
+            self._setup_auto_start(test_file)
+            _log.info("[RebootManager] Auto-start script written")
+        except Exception as _exc:
+            _log.error("[RebootManager] _setup_auto_start failed: %s\n%s", _exc, traceback.format_exc())
+            raise
 
-        # Informational messages for the console
-        print(f"\n{'='*60}")
-        print(f"[Reboot] {reason}")
-        print(f"System will reboot in {delay} seconds...")
-        print(f"Tests will resume automatically after reboot.")
-        print(f"{'='*60}\n")
+        # Informational messages
+        _log.info("[Reboot] %s — system will reboot in %s seconds", reason, delay)
 
         # Execute the reboot command
+        # First cancel any pending shutdown from a previous interrupted run
+        # so that our new "shutdown /r /t delay" is not rejected with
+        # "A system shutdown is already in progress" (exit code 1190).
+        _cancel = subprocess.run(
+            ["shutdown", "/a"],
+            capture_output=True, text=True
+        )
+        if _cancel.returncode == 0:
+            _log.info("[RebootManager] Cancelled pending shutdown before issuing new reboot")
+        else:
+            _log.info("[RebootManager] shutdown /a returned rc=%s (no pending shutdown to cancel)", _cancel.returncode)
         try:
             result = subprocess.run(
                 ["shutdown", "/r", "/t", str(delay)],
@@ -386,19 +413,20 @@ class RebootManager:
                 text=True,
                 check=True
             )
-            print(f"[RebootManager] Reboot command executed successfully")
+            _log.info("[RebootManager] Reboot command executed successfully")
             if result.stdout:
-                print(f"[RebootManager] Output: {result.stdout.strip()}")
+                _log.info("[RebootManager] shutdown output: %s", result.stdout.strip())
         except subprocess.CalledProcessError as e:
-            print(f"[RebootManager] WARNING: Reboot command failed: {e}")
-            print(f"[RebootManager] Error output: {e.stderr}")
+            _log.error(
+                "[RebootManager] shutdown /r failed (rc=%s): %s",
+                e.returncode, e.stderr.strip() if e.stderr else str(e)
+            )
             raise
 
         # Immediately terminate the process to avoid any teardown that might
         # remove the startup script or state file.  This guarantees the recovery
         # data remains on disk for the post-boot execution.
-        print(f"\n[RebootManager] Forcing process exit - system will reboot shortly...")
-        print(f"[RebootManager] Startup script and state file preserved for recovery")
+        _log.info("[RebootManager] Forcing process exit - system will reboot shortly...")
         sys.stdout.flush()
         sys.stderr.flush()
         os._exit(0)
@@ -444,17 +472,54 @@ class RebootManager:
         # multiple hibernate/resume cycles (e.g. BPFS training iterations).
         # Each resume fires the startup BAT; without the lock every iteration
         # starts a new pytest process while the previous one is still running.
+        #
+        # Stale-lock detection: the OS can kill the pytest process mid-run
+        # (e.g. during BPFS Fast Startup "shutdown /h" or S4 hibernate),
+        # leaving the lock file on disk without ever reaching "del %LOCK%".
+        # On the next BAT invocation we verify python.exe is actually still
+        # running before honouring the lock; if no python.exe is found the
+        # lock is stale and is deleted so that pytest can relaunch.
         lock_file = os.path.join(current_dir, ".pytest_running.lock").replace("\\", "\\\\")
 
         # Write the BAT file
         bat_content = f"""@echo off
 cd /d {current_dir}
 
-:: Prevent duplicate pytest launches during multi-iteration hibernate cycles
+:: ── Phase 1: System-stability delay ─────────────────────────────────────────
+:: During BPFS Fast Startup resume the Windows DLL subsystem may not yet be
+:: fully initialised when the Startup folder fires.  Launching cmd.exe child
+:: processes (tasklist, python) at that exact moment causes 0xc0000142
+:: (STATUS_DLL_INIT_FAILED), which FAS.exe interprets as a system crash and
+:: marks the tracing session as invalid (0xC0040477 → assessment cancelled).
+:: A short busy-wait (ping loopback) gives the kernel ≈15 seconds to finish
+:: DLL initialisation without blocking the shell.
+ping -n 16 127.0.0.1 >nul
+
+:: ── Phase 2: BPFS Fast-Startup guard ─────────────────────────────────────────
+:: During BPFS training iterations WAC uses "shutdown /h" (Fast Startup) and
+:: the pytest process is preserved in the hibernate image — it resumes
+:: automatically without any BAT intervention.  If FAS.exe is still running
+:: we are in a BPFS resume; exit silently so FAS.exe sees a clean environment.
+tasklist /FI "IMAGENAME eq FAS.exe" /NH 2>nul | find /i "FAS.exe" >nul 2>&1
+if not errorlevel 1 (
+    echo [AutoRun] FAS.exe detected ^(BPFS Fast Startup resume^) - pytest already restored from hibernate, exiting
+    exit /b 0
+)
+
+:: ── Phase 3: Stale-lock guard ─────────────────────────────────────────────────
+:: If the lock file exists but no python.exe is running the lock was left
+:: behind by a process killed by OS hibernate or reboot.  Delete the stale
+:: lock so pytest can relaunch.
 set LOCK={lock_file}
 if exist "%LOCK%" (
-    echo [AutoRun] pytest already running ^(lock file present^) - skipping duplicate launch
-    exit /b 0
+    tasklist /FI "IMAGENAME eq python.exe" /NH 2>nul | find /i "python.exe" >nul 2>&1
+    if errorlevel 1 (
+        echo [AutoRun] Stale lock file found ^(no python.exe running^) - clearing and relaunching
+        del "%LOCK%" 2>nul
+    ) else (
+        echo [AutoRun] pytest already running ^(python.exe found^) - skipping duplicate launch
+        exit /b 0
+    )
 )
 echo %TIME% > "%LOCK%"
 
@@ -469,14 +534,25 @@ del "%LOCK%" 2>nul
         with open(bat_path, 'w') as f:
             f.write(bat_content)
 
-        print(f"[RebootManager] Auto-start script created: {bat_path}")
+        _log.info("[RebootManager] Auto-start script created: %s", bat_path)
         if test_file:
-            print(f"[RebootManager] Will resume test file: {test_file}")
+            _log.info("[RebootManager] Will resume test file: %s", test_file)
     
+    def end_external_reboot_sequence(self) -> None:
+        """Signal that the external reboot sequence (e.g. WAC BPFS/S4/S5) is
+        fully complete and the startup BAT / state file may be removed on the
+        next teardown.
+
+        Call this from the test step that collects the final WAC results
+        (e.g. test_11_wait_results) so that subsequent teardown is safe to
+        call cleanup().
+        """
+        self.state["external_reboot_pending"] = False
+        self._save_state()
+        _log.info("[RebootManager] external_reboot_pending cleared — cleanup allowed on teardown")
+
     def cleanup(self):
         """Remove persisted state and the auto-start script (if present)."""
-        import logging
-        _log = logging.getLogger(__name__)
 
         # Remove the state file
         if Path(self.state_file).exists():

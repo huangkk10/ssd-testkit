@@ -255,8 +255,22 @@ class BaseTestCase:
         """
         Clean up RebootManager state file and auto-run BAT (best-effort).
         Swallows all exceptions so teardown always completes.
+
+        IMPORTANT: when an external reboot sequence is still pending (e.g.
+        BPFS training iterations or S4/S5 are still in progress), the startup
+        BAT and state file must be preserved so that pytest can resume after
+        each subsequent hibernate/reboot.  Cleanup is deferred until
+        reboot_mgr.end_external_reboot_sequence() has been called (which
+        should happen in the final wait-results step after all assessments
+        complete).
         """
         try:
+            if cls.reboot_mgr.state.get("external_reboot_pending", False):
+                logger.LogEvt(
+                    "[TEARDOWN] External reboot sequence still pending — "
+                    "preserving startup BAT and state file for next resume"
+                )
+                return
             cls.reboot_mgr.cleanup()
         except Exception as exc:
             logger.LogEvt(f"[TEARDOWN] RebootManager cleanup failed — {exc} (continuing)")
@@ -374,7 +388,17 @@ class BaseTestCase:
                                  logger when omitted.
         """
         cls._teardown_runcard(session)
-        if osconfig_yaml is not None or osconfig_controller is not None:
+        _external_pending = (
+            hasattr(cls, 'reboot_mgr')
+            and cls.reboot_mgr.state.get("external_reboot_pending", False)
+        )
+        if _external_pending:
+            _log = log if log is not None else logger
+            _log.info(
+                "[TEARDOWN] External reboot sequence pending — "
+                "skipping OsConfig revert to preserve AutoAdminLogon and hibernation settings"
+            )
+        elif osconfig_yaml is not None or osconfig_controller is not None:
             _log = log if log is not None else logger
             cls._revert_osconfig(osconfig_yaml, osconfig_controller, _log)
         cls._teardown_reboot_manager()

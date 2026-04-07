@@ -37,6 +37,7 @@ from .power_plan import PowerPlanAction
 from .power_timeout import PowerTimeoutAction
 from .hibernation import EnableHibernationAction, HibernationAction, UnattendedSleepAction
 from .hybrid_sleep import DisableHybridSleepAction
+from .rtc_wake import EnableRtcWakeAction
 
 # ── Phase 4: Schedule Actions ─────────────────────────────────────────────
 from .defrag_schedule import DefragScheduleAction
@@ -85,6 +86,7 @@ __all__ = [
     "HibernationAction",
     "EnableHibernationAction",
     "DisableHybridSleepAction",
+    "EnableRtcWakeAction",
     "UnattendedSleepAction",
     # Phase 4 – Schedule
     "DefragScheduleAction",
