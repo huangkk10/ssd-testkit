@@ -221,6 +221,10 @@ Typical spec:
 
 Generate all 7 modules including `ui_monitor.py`.
 
+> **⚠️ WPF VirtualizingStackPanel 陷阱**：若目標 GUI 是 WPF 應用，列表內的 off-screen 項目對 `child_window()` / `FindFirst` **不可見**，會 timeout。
+> 必須先 focus List 容器 → 發送 `{END}` 鍵 → 再用 `auto_id` 找目標項目。
+> 詳見 `references/pywinauto_patterns.md` Section 2。
+
 ---
 
 ## Known Tools Reference
@@ -232,6 +236,7 @@ When a user asks about a known tool, read the corresponding reference file first
 | Tool | Reference | Special Notes |
 |------|-----------|---------------|
 | **PHM** (Powerhouse Mountain) | `.claude/skills/scaffold-testtool/references/phm.md` | Web App (Node.js + browser); Playwright instead of pywinauto; non-standard `log_parser.py` module; installed at `C:\Program Files\PowerhouseMountain\PowerhouseMountain.exe`; Web UI `http://localhost:1337` |
+| **Windows ADK** | `.claude/skills/scaffold-testtool/references/windows_adk.md` | WAC WPF GUI; pywinauto `uia` backend; VirtualizingStackPanel trap (see `pywinauto_patterns.md`); auto_id constants in `ui_runner.py`; reboot-driven multi-step assessments |
 
 ---
 
@@ -247,6 +252,8 @@ When a user asks about a known tool, read the corresponding reference file first
 - **Module Templates**: `.claude/skills/scaffold-testtool/references/module_templates.md`
 - **Test Templates**: `.claude/skills/scaffold-testtool/references/test_templates.md`
 - **PHM Tool Reference**: `.claude/skills/scaffold-testtool/references/phm.md`
+- **Windows ADK Tool Reference**: `.claude/skills/scaffold-testtool/references/windows_adk.md`
+- **pywinauto Patterns & Pitfalls**: `.claude/skills/scaffold-testtool/references/pywinauto_patterns.md`
 
 ## Important Notes
 

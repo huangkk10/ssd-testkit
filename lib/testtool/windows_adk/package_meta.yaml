@@ -8,22 +8,22 @@ choco_package_id: windows-adk
 version_id_type: build_number           # 版本號為 Windows Build Number（整數字串）
 
 versions:
-  - version: "19041"
+  - version: "19041.0.0"
     os_name: "Windows 10 2004"
     installer: "bin/installers/WindowsADK/19041/adksetup.exe"
     default: false
 
-  - version: "22000"
+  - version: "22000.0.0"
     os_name: "Windows 11 21H2"
     installer: "bin/installers/WindowsADK/22000/adksetup.exe"
     default: false
 
-  - version: "22621"
+  - version: "22621.0.0"
     os_name: "Windows 11 22H2/23H2"
     installer: "bin/installers/WindowsADK/22621/adksetup.exe"
     default: false
 
-  - version: "26100"
+  - version: "26100.0.0"
     os_name: "Windows 11 24H2"
     installer: "bin/installers/WindowsADK/26100/adksetup.exe"
     default: true                       # 最新版本，Windows 11 24H2

@@ -47,6 +47,14 @@ _AID_JOB_CARD = {
     k: v.replace("AID_QuickRun_Assessment_", "AID_JobProperties_Assessment_")
     for k, v in _AID_ASSESSMENT.items()
 }
+# auto_ids for the assessment items inside the 'Add assessments' library panel.
+# Pattern: AID_AddAssessment_Assessment_<GUID> (same GUIDs as _AID_ASSESSMENT).
+_AID_ADD_CARD = {
+    k: v.replace("AID_QuickRun_Assessment_", "AID_AddAssessment_Assessment_")
+    for k, v in _AID_ASSESSMENT.items()
+}
+# auto_id of the assessment list inside the 'Add assessments' library panel.
+_AID_LIBRARY_LIST = "AID_AddAssessments_AssessmentTileList"
 _AID_QUICKRUN_RUN_BTN  = "AID_QuickRun_RunButton"
 _AID_JOBVIEW_RUN_BTN   = "AID_JobView_RunButton"
 _AID_START_BTN         = "okButton"
@@ -538,6 +546,7 @@ class UIRunner:
                 "add_standby_to_configure_job: Configure Job tab already exists — using library path"
             )
             self._activate_configure_job_tab()
+            self._log_wac_topology("add_standby: before Add assessments (library path)")
 
             logger.debug("add_standby_to_configure_job: clicking 'Add assessments' in left panel")
             self._session.window.child_window(
@@ -546,11 +555,64 @@ class UIRunner:
             ).click_input()
             time.sleep(1)
 
-            logger.debug("add_standby_to_configure_job: clicking '+' button to add 'Standby performance' to job")
-            self._session.window.child_window(
-                title="Standby performance",
+            # Dump topology so we can see which library ListItems are now rendered.
+            self._log_wac_topology("add_standby: after Add assessments click")
+
+            # Log every ListItem title visible in the window to confirm whether
+            # 'Standby performance' is present before we try to click its Button.
+            try:
+                list_items = self._session.window.descendants(control_type="ListItem")
+                titles = [li.window_text() for li in list_items]
+                logger.debug(
+                    "add_standby_to_configure_job: visible ListItems (%d): %s",
+                    len(titles),
+                    titles,
+                )
+            except Exception as _enum_exc:
+                logger.debug(
+                    "add_standby_to_configure_job: could not enumerate ListItems — %s", _enum_exc
+                )
+
+            # ── Scroll the library list so 'Standby performance' enters viewport ──
+            # Root cause of previous failures: WPF's VirtualizingStackPanel does NOT
+            # expose off-screen items to UIA's FindFirst/FindAll.  child_window() uses
+            # FindFirst and therefore times-out for items below the fold.
+            # The library List container itself IS in the viewport → find it by
+            # auto_id, focus it, and send {END} to scroll to the bottom of the list.
+            # Once the item is physically rendered, UIA can find it by auto_id.
+            logger.debug(
+                "add_standby_to_configure_job: focusing library list '%s' and pressing {END}",
+                _AID_LIBRARY_LIST,
+            )
+            library_list = self._session.window.child_window(
+                auto_id=_AID_LIBRARY_LIST,
+                control_type="List",
+            )
+            library_list.set_focus()
+            keyboard.send_keys("{END}")
+            time.sleep(0.5)
+            logger.debug("add_standby_to_configure_job: library list scrolled to bottom")
+
+            # Dump topology so we can confirm 'Standby performance' is now rendered.
+            self._log_wac_topology("add_standby: after library {END} scroll")
+
+            # Now find 'Standby performance' by its specific auto_id (no ambiguity,
+            # and UIA FindFirst works because the item is now in the viewport).
+            logger.debug(
+                "add_standby_to_configure_job: locating 'Standby performance' by auto_id '%s'",
+                _AID_ADD_CARD["standby"],
+            )
+            standby_lib_item = self._session.window.child_window(
+                auto_id=_AID_ADD_CARD["standby"],
                 control_type="ListItem",
-            ).child_window(control_type="Button").click_input()
+            )
+
+            logger.debug("add_standby_to_configure_job: clicking '+' button to add 'Standby performance' to job")
+            standby_lib_item.child_window(
+                title="Add assessment",
+                control_type="Button",
+            ).click_input()
+            logger.debug("add_standby_to_configure_job: '+' button clicked successfully")
             time.sleep(1)
 
         else:
