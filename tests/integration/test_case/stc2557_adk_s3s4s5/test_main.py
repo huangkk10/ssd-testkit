@@ -169,7 +169,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     @pytest.mark.order(4)
     @step(4, "Clean Environment")
-    @pytest.mark.skip(reason="Test")
+    # @pytest.mark.skip(reason="Test")
     def test_04_clean_environment(self, request):
         """
         Remove stale WAC result, job, and test directories, then reboot the DUT
@@ -203,7 +203,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     @pytest.mark.order(5)
     @step(5, "CDI Before — SMART baseline")
-    @pytest.mark.skip(reason="Test")
+    # @pytest.mark.skip(reason="Test")
     def test_05_cdi_before(self):
         """Run CrystalDiskInfo to capture SMART baseline (Before_ prefix)."""
         cfg = self.config['cdi']
@@ -281,7 +281,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     @pytest.mark.order(10)
     @step(10, "Start Job — BPFS → S3 → S4 → S5")
-    @pytest.mark.skip(reason="Test")
+    # @pytest.mark.skip(reason="Test")
     def test_10_start_job(self):
         """
         Submit the four-assessment Configure Job, save it as a custom job,
@@ -333,7 +333,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     @pytest.mark.order(11)
     @step(11, "Wait for WAC View Results")
-    @pytest.mark.skip(reason="Test")
+    # @pytest.mark.skip(reason="Test")
     def test_11_wait_results(self):
         """
         Connect to WAC and wait for the entire four-assessment job to
@@ -376,7 +376,7 @@ class TestSTC2557ADKS3S4S5(BaseTestCase):
 
     @pytest.mark.order(12)
     @step(12, "Verify result artefacts")
-    @pytest.mark.skip(reason="Test")
+    # @pytest.mark.skip(reason="Test")
     def test_12_verify(self):
         """Assert the result directory and AxeLog.txt exist."""
         wac_result = getattr(TestSTC2557ADKS3S4S5, "_wac_result", None)
