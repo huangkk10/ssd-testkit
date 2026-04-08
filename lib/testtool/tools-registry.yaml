@@ -50,7 +50,7 @@ tools:
 
   windows-adk:
     version: 26100.0.0
-    source_dir: bin/installers/WindowsADK/26100
+    source_dir: bin/installers/WindowsADK/26100.0.0
     nexus_path: windows-tools/WindowsADK/26100.0.0/WindowsADK-26100.0.0.zip
     install_dir: C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit
     binaries: [wpr.exe, wpa.exe, xbootmgr.exe]
