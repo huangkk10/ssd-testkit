@@ -1,14 +1,26 @@
-$sdkVersion  = "7.0.410"
+# chocolateyInstall.ps1  net-7-sdk 7.0.410
+
+$sdkVersion   = "7.0.410"
 $installerExe = "dotnet-sdk-$sdkVersion-win-x64.exe"
 $toolkitRoot  = $env:SSD_TESTKIT_ROOT
 
-if (-not $toolkitRoot) {
-    throw "SSD_TESTKIT_ROOT is not set. Run via install_packages.ps1 or set it manually."
-}
-
-$installer = Join-Path $toolkitRoot "bin\installers\net_7_sdk\$sdkVersion\$installerExe"
-if (-not (Test-Path $installer)) {
-    throw "Installer not found: $installer"
+if ($toolkitRoot) {
+    $installer = Join-Path $toolkitRoot "bin\installers\net_7_sdk\$sdkVersion\$installerExe"
+    if (-not (Test-Path $installer)) {
+        throw "Installer not found: $installer"
+    }
+} else {
+    $nexusBase  = "https://nexus.internal/repository/raw-windows-tools"
+    $zip        = "$env:TEMP\net-7-sdk-$sdkVersion.zip"
+    $extractDir = "$env:TEMP\net-7-sdk-$sdkVersion"
+    Write-Host "Downloading .NET 7 SDK from Nexus ..."
+    iwr "$nexusBase/net_7_sdk/$sdkVersion/net-7-sdk-$sdkVersion.zip" -OutFile $zip -UseBasicParsing
+    if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+    Expand-Archive $zip -DestinationPath $extractDir -Force
+    $installer = Join-Path $extractDir $installerExe
+    if (-not (Test-Path $installer)) {
+        throw "Installer not found after download: $installer"
+    }
 }
 
 Write-Host ".NET 7 SDK installer: $installer"

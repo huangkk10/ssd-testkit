@@ -1,20 +1,24 @@
 # chocolateyInstall.ps1  smiwintools 2026.2.13.1 (SmiWinTools_v20260213C)
 # Part of SSD TestKit offline Chocolatey package.
-# Portable tool: copies the entire SmiWinTools directory tree from
-# bin/installers/SmiWinTools/v20260213C/ and sets SMIWINTOOLS_PATH machine-level env var.
-# Requires: $env:SSD_TESTKIT_ROOT pointing to the ssd-testkit repo root.
+# Portable tool: copies the entire SmiWinTools directory tree.
 
 $toolVersion = "v20260213C"
 $installDir  = "C:\tools\SmiWinTools"
 $toolkitRoot = $env:SSD_TESTKIT_ROOT
 
-if (-not $toolkitRoot) {
-    throw "SSD_TESTKIT_ROOT environment variable is not set.`nPlease use bin/chocolatey/scripts/install_packages.ps1 instead of calling choco directly."
-}
-
-$sourceDir = Join-Path $toolkitRoot "bin\installers\SmiWinTools\$toolVersion"
-if (-not (Test-Path $sourceDir)) {
-    throw "SmiWinTools source directory not found: $sourceDir`nExpected: bin/installers/SmiWinTools/$toolVersion/ under SSD_TESTKIT_ROOT."
+if ($toolkitRoot) {
+    $sourceDir = Join-Path $toolkitRoot "bin\installers\SmiWinTools\$toolVersion"
+    if (-not (Test-Path $sourceDir)) {
+        throw "SmiWinTools source directory not found: $sourceDir`nExpected: bin/installers/SmiWinTools/$toolVersion/ under SSD_TESTKIT_ROOT."
+    }
+} else {
+    $nexusBase = "https://nexus.internal/repository/raw-windows-tools"
+    $zip       = "$env:TEMP\SmiWinTools-$toolVersion.zip"
+    $sourceDir = "$env:TEMP\SmiWinTools-$toolVersion"
+    Write-Host "Downloading SmiWinTools from Nexus ..."
+    iwr "$nexusBase/SmiWinTools/$toolVersion/SmiWinTools-$toolVersion.zip" -OutFile $zip -UseBasicParsing
+    if (Test-Path $sourceDir) { Remove-Item $sourceDir -Recurse -Force }
+    Expand-Archive $zip -DestinationPath $sourceDir -Force
 }
 
 Write-Host "Installing SmiWinTools ($toolVersion) to $installDir ..."
@@ -26,7 +30,6 @@ if (-not (Test-Path "$installDir\SmartCheck.bat")) {
     throw "Copy failed: SmartCheck.bat not found at $installDir"
 }
 
-# Set SMIWINTOOLS_PATH machine-level env var pointing to the install directory
 [Environment]::SetEnvironmentVariable('SMIWINTOOLS_PATH', $installDir, 'Machine')
 Write-Host "Set SMIWINTOOLS_PATH = $installDir (Machine scope)"
 

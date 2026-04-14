@@ -1,14 +1,22 @@
-$cdiVersion = "8.17.13"
-$installDir = "C:\tools\CrystalDiskInfo"
+# chocolateyInstall.ps1  cdi 8.17.13
+
+$cdiVersion  = "8.17.13"
+$installDir  = "C:\tools\CrystalDiskInfo"
 $toolkitRoot = $env:SSD_TESTKIT_ROOT
 
-if (-not $toolkitRoot) {
-    throw "SSD_TESTKIT_ROOT is not set. Run via install_packages.ps1 or set it manually."
-}
-
-$sourceDir = Join-Path $toolkitRoot "bin\installers\CrystalDiskInfo\$cdiVersion"
-if (-not (Test-Path $sourceDir)) {
-    throw "Source not found: $sourceDir"
+if ($toolkitRoot) {
+    $sourceDir = Join-Path $toolkitRoot "bin\installers\CrystalDiskInfo\$cdiVersion"
+    if (-not (Test-Path $sourceDir)) {
+        throw "Source not found: $sourceDir"
+    }
+} else {
+    $nexusBase = "https://nexus.internal/repository/raw-windows-tools"
+    $zip       = "$env:TEMP\CrystalDiskInfo-$cdiVersion.zip"
+    $sourceDir = "$env:TEMP\CrystalDiskInfo-$cdiVersion"
+    Write-Host "Downloading CrystalDiskInfo from Nexus ..."
+    iwr "$nexusBase/CrystalDiskInfo/$cdiVersion/CrystalDiskInfo-$cdiVersion.zip" -OutFile $zip -UseBasicParsing
+    if (Test-Path $sourceDir) { Remove-Item $sourceDir -Recurse -Force }
+    Expand-Archive $zip -DestinationPath $sourceDir -Force
 }
 
 Write-Host "Installing CrystalDiskInfo $cdiVersion to $installDir..."

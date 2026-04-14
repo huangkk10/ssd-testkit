@@ -1,20 +1,29 @@
 # chocolateyInstall.ps1  git 2.44.0
 # Part of SSD TestKit offline Chocolatey package.
 # Type A installer: runs Git silent installer (Inno Setup).
-# Requires: $env:SSD_TESTKIT_ROOT pointing to the ssd-testkit repo root.
 
 $toolVersion  = "2.44.0"
 $installerExe = "Git-2.44.0-64-bit.exe"
 $installDir   = "C:\Program Files\Git"
 $toolkitRoot  = $env:SSD_TESTKIT_ROOT
 
-if (-not $toolkitRoot) {
-    throw "SSD_TESTKIT_ROOT environment variable is not set.`nPlease use bin/chocolatey/scripts/install_packages.ps1 instead of calling choco directly."
-}
-
-$installer = Join-Path $toolkitRoot "bin\installers\git\$toolVersion\$installerExe"
-if (-not (Test-Path $installer)) {
-    throw "Git installer not found: $installer"
+if ($toolkitRoot) {
+    $installer = Join-Path $toolkitRoot "bin\installers\git\$toolVersion\$installerExe"
+    if (-not (Test-Path $installer)) {
+        throw "Git installer not found: $installer"
+    }
+} else {
+    $nexusBase  = "https://nexus.internal/repository/raw-windows-tools"
+    $zip        = "$env:TEMP\git-$toolVersion.zip"
+    $extractDir = "$env:TEMP\git-$toolVersion"
+    Write-Host "Downloading Git from Nexus ..."
+    iwr "$nexusBase/git/$toolVersion/git-$toolVersion.zip" -OutFile $zip -UseBasicParsing
+    if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+    Expand-Archive $zip -DestinationPath $extractDir -Force
+    $installer = Join-Path $extractDir $installerExe
+    if (-not (Test-Path $installer)) {
+        throw "Git installer not found after download: $installer"
+    }
 }
 
 Write-Host "Installing Git $toolVersion ..."

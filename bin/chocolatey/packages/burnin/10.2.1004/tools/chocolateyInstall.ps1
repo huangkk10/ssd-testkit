@@ -7,13 +7,24 @@ $toolkitRoot  = $env:SSD_TESTKIT_ROOT
 
 Write-Host "Installing BurnInTest $toolVersion ..."
 
-if (-not $toolkitRoot) {
-    throw "SSD_TESTKIT_ROOT is not set. Cannot locate BurnInTest installer."
-}
-
-$installer = Join-Path $toolkitRoot "bin\installers\BurnIn\$toolVersion\$installerExe"
-if (-not (Test-Path $installer)) {
-    throw "Installer not found: $installer"
+if ($toolkitRoot) {
+    $sourceDir = Join-Path $toolkitRoot "bin\installers\BurnIn\$toolVersion"
+    $installer = Join-Path $sourceDir $installerExe
+    if (-not (Test-Path $installer)) {
+        throw "Installer not found: $installer"
+    }
+} else {
+    $nexusBase = "https://nexus.internal/repository/raw-windows-tools"
+    $zip       = "$env:TEMP\BurnIn-$toolVersion.zip"
+    $sourceDir = "$env:TEMP\BurnIn-$toolVersion"
+    Write-Host "Downloading BurnInTest from Nexus ..."
+    iwr "$nexusBase/BurnIn/$toolVersion/BurnIn-$toolVersion.zip" -OutFile $zip -UseBasicParsing
+    if (Test-Path $sourceDir) { Remove-Item $sourceDir -Recurse -Force }
+    Expand-Archive $zip -DestinationPath $sourceDir -Force
+    $installer = Join-Path $sourceDir $installerExe
+    if (-not (Test-Path $installer)) {
+        throw "Installer not found after download: $installer"
+    }
 }
 
 # Run Inno Setup silent install
@@ -25,7 +36,6 @@ if ($proc.ExitCode -notin @(0, 3010)) {
 }
 
 # Copy Configs and key.dat from source alongside installer
-$sourceDir = Join-Path $toolkitRoot "bin\installers\BurnIn\$toolVersion"
 $configsSrc = Join-Path $sourceDir "Configs"
 $keyDatSrc  = Join-Path $sourceDir "key.dat"
 
@@ -38,7 +48,6 @@ if (Test-Path $keyDatSrc) {
     Write-Host "Copied key.dat to $installDir"
 }
 
-# Set BURNIN_PATH to the install directory (bit.exe lives there)
 [Environment]::SetEnvironmentVariable('BURNIN_PATH', $installDir, 'Machine')
 Write-Host "Set BURNIN_PATH = $installDir (Machine scope)"
 
