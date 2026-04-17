@@ -10,7 +10,7 @@
 C:\ssd-testkit\
 ├── tool-manager\
 │   ├── TOOLS-GUIDE.md              ← 本文件
-│   ├── prepare_testcase.ps1        ← 安裝 test case 所需工具
+│   ├── prepare_testcase.ps1        ← 準備 test case 所需檔案（下載 nupkg + installer）
 │   ├── prepare_testcase.bat
 │   ├── upload_tools_to_nexus.ps1   ← 上傳 .nupkg 到 Nexus
 │   ├── upload_tools_to_nexus.bat
@@ -40,8 +40,8 @@ C:\ssd-testkit\
 
 | 項目 | 值 |
 |------|----|
-| URL  | https://nexus.internal |
-| Repo | `choco-hosted` (NuGet 格式) |
+| URL  | https://10.252.170.171 |
+| Repo | `choco-hosted-nas` (NuGet 格式) |
 | 帳號 | admin / 1.a |
 
 ---
@@ -51,14 +51,14 @@ C:\ssd-testkit\
 適用情境：新增工具或更新版本時，從 nuspec 建立 .nupkg。
 
 **前提：**
-- `bin\chocolatey\packages\<id>\<id>.nuspec` 已存在
-- `bin\chocolatey\packages\<id>\tools\chocolateyInstall.ps1` 已存在
+- `bin\chocolatey\packages\<id>\<version>\<id>.nuspec` 已存在
+- `bin\chocolatey\packages\<id>\<version>\tools\chocolateyInstall.ps1` 已存在
 
 **指令：**
 
 ```powershell
 cd C:\ssd-testkit
-choco pack bin\chocolatey\packages\smicli\smicli.nuspec `
+choco pack bin\chocolatey\packages\smicli\2026.2.13\smicli.nuspec `
     --outputdirectory bin\chocolatey\packages\smicli\2026.2.13 `
     --version 2026.2.13
 ```
@@ -76,7 +76,7 @@ choco pack bin\chocolatey\packages\smicli\smicli.nuspec `
 腳本會讀取 `lib\testtool\tools-registry.yaml`，對每個有 `version` 欄位的工具：
 1. 確認 `bin\chocolatey\packages\<id>\<version>\<id>.<version>.nupkg` 存在
 2. 若不存在，嘗試 `choco pack` 自動建立
-3. 上傳至 `choco-hosted` repo
+3. 上傳至 `choco-hosted-nas` repo
 
 ```powershell
 cd C:\ssd-testkit
@@ -92,14 +92,14 @@ cd C:\ssd-testkit
 ```
   [UPLOAD] smicli 2026.2.13  (12.5 MB)
   [OK]     smicli  HTTP 204
-  [EXISTS] windows-adk (already in choco-hosted, skipped)
+  [EXISTS] windows-adk (already in choco-hosted-nas, skipped)
 ```
 
 **手動 curl 上傳（單一檔案）：**
 
 ```powershell
-curl.exe -sk -u "admin:1.a" `
-  -X POST "https://nexus.internal/service/rest/v1/components?repository=choco-hosted" `
+curl.exe -sk --ssl-no-revoke --noproxy "10.252.170.171" -u "admin:1.a" `
+  "https://10.252.170.171/service/rest/v1/components?repository=choco-hosted-nas" `
   -F "nuget.asset=@C:\ssd-testkit\bin\chocolatey\packages\smicli\2026.2.13\smicli.2026.2.13.nupkg"
 ```
 
@@ -117,17 +117,17 @@ curl.exe -sk -u "admin:1.a" `
 .\tool-manager\prepare_testcase.ps1 stc1685_burnin
 ```
 
-腳本會對每個工具先下載 .nupkg（若本地沒有），再判斷是否需要安裝。
+腳本會對每個工具先下載 .nupkg（若本地沒有），再補齊 `bin\installers\<source_dir>`（若本地沒有）。
 
 **手動下載單一套件：**
 
 ```powershell
-# URL 格式：https://nexus.internal/repository/choco-hosted/<id>/<version>
+# URL 格式：https://10.252.170.171/repository/choco-hosted-nas/<id>/<version>
 $headers = @{ Authorization = "Basic " + [Convert]::ToBase64String(
     [Text.Encoding]::ASCII.GetBytes("admin:1.a")) }
 
 Invoke-WebRequest `
-  -Uri "https://nexus.internal/repository/choco-hosted/smicli/2026.2.13" `
+  -Uri "https://10.252.170.171/repository/choco-hosted-nas/smicli/2026.2.13" `
   -Headers $headers `
   -OutFile "C:\ssd-testkit\bin\chocolatey\packages\smicli\2026.2.13\smicli.2026.2.13.nupkg"
 ```
@@ -148,33 +148,32 @@ choco install smicli `
 
 ```powershell
 choco install smicli `
-  --source "https://nexus.internal/repository/choco-hosted" `
+  --source "https://10.252.170.171/repository/choco-hosted-nas" `
   --version 2026.2.13 `
   -y --no-progress
 ```
 
-### 方式 C：透過 prepare_testcase 自動安裝（推薦用於 test case）
+### 方式 C：先 prepare，再安裝（推薦用於 test case）
 
 ```powershell
 cd C:\ssd-testkit
 
-# 安裝 prepare.yaml 中指定的 testcase 所需工具
+# 先準備：下載 nupkg + 補齊 installer（不會安裝）
 .\tool-manager\prepare_testcase.bat
 
-# 指定 testcase
+# 或指定 testcase
 .\tool-manager\prepare_testcase.ps1 stc2557_adk_s3s4s5
 
-# 強制重新安裝（即使已安裝）
-.\tool-manager\prepare_testcase.ps1 stc2557_adk_s3s4s5 -Force
+# 再安裝：依 packages.config 執行 choco install
+.\bin\chocolatey\scripts\install_packages.ps1
 ```
 
 **輸出範例：**
 ```
 TestCase: stc2557_adk_s3s4s5
   [DOWNLOAD] smicli 2026.2.13
-  [SKIP] smicli (C:\tools\SmiCli\SmiCli2.exe)
-  [DOWNLOAD] windows-adk 26100.0.0
-  [SKIP] windows-adk (C:\...\wpr.exe)
+  [COPY] installer smicli  \\10.250.0.1\...\SmiCli-v20260213C.zip
+  [SKIP] installer windows-adk (bin\installers already present)
 Tools ready: stc2557_adk_s3s4s5
 ```
 
@@ -183,9 +182,9 @@ Tools ready: stc2557_adk_s3s4s5
 ## 5. 查詢 Nexus 已上傳的套件
 
 ```powershell
-# 列出 choco-hosted 所有套件
+# 列出 choco-hosted-nas 所有套件
 curl.exe -sk -u "admin:1.a" `
-  "https://nexus.internal/service/rest/v1/components?repository=choco-hosted" | `
+  "https://10.252.170.171/service/rest/v1/components?repository=choco-hosted-nas" | `
   python -c "import sys,json; [print(c['name'], c['version']) for c in json.load(sys.stdin)['items']]"
 ```
 
@@ -202,7 +201,7 @@ tools:
     env_var: SMICLI_PATH          # 環境變數名稱（選填）
 ```
 
-> 若 `binaries` 為空，prepare_testcase 改以 `install_dir` 是否存在作為判斷依據。
+> `install_dir`/`binaries` 主要供安裝後驗證與其他流程使用；`prepare_testcase` 目前不以此判斷是否安裝。
 
 ---
 
@@ -215,11 +214,14 @@ nuspec + chocolateyInstall.ps1
    <id>.<version>.nupkg  (bin\chocolatey\packages\<id>\<version>\)
         │
         ▼ upload_tools_to_nexus.ps1
-   Nexus choco-hosted
+         Nexus choco-hosted-nas
         │
         ▼ prepare_testcase.ps1 Step 1
    bin\chocolatey\packages\<id>\<version>\ (本地快取)
         │
-        ▼ prepare_testcase.ps1 Step 2-3
-   choco install → 工具安裝至 C:\tools\ 或 C:\Program Files\
+           ▼ prepare_testcase.ps1 Step 1.5
+         bin\installers\<source_dir>\ (installer 補齊)
+           │
+           ▼ install_packages.ps1 / ChocoManager
+         choco install → 工具安裝至 C:\tools\ 或 C:\Program Files\
 ```

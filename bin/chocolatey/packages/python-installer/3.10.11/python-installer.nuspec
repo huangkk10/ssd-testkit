@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>python-installer</id>
+    <version>3.10.11</version>
+    <title>Python Installer (3.10.11)</title>
+    <authors>SSD TestKit</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>
+      Offline installer for Python 3.10.11 x64 for Windows.
+      Requires SSD_TESTKIT_ROOT environment variable to locate the installer.
+    </description>
+    <tags>python python3 installer offline</tags>
+  </metadata>
+</package>

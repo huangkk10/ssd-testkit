@@ -22,6 +22,22 @@ All packages run in **offline mode** (no internet required on target machines).
 
 ---
 
+## 四階段邊界（重要）
+
+1. 打包（Pack）：`choco pack` 產生 `.nupkg`
+2. 上傳（Upload）：`tool-manager/upload_tools_to_nexus.ps1` 上傳 `.nupkg` 到 Nexus、zip 備份到 NAS
+3. 準備（Prepare）：`tool-manager/prepare_testcase.ps1` 下載 `.nupkg` 並補齊 `bin/installers/` 檔案
+4. 安裝（Install）：`bin/chocolatey/scripts/install_packages.ps1` 或 `ChocoManager.install()`
+
+> `prepare_testcase.ps1` 不會執行 `choco install`。
+
+---
+
+## Source Of Truth
+
+- `lib/testtool/tools-registry.yaml`：tool-manager 流程的版本與來源路徑主資料（`version`, `source_dir`, `nexus_path`）
+- `lib/testtool/<tool>/package_meta.yaml`：Python 端 `ChocoManager` 的版本映射來源
+
 ## Two Tool Types
 
 ### Type A — Installer (有安裝程式)
@@ -121,6 +137,9 @@ New-Item -ItemType Directory "bin/chocolatey/packages/$toolId/$version/tools" -F
 </package>
 ```
 
+> 本專案常見結構為 `bin/chocolatey/packages/<id>/<version>/<id>.nuspec`，
+> 並在相同 `<version>` 目錄輸出 `<id>.<version>.nupkg`。
+
 ### Step 4 — 撰寫 chocolateyInstall.ps1
 
 **Type B (Portable)**：
@@ -214,6 +233,22 @@ binaries:
 </packages>
 ```
 
+### Step 10 — 上傳與準備流程串接
+
+```powershell
+# 上傳 nupkg 到 Nexus + 備份 installer zip 到 NAS
+.\tool-manager\upload_tools_to_nexus.ps1
+
+# 新機器準備 testcase 工具檔案（下載 nupkg + 解壓 installer）
+.\tool-manager\prepare_testcase.ps1 stc1685_burnin
+```
+
+如需真正安裝工具，請再執行：
+
+```powershell
+.\bin\chocolatey\scripts\install_packages.ps1
+```
+
 ---
 
 ## Testing the Package
@@ -265,12 +300,12 @@ Tests go in `tests/integration/lib/testtool/test_<toolname>/`.
 
 | Tool ID | Type | Versions | package_meta.yaml | nupkg 位置 |
 |---------|------|----------|-------------------|------------|
-| `windows-adk` | installer | 19041, 22000, 22621, **26100** | `lib/testtool/windows_adk/` | `bin/chocolatey/packages/windows-adk/26100/` |
-| `smicli` | portable | **2025.11.14** | `lib/testtool/smicli/` | `bin/chocolatey/packages/smicli/2025.11.14/` |
+| `windows-adk` | installer | 19041, 22000, 22621, **26100.0.0** | `lib/testtool/windows_adk/` | `bin/chocolatey/packages/windows-adk/26100.0.0/` |
+| `smicli` | portable | **2026.2.13** | `lib/testtool/smicli/` | `bin/chocolatey/packages/smicli/2026.2.13/` |
 | `playwright-browsers` | portable | **1.58.0** | `lib/testtool/playwright_browsers/` | `bin/chocolatey/packages/playwright-browsers/1.58.0/` |
 | `net-7-sdk` | installer | **7.0.410** | `lib/testtool/net_7_sdk/` | `bin/chocolatey/packages/net-7-sdk/7.0.410/` |
 | `cdi` | portable | **8.17.13** | `lib/testtool/cdi/` | `bin/chocolatey/packages/cdi/8.17.13/` |
-| `smiwintools` | portable | **2026.2.13** | `lib/testtool/smartcheck/` | `bin/chocolatey/packages/smiwintools/2026.2.13/` |
+| `smiwintools` | portable | **2026.2.13.1** | `lib/testtool/smartcheck/` | `bin/chocolatey/packages/smiwintools/2026.2.13.1/` |
 | `phm` | installer | **4.22.0** | `lib/testtool/phm/` | `bin/chocolatey/packages/phm/4.22.0/` |
 | `burnin` | installer | **10.2.1004** | `lib/testtool/burnin/` | `bin/chocolatey/packages/burnin/10.2.1004/` |
 | `pwrtest` | portable | 1.9.0 | 尚未建立 | 尚未建立 |

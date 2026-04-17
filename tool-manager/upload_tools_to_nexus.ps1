@@ -78,7 +78,8 @@ foreach ($entry in $entries) {
                   Select-Object -First 1
         if ($nuspec) {
             Write-Host "  [PACK]   $id $version" -ForegroundColor DarkYellow
-            choco pack $nuspec.FullName --outputdirectory $pkgDir --version $version
+            $chocoExe = if (Test-Path "C:\ProgramData\chocolatey\bin\choco.exe") { "C:\ProgramData\chocolatey\bin\choco.exe" } else { "choco" }
+            & $chocoExe pack $nuspec.FullName --outputdirectory $pkgDir --version $version
         } else {
             Write-Warning "[SKIP] ${id}: no .nupkg at $nupkg and no .nuspec in $pkgDir"
             continue

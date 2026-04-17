@@ -48,6 +48,13 @@ tools:
     install_dir: C:\\Program Files\\Git
     binaries: [cmd/git.exe]
 
+  python-installer:
+    version: 3.10.11
+    source_dir: bin/installers/python_installer/3.10.11
+    nexus_path: windows-tools/python_installer/3.10.11/python-installer-3.10.11.zip
+    install_dir: C:\\Program Files\\Python310
+    binaries: [python.exe]
+
   windows-adk:
     version: 26100.0.0
     source_dir: bin/installers/WindowsADK/26100.0.0

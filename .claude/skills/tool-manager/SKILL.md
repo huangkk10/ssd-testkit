@@ -68,9 +68,10 @@ tools:
 
   windows-adk:
     version:     26100.0.0
+    source_dir:  bin/installers/WindowsADK/26100.0.0
+    nexus_path:  windows-tools/WindowsADK/26100.0.0/WindowsADK-26100.0.0.zip
     install_dir: C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit
     binaries:    [wpr.exe, wpa.exe, xbootmgr.exe]
-    # 沒有 source_dir / nexus_path → 不做 installer zip 備份
 ```
 
 `nexus_path` 最後一段即為 NAS zip 檔名：`SmiCli-v20260213C.zip`
@@ -86,11 +87,16 @@ tools:
 | `burnin` | 10.2.1004 | `bin/installers/BurnIn/10.2.1004` | BurnInTest |
 | `cdi` | 8.17.13 | `bin/installers/CrystalDiskInfo/8.17.13` | CrystalDiskInfo |
 | `phm` | 4.22.0 | `bin/installers/PHM/V4.22.0_B25.02.06.02_H` | PowerhouseMountain |
-| `windows-adk` | 26100.0.0 | (無) | Windows ADK，需另外安裝 |
+| `windows-adk` | 26100.0.0 | `bin/installers/WindowsADK/26100.0.0` | Windows ADK |
 
 ---
 
 ## 腳本說明
+
+### Prepare 與 Install 的責任邊界
+
+- `prepare_testcase.ps1`：只負責「下載 nupkg」與「補齊 installer 檔案」，不執行 `choco install`
+- `install_packages.ps1` / `ChocoManager`：才是實際安裝工具的入口
 
 ### prepare_testcase.bat / .ps1
 
@@ -210,6 +216,17 @@ Remove-Item bin\installers\SmiCli\v20260401A\ -Recurse -Force
 .\tool-manager\prepare_testcase.bat
 # → [DOWNLOAD] smicli 2026.4.1
 # → [COPY] installer smicli  \\...\zip\SmiCli-v20260401A.zip
+```
+
+### Step F：實際安裝（必要時）
+```powershell
+# 批次安裝 packages.config 中宣告的工具
+.\bin\chocolatey\scripts\install_packages.ps1
+
+# 或在 Python 內使用 ChocoManager
+from lib.testtool.choco_manager import ChocoManager
+mgr = ChocoManager()
+mgr.install("smicli")
 ```
 
 ---
