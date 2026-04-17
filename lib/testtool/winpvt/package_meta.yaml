@@ -1,0 +1,13 @@
+tool_name: winpvt
+choco_package_id: winpvt
+tool_type: installer
+
+versions:
+  - version: "11.16.0"
+    source_dir: "bin/installers/winpvt/11.16.0"
+    installer_file: "WinPVT.exe"
+    default: true
+
+install_dir: "C:\\Program Files\\HP\\WinPVT"
+binaries:
+  - WinPVT.exe

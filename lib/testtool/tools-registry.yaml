@@ -55,6 +55,13 @@ tools:
     install_dir: C:\\Program Files\\Python310
     binaries: [python.exe]
 
+  winpvt:
+    version: 11.16.0
+    source_dir: bin/installers/winpvt/11.16.0
+    nexus_path: windows-tools/winpvt/11.16.0/winpvt-11.16.0.zip
+    install_dir: C:\\Program Files\\HP\\WinPVT
+    binaries: [WinPVT.exe]
+
   windows-adk:
     version: 26100.0.0
     source_dir: bin/installers/WindowsADK/26100.0.0

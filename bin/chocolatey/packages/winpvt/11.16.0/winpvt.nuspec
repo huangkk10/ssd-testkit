@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>winpvt</id>
+    <version>11.16.0</version>
+    <title>WinPVT (v11.16.0)</title>
+    <authors>HP Inc. / SSD TestKit</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>
+      HP WinPVT - Windows Production Verification Test tool.
+      Installer-based package. Requires SSD_TESTKIT_ROOT env var pointing
+      to the ssd-testkit root directory.
+    </description>
+    <tags>winpvt hp pvt offline</tags>
+  </metadata>
+</package>
