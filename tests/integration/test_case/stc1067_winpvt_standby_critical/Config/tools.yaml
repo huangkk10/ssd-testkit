@@ -1,0 +1,15 @@
+# tools.yaml — stc1067_winpvt_standby_critical
+#
+# phase: pre_runcard — 在 setup_test_class 中、RunCard 初始化前安裝
+# phase: test        — 在 test_02_install_tools 中安裝（預設，可省略）
+
+tools:
+  - id: smicli
+    reinstall: false
+    phase: pre_runcard    # RunCard 需要 SmiCli2.exe 來收集 DUT 資訊
+
+  # - id: winpvt
+  #   reinstall: false
+
+  # - id: cdi
+  #   reinstall: false

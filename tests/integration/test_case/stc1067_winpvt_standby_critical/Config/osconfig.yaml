@@ -1,0 +1,31 @@
+# osconfig.yaml — stc1067_winpvt_standby_critical
+# SUT 準備清單：為 WinPVT Standby Critical 測試準備系統環境
+#
+# 欄位說明請參考 lib/testtool/osconfig/config.py OsConfigProfile
+
+# SystemRestore：停用 C:\ 的系統還原
+# disable_system_restore: true
+
+# MemoryDiagnostic：停用排程工作以避免干擾 Standby 測試
+# disable_memory_diagnostic_tasks: true
+
+# McAfee：停用 McAfee 排程工作（若未安裝則自動 no-op）
+# disable_mcafee_tasks: true
+
+# Fast Startup：停用 Fast Startup，確保 Standby 測試的睡眠/喚醒行為乾淨
+# disable_fast_startup: true
+
+# Hibernation：停用 Hibernate（Standby Critical 只需 S3/S0ix，不需要 hiberfil.sys）
+# enable_hibernation: false  # 預設 false，不填即可
+
+# Auto Login：測試過程若需重開機後自動登入請啟用
+# enable_auto_admin_logon: true
+# auto_login_password: ""
+
+# UAC：設定為 Never Notify（最低通知等級），避免 UAC 提示干擾自動化測試
+# 等同 UAC slider 設到最低 (EnableLUA=0)
+disable_uac: true
+
+# UAC：設定為 Never Notify（最低通知等級），避免 UAC 提示干擾自動化測試
+# 等同 UAC slider 設到最低 (EnableLUA=0)
+disable_uac: true
