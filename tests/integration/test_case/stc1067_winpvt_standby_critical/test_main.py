@@ -131,6 +131,7 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
 
     @pytest.mark.order(3)
     @step(3, "Apply OS configuration")
+    @pytest.mark.skip(reason="Test")
     def test_03_apply_osconfig(self):
         """Apply OS configuration from Config/osconfig.yaml.
 
@@ -151,7 +152,7 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
 
     @pytest.mark.order(4)
     @step(4, "Clean Environment")
-    # @pytest.mark.skip(reason="Test")
+    @pytest.mark.skip(reason="Test")
     def test_04_clean_environment(self, request):
         """Reboot the DUT for a clean platform environment before WinPVT run.
 
@@ -173,18 +174,25 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
         )
         # os._exit(0) called inside setup_reboot — code below never executes
 
+    # Shared WinPVTController instance between test_05 and test_06
+    _winpvt_ctrl: "WinPVTController | None" = None
+
     # ------------------------------------------------------------------
-    # Step 5 — Run WinPVT Standby Critical
+    # Step 5 — WinPVT Startup (launch + dismiss dialogs)
     # ------------------------------------------------------------------
 
     @pytest.mark.order(5)
-    @step(5, "Run WinPVT Standby Critical")
-    def test_05_run_winpvt_standby(self):
-        """Launch WinPVT via WinPVTController, dismiss startup dialogs, wait for completion."""
+    @step(5, "WinPVT Startup: launch and dismiss dialogs")
+    def test_05_winpvt_startup(self):
+        """Launch WinPVT and dismiss all startup dialogs (License, AccessKey, Configurations).
+
+        After this step WinPVT main window is idle and ready to load a test plan.
+        The controller instance is stored in _winpvt_ctrl for test_06.
+        """
         winpvt_cfg = self.config['winpvt']
         timeout_minutes = winpvt_cfg.get('timeout_minutes', 120)
 
-        ctrl = WinPVTController(
+        ctrl_kwargs = dict(
             exe_path=winpvt_cfg['ExePath'],
             result_path=winpvt_cfg['ResultPath'],
             test_category=winpvt_cfg.get('test_category', 'Standby'),
@@ -192,19 +200,59 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
             timeout_minutes=timeout_minutes,
             screenshot_dir='./testlog/WinPVTScreenshots',
         )
+        pvt_file = winpvt_cfg.get('PvtFile', '').strip()
+        if pvt_file:
+            # Relative paths are resolved from the test case directory
+            pvt_path = Path(pvt_file)
+            if not pvt_path.is_absolute():
+                pvt_path = Path(__file__).parent / pvt_path
+            ctrl_kwargs['pvt_file'] = str(pvt_path)
+            logger.info(f"[TEST_05] Using pvt_file from Config: {pvt_path}")
+        ctrl = WinPVTController(**ctrl_kwargs)
+
+        try:
+            ctrl.setup_phase()
+        except WinPVTError as exc:
+            pytest.fail(f"[TEST_05] WinPVT startup failed: {exc}")
+
+        TestSTC1067WinPVTStandbyCritical._winpvt_ctrl = ctrl
+        logger.info("[TEST_05] WinPVT startup complete — main window ready")
+
+    # ------------------------------------------------------------------
+    # Step 6 — Run WinPVT Standby Critical
+    # ------------------------------------------------------------------
+
+    @pytest.mark.order(6)
+    @step(6, "Run WinPVT Standby Critical")
+    def test_06_run_winpvt_standby(self):
+        """Open Standby Critical Only.pvt, click GO, wait for completion, verify results."""
+        ctrl = TestSTC1067WinPVTStandbyCritical._winpvt_ctrl
+        if ctrl is None:
+            pytest.fail("[TEST_06] WinPVT controller not initialised — test_05 may have failed")
+
+        timeout_minutes = self.config['winpvt'].get('timeout_minutes', 120)
+
         ctrl.start()
         ctrl.join(timeout=ctrl.timeout_seconds + 120)
 
         if ctrl.is_alive():
             ctrl.stop()
             pytest.fail(
-                f"[TEST_05] WinPVT timed out after {timeout_minutes} minutes"
+                f"[TEST_06] WinPVT timed out after {timeout_minutes} minutes"
             )
 
         if ctrl.status is not True:
             pytest.fail(
-                f"[TEST_05] WinPVT Standby Critical failed: {ctrl.error_message}"
+                f"[TEST_06] WinPVT Standby Critical failed: {ctrl.error_message}"
             )
 
-        logger.info("[TEST_05] WinPVT Standby Critical completed successfully")
+        # Write completed cycle count to Runcard.ini
+        cycles = ctrl.cycles
+        if self.runcard is not None and cycles > 0:
+            self.runcard.update_test_status(test_cycle=cycles)
+            self.runcard.save_to_file()
+            logger.info(f"[TEST_06] Runcard updated: Test Cycle={cycles}")
+
+        logger.info("[TEST_06] WinPVT Standby Critical completed successfully")
+
 

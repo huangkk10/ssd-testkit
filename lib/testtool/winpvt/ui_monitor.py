@@ -175,8 +175,23 @@ class WinPVTUIMonitor:
             for win in windows:
                 try:
                     handle = win.handle
-                    if handle == main_handle:
-                        continue
+
+                    # Skip idle main application windows (have MenuBar but no
+                    # child [Window] modal). When a modal IS open, the main
+                    # window will have child Window elements in its descendants.
+                    try:
+                        desc_types = {
+                            d.element_info.control_type
+                            for d in win.descendants()
+                        }
+                        if 'MenuBar' in desc_types and 'Window' not in desc_types:
+                            logger.debug(
+                                f"[DIALOG] iter={iteration} "
+                                f"skipping idle main window handle={handle}"
+                            )
+                            continue
+                    except Exception:
+                        pass
 
                     try:
                         visible = win.is_visible()
@@ -205,27 +220,51 @@ class WinPVTUIMonitor:
                     self.take_screenshot(
                         f"dialog_{iteration:03d}_before_{title[:20]}")
 
+                    # Enumerate all Button descendants, then match by priority
+                    try:
+                        all_buttons = {
+                            b.window_text(): b
+                            for b in win.descendants(control_type='Button')
+                        }
+                        logger.debug(
+                            f"[DIALOG] iter={iteration} buttons found: "
+                            f"{list(all_buttons.keys())}"
+                        )
+                        print(
+                            f"[DIALOG] iter={iteration} buttons found: "
+                            f"{list(all_buttons.keys())}"
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            f"[DIALOG] iter={iteration} "
+                            f"descendants() failed: {exc}"
+                        )
+                        all_buttons = {}
+
                     for btn_title in _DIALOG_BTNS:
-                        try:
-                            btn = win.child_window(
-                                title=btn_title, control_type="Button")
-                            if btn.exists(timeout=0.3):
-                                logger.info(
-                                    f"[DIALOG] iter={iteration} "
-                                    f"clicking '{btn_title}' in {title!r}"
-                                )
-                                print(
-                                    f"[DIALOG] iter={iteration} "
-                                    f"clicking '{btn_title}' in {title!r}"
-                                )
-                                btn.click_input()
-                                time.sleep(0.5)
-                                self.take_screenshot(
-                                    f"dialog_{iteration:03d}_after_{btn_title}")
-                                dialog_found = True
-                                break
-                        except Exception:
+                        if btn_title not in all_buttons:
                             continue
+                        try:
+                            btn = all_buttons[btn_title]
+                            logger.info(
+                                f"[DIALOG] iter={iteration} "
+                                f"clicking '{btn_title}' in {title!r}"
+                            )
+                            print(
+                                f"[DIALOG] iter={iteration} "
+                                f"clicking '{btn_title}' in {title!r}"
+                            )
+                            btn.click_input()
+                            time.sleep(0.5)
+                            self.take_screenshot(
+                                f"dialog_{iteration:03d}_after_{btn_title}")
+                            dialog_found = True
+                            break
+                        except Exception as exc:
+                            logger.warning(
+                                f"[DIALOG] iter={iteration} "
+                                f"click '{btn_title}' failed: {exc}"
+                            )
 
                     if dialog_found:
                         break
@@ -235,7 +274,12 @@ class WinPVTUIMonitor:
                     continue
 
             if dialog_found:
-                consecutive_clean = 0
+                # After clicking any button, reset to -5 so we wait 5 more
+                # clean cycles (~6 s) before declaring done. This gives the
+                # application time to show follow-up dialogs (e.g. the WinPVT
+                # "No AccessKey.txt" popup that appears after License Agreement).
+                # Observed max follow-up gap is ~4 s; -2 provides ~6 s buffer.
+                consecutive_clean = -2
             else:
                 consecutive_clean += 1
                 logger.debug(

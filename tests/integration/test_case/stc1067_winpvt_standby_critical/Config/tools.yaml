@@ -4,12 +4,15 @@
 # phase: test        — 在 test_02_install_tools 中安裝（預設，可省略）
 
 tools:
-  - id: smicli
+  - id: winpvt
     reinstall: false
-    phase: pre_runcard    # RunCard 需要 SmiCli2.exe 來收集 DUT 資訊
+    phase: pre_runcard    # 確保直接跑任何 test step 時 WinPVT 都已安裝
 
-  # - id: winpvt
+  # smiwintools (含 SmiCli2.exe) — RunCard DUT info 收集用
+  # 需要 bin/installers/SmiWinTools/<version>/ 在機器上才能安裝
+  # - id: smiwintools
   #   reinstall: false
+  #   phase: pre_runcard
 
   # - id: cdi
   #   reinstall: false

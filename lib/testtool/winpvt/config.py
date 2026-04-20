@@ -12,7 +12,7 @@ class WinPVTConfig:
 
     DEFAULT_CONFIG: Dict[str, Any] = {
         # Executable
-        'exe_path': r'C:\Program Files\HP\WinPVT\WinPVT.exe',
+        'exe_path': r'C:\Program Files\Hewlett-Packard\WinPVT 11.16.0\WinPVT.exe',
         # Output paths
         'result_path': './testlog/WinPVTResult',
         'screenshot_dir': './testlog/WinPVTScreenshots',
@@ -20,6 +20,11 @@ class WinPVTConfig:
         'test_category': 'Standby',
         'stress_level': 'Critical',
         'timeout_minutes': 120,
+        # Test plan (.pvt) file to load after startup dialogs are cleared
+        'pvt_file': (
+            r'C:\Program Files\Hewlett-Packard\WinPVT 11.16.0'
+            r'\Test Plans\Power Management\Standby Critical Only.pvt'
+        ),
         # Dialog handling
         'dialog_dismiss_timeout': 120,
         # Window wait
@@ -35,6 +40,7 @@ class WinPVTConfig:
         'test_category': str,
         'stress_level': str,
         'timeout_minutes': (int, float),
+        'pvt_file': str,
         'dialog_dismiss_timeout': (int, float),
         'window_wait_timeout': (int, float),
     }

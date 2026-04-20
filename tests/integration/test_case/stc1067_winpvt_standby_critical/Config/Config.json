@@ -4,12 +4,13 @@
     "log_path": "./log/STC-1067",
 
     "winpvt": {
-        "ExePath": "C:\\Program Files\\HP\\WinPVT\\WinPVT.exe",
+        "ExePath": "C:\\Program Files\\Hewlett-Packard\\WinPVT 11.16.0\\WinPVT.exe",
         "LogPath": "./testlog/WinPVTLog",
         "ResultPath": "./testlog/WinPVTResult",
         "test_category": "Standby",
         "stress_level": "Critical",
-        "timeout_minutes": 120
+        "timeout_minutes": 120,
+        "PvtFile": "Config/winpvt_dev.pvt"
     },
 
     "cdi": {

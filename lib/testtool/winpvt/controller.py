@@ -69,12 +69,18 @@ class WinPVTController(threading.Thread):
         self.stress_level: str = cfg['stress_level']
         self.timeout_minutes: int = int(cfg['timeout_minutes'])
         self.timeout_seconds: int = self.timeout_minutes * 60
+        self.pvt_file: str = cfg['pvt_file']
         self.dialog_dismiss_timeout: int = int(cfg['dialog_dismiss_timeout'])
         self.window_wait_timeout: int = int(cfg['window_wait_timeout'])
 
         self._status: Optional[bool] = None
         self._error_message: str = ""
+        self._cycles: int = 0
         self._stop_event = threading.Event()
+
+        # Set by setup_phase(); used by the thread in run()
+        self._app = None
+        self._monitor: Optional[WinPVTUIMonitor] = None
 
     # ------------------------------------------------------------------
     # Public interface
@@ -103,14 +109,84 @@ class WinPVTController(threading.Thread):
         """Human-readable failure reason, or empty string on success."""
         return self._error_message
 
+    @property
+    def cycles(self) -> int:
+        """Number of completed cycles read from WinPVT StatusBar."""
+        return self._cycles
+
     # ------------------------------------------------------------------
-    # Thread body
+    # Two-phase public API
+    # ------------------------------------------------------------------
+
+    def setup_phase(self) -> None:
+        """Phase 1 (synchronous): launch WinPVT and dismiss all startup dialogs.
+
+        Call this from test_05.  After it returns the WinPVT main window is
+        idle and ready to load a test plan.  The internal ``_app`` and
+        ``_monitor`` objects are stored for use by the thread in
+        :meth:`run` (Phase 2).
+
+        Raises:
+            WinPVTUIError:     pywinauto not available, window not found, etc.
+            WinPVTProcessError: executable missing or launch failure.
+        """
+        if not _PYWINAUTO_AVAILABLE:
+            raise WinPVTUIError(
+                "pywinauto is not installed — cannot run WinPVT UI automation"
+            )
+
+        exe = Path(self.exe_path)
+        if not exe.is_file():
+            raise WinPVTProcessError(
+                f"WinPVT executable not found: {self.exe_path}"
+            )
+
+        Path(self.result_path).mkdir(parents=True, exist_ok=True)
+        monitor = WinPVTUIMonitor(self.screenshot_dir)
+
+        logger.info(
+            f"[WINPVT] Launching: {self.exe_path} "
+            f"(category={self.test_category}, level={self.stress_level}, "
+            f"timeout={self.timeout_minutes}min)"
+        )
+        print(f"[WINPVT] Launching: {self.exe_path}")
+
+        try:
+            app = Application(backend='uia').start(str(exe))
+        except Exception as exc:
+            raise WinPVTProcessError(f"Failed to launch WinPVT: {exc}") from exc
+
+        main_window, main_handle = self._wait_for_main_window(
+            app, monitor, self.window_wait_timeout
+        )
+        monitor.take_screenshot("launch_main_window")
+        monitor.log_topology(main_window, "after launch")
+
+        logger.info("[WINPVT] Dismissing startup dialogs...")
+        print("[WINPVT] Dismissing startup dialogs...")
+        monitor.dismiss_all_dialogs(
+            app, main_handle, timeout=self.dialog_dismiss_timeout
+        )
+        monitor.take_screenshot("after_dialogs_cleared")
+        logger.info("[WINPVT] Startup dialogs cleared — WinPVT main window ready")
+        print("[WINPVT] Startup dialogs cleared — WinPVT main window ready")
+
+        # Store for Phase 2 (thread)
+        self._app = app
+        self._monitor = monitor
+
+    # ------------------------------------------------------------------
+    # Thread body  (Phase 2)
     # ------------------------------------------------------------------
 
     def run(self) -> None:
-        """Execute WinPVT end-to-end inside the thread."""
+        """Phase 2 (threaded): open test plan, click GO, wait, check results.
+
+        Call :meth:`setup_phase` first, then ``ctrl.start()`` to kick off
+        this thread.
+        """
         try:
-            self._run_winpvt()
+            self._run_test_phase()
             self._status = True
         except (WinPVTTestFailedError, WinPVTTimeoutError,
                 WinPVTProcessError, WinPVTUIError) as exc:
@@ -126,61 +202,208 @@ class WinPVTController(threading.Thread):
     # Private implementation
     # ------------------------------------------------------------------
 
-    def _run_winpvt(self) -> None:
-        if not _PYWINAUTO_AVAILABLE:
-            raise WinPVTUIError(
-                "pywinauto is not installed — cannot run WinPVT UI automation"
-            )
-
-        exe = Path(self.exe_path)
-        if not exe.is_file():
+    def _run_test_phase(self) -> None:
+        """Phase 2 body: open .pvt, click GO, wait for completion, check results."""
+        if self._app is None or self._monitor is None:
             raise WinPVTProcessError(
-                f"WinPVT executable not found: {self.exe_path}"
+                "setup_phase() must be called before starting the test thread"
             )
 
-        Path(self.result_path).mkdir(parents=True, exist_ok=True)
-        monitor = WinPVTUIMonitor(self.screenshot_dir)
+        app = self._app
+        monitor = self._monitor
 
-        # -- Launch -------------------------------------------------------
-        logger.info(
-            f"[WINPVT] Launching: {self.exe_path} "
-            f"(category={self.test_category}, level={self.stress_level}, "
-            f"timeout={self.timeout_minutes}min)"
-        )
-        print(f"[WINPVT] Launching: {self.exe_path}")
-
-        try:
-            app = Application(backend='uia').start(str(exe))
-        except Exception as exc:
-            raise WinPVTProcessError(f"Failed to launch WinPVT: {exc}") from exc
-
-        # -- Wait for the main window -------------------------------------
-        main_window, main_handle = self._wait_for_main_window(
-            app, monitor, self.window_wait_timeout
-        )
-
-        monitor.take_screenshot("launch_main_window")
-        monitor.log_topology(main_window, "after launch")
-
-        # -- Dismiss startup dialogs --------------------------------------
-        logger.info("[WINPVT] Dismissing startup dialogs...")
-        print("[WINPVT] Dismissing startup dialogs...")
-        monitor.dismiss_all_dialogs(
-            app, main_handle, timeout=self.dialog_dismiss_timeout
-        )
-        monitor.take_screenshot("after_dialogs_cleared")
-        logger.info("[WINPVT] Startup dialogs cleared — WinPVT running")
-        print("[WINPVT] Startup dialogs cleared — WinPVT running")
+        # -- Load test plan and click GO ----------------------------------
+        logger.info("[WINPVT] Loading test plan and starting test...")
+        print("[WINPVT] Loading test plan and starting test...")
+        self._start_test(app, monitor)
 
         # -- Wait for process to finish -----------------------------------
-        self._wait_for_completion(app, main_window, monitor)
-        monitor.take_screenshot("completion")
+        try:
+            self._wait_for_completion(app, monitor)
+        finally:
+            # Read Cycles from StatusBar before screenshotting final state
+            self._cycles = self._read_statusbar_cycles(app)
+            logger.info(f"[WINPVT] StatusBar Cycles: {self._cycles}")
+            print(f"[WINPVT] StatusBar Cycles: {self._cycles}")
+            monitor.take_screenshot("final_state")
 
         # -- Inspect result files -----------------------------------------
         self._check_results()
 
         logger.info("[WINPVT] WinPVT Standby Critical completed successfully")
         print("[WINPVT] WinPVT Standby Critical completed successfully")
+
+    # ------------------------------------------------------------------
+    # Test execution helpers
+    # ------------------------------------------------------------------
+
+    def _get_idle_main_window(self, app):
+        """Return the WinPVT idle main window (has MenuBar, no modal child Window)."""
+        for w in app.windows():
+            try:
+                title = w.window_text()
+                if 'WinPVT' not in title:
+                    continue
+                desc_types = {d.element_info.control_type for d in w.descendants()}
+                if 'MenuBar' in desc_types and 'Window' not in desc_types:
+                    return w
+            except Exception:
+                continue
+        return None
+
+    def _open_test_plan(self, app, monitor: WinPVTUIMonitor) -> None:
+        """Click the Open toolbar button, fill the pvt file path, and confirm."""
+        pvt_path = self.pvt_file
+        logger.info(f"[WINPVT] Opening test plan: {pvt_path}")
+        print(f"[WINPVT] Opening test plan: {pvt_path}")
+
+        # Get idle main window
+        main_win = self._get_idle_main_window(app)
+        if main_win is None:
+            raise WinPVTUIError("Cannot find WinPVT idle main window for Open")
+
+        # Click the toolbar Open button (aid='59392' contains it; avoid DropDown variants)
+        try:
+            toolbar_btns = {
+                b.element_info.automation_id or b.window_text(): b
+                for b in main_win.descendants(control_type='Button')
+            }
+            # Find 'Open' button that is NOT a DropDown (aid != 'DropDown')
+            open_btn = None
+            for b in main_win.descendants(control_type='Button'):
+                try:
+                    if (b.window_text() == 'Open'
+                            and b.element_info.automation_id != 'DropDown'):
+                        open_btn = b
+                        break
+                except Exception:
+                    continue
+            if open_btn is None:
+                raise WinPVTUIError("Cannot find toolbar Open button in WinPVT main window")
+            open_btn.click_input()
+        except WinPVTUIError:
+            raise
+        except Exception as exc:
+            raise WinPVTUIError(f"Failed to click Open button: {exc}") from exc
+
+        monitor.take_screenshot("open_test_plan_dialog")
+
+        # Wait for file dialog — search by title or by presence of File name Edit + Open btn
+        deadline = time.monotonic() + 15
+        file_dialog = None
+        while time.monotonic() < deadline:
+            try:
+                for w in app.windows():
+                    # Search top-level windows and their child [Window] descendants
+                    candidates = [w]
+                    try:
+                        candidates += list(w.descendants(control_type='Window'))
+                    except Exception:
+                        pass
+                    for cand in candidates:
+                        try:
+                            title = cand.window_text() or ''
+                        except Exception:
+                            continue
+                        # Match by title keyword or by structure (has File name Edit)
+                        if 'WinPVT Test Plan' in title or 'Test Plan' in title:
+                            file_dialog = cand
+                            break
+                    if file_dialog:
+                        break
+                if file_dialog:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.5)
+
+        if file_dialog is None:
+            monitor.take_screenshot("open_dialog_not_found")
+            raise WinPVTUIError("WinPVT Test Plan file dialog did not appear")
+
+        # Fill the file path using descendants() — file_dialog may be a UIAWrapper
+        # (no child_window() available), so we iterate descendants directly.
+        try:
+            filename_edit = None
+            confirm_btn = None
+            for d in file_dialog.descendants():
+                try:
+                    ct = d.element_info.control_type
+                    aid = getattr(d.element_info, 'automation_id', '') or ''
+                    ttl = d.window_text()
+                    if ct == 'Edit' and (ttl == 'File name:' or aid == '1148'):
+                        filename_edit = d
+                    if ct == 'Button' and aid == '1' and ttl == 'Open':
+                        confirm_btn = d
+                except Exception:
+                    continue
+
+            if filename_edit is None:
+                raise WinPVTUIError(
+                    "Cannot find 'File name:' edit box in file dialog")
+            if confirm_btn is None:
+                raise WinPVTUIError(
+                    "Cannot find Open confirm button (aid=1) in file dialog")
+
+            filename_edit.set_edit_text(pvt_path)
+            time.sleep(0.3)
+            confirm_btn.click_input()
+        except WinPVTUIError:
+            monitor.take_screenshot("open_dialog_fill_failed")
+            raise
+        except Exception as exc:
+            monitor.take_screenshot("open_dialog_fill_failed")
+            raise WinPVTUIError(f"Failed to fill/confirm file dialog: {exc}") from exc
+
+        # Wait for dialog to close
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                if not file_dialog.exists():
+                    break
+            except Exception:
+                break
+            time.sleep(0.5)
+
+        monitor.take_screenshot("after_test_plan_loaded")
+        logger.info("[WINPVT] Test plan loaded")
+        print("[WINPVT] Test plan loaded")
+
+    def _click_go(self, app, monitor: WinPVTUIMonitor) -> None:
+        """Click the Run (GO) toolbar button to start the WinPVT test."""
+        logger.info("[WINPVT] Clicking GO (Run) to start test...")
+        print("[WINPVT] Clicking GO (Run) to start test...")
+
+        main_win = self._get_idle_main_window(app)
+        if main_win is None:
+            raise WinPVTUIError("Cannot find WinPVT idle main window for GO")
+
+        try:
+            run_btn = None
+            for b in main_win.descendants(control_type='Button'):
+                try:
+                    if b.window_text() == 'Run':
+                        run_btn = b
+                        break
+                except Exception:
+                    continue
+            if run_btn is None:
+                raise WinPVTUIError("Cannot find Run/GO button in WinPVT toolbar")
+            run_btn.click_input()
+        except WinPVTUIError:
+            raise
+        except Exception as exc:
+            raise WinPVTUIError(f"Failed to click Run/GO button: {exc}") from exc
+
+        time.sleep(1)
+        monitor.take_screenshot("after_go_clicked")
+        logger.info("[WINPVT] GO clicked — test running")
+        print("[WINPVT] GO clicked — test running")
+
+    def _start_test(self, app, monitor: WinPVTUIMonitor) -> None:
+        """Open the .pvt test plan and click GO to start the WinPVT test."""
+        self._open_test_plan(app, monitor)
+        self._click_go(app, monitor)
 
     def _wait_for_main_window(self, app, monitor: WinPVTUIMonitor,
                                timeout: int):
@@ -213,9 +436,16 @@ class WinPVTController(threading.Thread):
             f"WinPVT main window did not appear within {timeout}s"
         )
 
-    def _wait_for_completion(self, app, main_window,
+    def _wait_for_completion(self, app,
                               monitor: WinPVTUIMonitor) -> None:
-        """Wait for the WinPVT process to exit."""
+        """Wait for WinPVT to finish by detecting the Test Summary dialog.
+
+        WinPVT shows a "Test Summary" modal dialog when the test ends; the
+        process stays alive until the user clicks OK.  We poll for that
+        dialog, screenshot it, parse the pass/fail result, click OK, and
+        then return.  If the process exits before the dialog appears (crash
+        or forced stop) we also return early.
+        """
         logger.info(
             f"[WINPVT] Waiting for completion (timeout={self.timeout_minutes}min)..."
         )
@@ -223,37 +453,206 @@ class WinPVTController(threading.Thread):
             f"[WINPVT] Waiting for completion (timeout={self.timeout_minutes}min)..."
         )
 
-        try:
-            import psutil
-            proc = psutil.Process(app.process)
-            proc.wait(timeout=self.timeout_seconds)
-            logger.info("[WINPVT] Process exited")
-            print("[WINPVT] Process exited")
-            return
-        except Exception as exc:
-            logger.warning(
-                f"[WINPVT] psutil.wait exception ({exc}) — "
-                "falling back to window-existence poll"
-            )
-            monitor.take_screenshot("wait_psutil_exception")
-
-        # Fallback: poll main_window.exists()
+        import psutil
+        pid = app.process
         deadline = time.monotonic() + self.timeout_seconds
+
         while time.monotonic() < deadline:
             if self._stop_event.is_set():
                 raise WinPVTProcessError("Stopped during wait for completion")
+
+            # Check 1: Test Summary dialog (appears after test ends)
             try:
-                if not main_window.exists():
-                    logger.info("[WINPVT] Main window closed")
-                    return
+                for w in app.windows():
+                    candidates = [w]
+                    try:
+                        candidates += list(w.descendants(control_type='Window'))
+                    except Exception:
+                        pass
+                    for cand in candidates:
+                        try:
+                            if (cand.window_text() or '') == 'Test Summary':
+                                self._handle_test_summary_dialog(
+                                    cand, monitor, app)
+                                return
+                        except Exception:
+                            continue
             except Exception:
-                return  # window gone
+                pass
+
+            # Check 2: Global Information table shows Status='Completed'
+            suite_info = self._read_suite_status(app)
+            if suite_info.get('status') == 'Completed':
+                errors = suite_info.get('errors', 0)
+                warnings = suite_info.get('warnings', 0)
+                logger.info(
+                    f"[WINPVT] Table: Status=Completed, "
+                    f"Errors={errors}, Warnings={warnings}"
+                )
+                print(
+                    f"[WINPVT] Table: Status=Completed, "
+                    f"Errors={errors}, Warnings={warnings}"
+                )
+                monitor.take_screenshot("completion_from_table")
+                if errors > 0:
+                    raise WinPVTTestFailedError(
+                        f"WinPVT completed with {errors} error(s)"
+                    )
+                return
+
+            # Check 3: process exited on its own (crash / early stop)
+            if not psutil.pid_exists(pid):
+                logger.warning(
+                    "[WINPVT] Process exited without showing Test Summary dialog"
+                )
+                return
+
             time.sleep(5)
 
         monitor.take_screenshot("timeout_final")
         raise WinPVTTimeoutError(
             f"WinPVT did not finish within {self.timeout_minutes} minutes"
         )
+
+    def _read_statusbar_cycles(self, app) -> int:
+        """Read the Cycles counter from the WinPVT StatusBar.
+
+        The StatusBar contains Text elements with titles like
+        ``'Cycles: 00000001'``.  Returns the integer value, or 0 if
+        the element cannot be found or parsed.
+        """
+        try:
+            for w in app.windows():
+                for d in w.descendants(control_type='Text'):
+                    try:
+                        t = d.window_text() or ''
+                        if t.startswith('Cycles:'):
+                            return int(t.split(':', 1)[1].strip())
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return 0
+
+    def _read_suite_status(self, app) -> dict:
+        """Read Errors, Warnings and Status from the Global Information table.
+
+        The table columns are: Test Suites | Iterations | Errors | Warnings | Status.
+        Returns a dict with keys ``status`` (str), ``errors`` (int),
+        ``warnings`` (int); or an empty dict if the table cannot be read.
+        """
+        try:
+            for w in app.windows():
+                for li in w.descendants(control_type='ListItem'):
+                    try:
+                        # Collect non-empty text values from children
+                        texts = []
+                        for d in li.descendants():
+                            t = (d.window_text() or '').strip()
+                            if t:
+                                texts.append(t)
+                        # columns: Test Suites(0) Iterations(1) Errors(2) Warnings(3) Status(4)
+                        # Find the index of a known Status value
+                        for i, t in enumerate(texts):
+                            if t in ('Completed', 'Running', 'Failed', 'Stopped', 'Aborted'):
+                                errors = 0
+                                warnings = 0
+                                if i >= 2:
+                                    try:
+                                        errors = int(texts[i - 2])
+                                    except (ValueError, IndexError):
+                                        pass
+                                if i >= 1:
+                                    try:
+                                        warnings = int(texts[i - 1])
+                                    except (ValueError, IndexError):
+                                        pass
+                                return {
+                                    'status': t,
+                                    'errors': errors,
+                                    'warnings': warnings,
+                                }
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return {}
+
+    def _handle_test_summary_dialog(self, dialog,
+                                     monitor: WinPVTUIMonitor,
+                                     app=None) -> None:
+        """Read pass/fail from the Test Summary dialog, then click OK.
+
+        Pass/fail is determined by reading the Global Information table
+        (Errors column) rather than parsing dialog text, so that tests
+        that complete with Warnings are not mis-reported as FAILED.
+
+        Raises :exc:`WinPVTTestFailedError` on failure.
+        """
+        monitor.take_screenshot("test_summary_dialog")
+        logger.info("[WINPVT] Test Summary dialog detected — reading result...")
+        print("[WINPVT] Test Summary dialog detected — reading result...")
+
+        # Primary: read Errors from the Global Information table
+        errors = None
+        warnings = None
+        if app is not None:
+            suite_info = self._read_suite_status(app)
+            if suite_info:
+                errors = suite_info['errors']
+                warnings = suite_info['warnings']
+                logger.info(
+                    f"[WINPVT] Table: Errors={errors}, Warnings={warnings}, "
+                    f"Status={suite_info.get('status')}"
+                )
+
+        # Fallback: scan dialog text for explicit ALL TESTS PASSED / FAILED
+        dialog_passed = False
+        dialog_failed = False
+        try:
+            for d in dialog.descendants():
+                try:
+                    t = (d.window_text() or '').upper()
+                    if 'ALL TESTS PASSED' in t:
+                        dialog_passed = True
+                    if 'ALL TESTS FAILED' in t or '-- FAILED --' in t:
+                        dialog_failed = True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # Determine final result
+        if errors is not None:
+            # Table read succeeded: Errors=0 → PASS, Errors>0 → FAIL
+            failed = errors > 0
+        else:
+            # Table not available: fall back to dialog text
+            failed = dialog_failed or not dialog_passed
+
+        result_str = 'FAILED' if failed else 'PASSED'
+        logger.info(f"[WINPVT] Test Summary result: {result_str}")
+        print(f"[WINPVT] Test Summary result: {result_str}")
+
+        # Dismiss the dialog by clicking OK
+        try:
+            for b in dialog.descendants(control_type='Button'):
+                try:
+                    if b.window_text() == 'OK':
+                        b.click_input()
+                        break
+                except Exception:
+                    continue
+        except Exception as exc:
+            logger.warning(f"[WINPVT] Could not click OK on Test Summary: {exc}")
+
+        monitor.take_screenshot("after_test_summary_ok")
+
+        if failed:
+            err_detail = f" (Errors={errors})" if errors is not None else ""
+            raise WinPVTTestFailedError(
+                f"WinPVT test FAILED{err_detail}"
+            )
 
     def _check_results(self) -> None:
         """Scan the result directory for FAILED indicators in XML files."""
