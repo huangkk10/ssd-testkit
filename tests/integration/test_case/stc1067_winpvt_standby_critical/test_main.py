@@ -35,7 +35,6 @@ Run:
 """
 
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -53,16 +52,11 @@ from lib.logger import get_module_logger, clear_log_files
 from lib.testtool.tool_installer import ToolInstaller
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.state_manager import OsConfigStateManager
-from lib.testtool.smartcheck import SmartCheckController
+from lib.testtool.smartcheck import SmartCheckController, SmartCheckLogParser
 from lib.testtool.winpvt import WinPVTController
 from lib.testtool.winpvt.exceptions import WinPVTError
 
 logger = get_module_logger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# SmartCheck log parsing helpers (used by test_09)
-# ---------------------------------------------------------------------------
 
 #: SMART attributes whose Curr Value must not increase between pre- and post-check
 MONITORED_ATTRIBUTES = [
@@ -73,57 +67,7 @@ MONITORED_ATTRIBUTES = [
     "Number of Error Information Log Entries",
 ]
 
-
-def _parse_nvme_row(line: str):
-    """Return (curr_hex_str, description) from one NVMe table data row, or (None, None)."""
-    content = line.strip().strip('|').strip()
-    if not content or content.startswith('Offset') or content.startswith('-') or content.startswith('+'):
-        return None, None
-
-    tokens = content.split()
-    if len(tokens) < 2:
-        return None, None
-
-    # tokens[0] = offset (e.g. "0:0", "7F:70"), tokens[1] = curr_value hex
-    curr_hex = tokens[1]
-    if not re.match(r'^[0-9A-Fa-f]+$', curr_hex):
-        return None, None
-
-    # Description: trailing tokens that are NOT pure hex strings
-    desc_tokens: list = []
-    for tok in reversed(tokens[2:]):
-        if re.match(r'^[0-9A-Fa-f]+$', tok):
-            break
-        desc_tokens.insert(0, tok)
-
-    if not desc_tokens:
-        return None, None
-
-    return curr_hex, ' '.join(desc_tokens)
-
-
-def parse_last_nvme_table(log_path: Path) -> dict:
-    """Parse the last NVMe Log Page 0x2 table from SmartCheck.log.
-
-    Returns {description: curr_value_as_int} for all rows found.
-    Raises ValueError if the marker is not found.
-    """
-    text = log_path.read_text(encoding='utf-8', errors='replace')
-
-    marker = "===== NVMe Log Page 0x2 Data ====="
-    last_idx = text.rfind(marker)
-    if last_idx == -1:
-        raise ValueError(f"NVMe Log Page 0x2 Data table not found in {log_path}")
-
-    section = text[last_idx:]
-    result: dict = {}
-    for line in section.splitlines():
-        if not line.startswith('|'):
-            continue
-        curr_hex, description = _parse_nvme_row(line)
-        if curr_hex is not None and description in MONITORED_ATTRIBUTES:
-            result[description] = int(curr_hex, 16)
-    return result
+_smartcheck_parser = SmartCheckLogParser(MONITORED_ATTRIBUTES)
 
 
 @pytest.mark.client_hp
@@ -225,7 +169,7 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
     @pytest.mark.order(4)
     @step(4, "Clean Environment")
     @pytest.mark.skip(reason="Test")
-    def test_04_clean_environment(self, request):
+    def test_04_clean_environment(self, request: pytest.FixtureRequest):
         """Reboot the DUT for a clean platform environment before WinPVT run.
 
         RebootManager persists state, writes the startup BAT, issues
@@ -432,39 +376,20 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
         before_log = Path('./testlog/SmartCheckLog_before/SmartCheck.log')
         after_log  = Path('./testlog/SmartCheckLog_after/SmartCheck.log')
 
-        if not before_log.exists():
-            pytest.fail(f"[TEST_09] Before log not found: {before_log}")
-        if not after_log.exists():
-            pytest.fail(f"[TEST_09] After log not found: {after_log}")
-
         try:
-            before_values = parse_last_nvme_table(before_log)
-        except ValueError as exc:
-            pytest.fail(f"[TEST_09] Failed to parse before log: {exc}")
+            ok, failures = _smartcheck_parser.compare_no_increase(
+                before_log=before_log,
+                after_log=after_log,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            pytest.fail(f"[TEST_09] {exc}")
 
-        try:
-            after_values = parse_last_nvme_table(after_log)
-        except ValueError as exc:
-            pytest.fail(f"[TEST_09] Failed to parse after log: {exc}")
-
-        failures = []
-        for attr in MONITORED_ATTRIBUTES:
-            b = before_values.get(attr)
-            a = after_values.get(attr)
-            if b is None or a is None:
-                failures.append(f"  [{attr}] 無法解析 (before={b}, after={a})")
-            elif a > b:
-                failures.append(
-                    f"  [{attr}] 增加: {b:#018x} → {a:#018x} (+{a - b})"
-                )
-            else:
-                logger.info(f"[TEST_09] OK  {attr}: {b:#018x} → {a:#018x}")
-
-        if failures:
+        if not ok:
             pytest.fail(
-                "[TEST_09] SmartCheck SMART 屬性不可增加，違規項目:\n" + "\n".join(failures)
+                "[TEST_09] SmartCheck SMART attributes must not increase. Violations:\n"
+                + "\n".join(f"  {m}" for m in failures)
             )
 
-        logger.info("[TEST_09] SmartCheck before/after 比對通過")
+        logger.info("[TEST_09] SmartCheck before/after comparison passed")
 
 
