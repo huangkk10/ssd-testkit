@@ -44,8 +44,12 @@ $NasPass  = "p@ssw0rd"
 # 確保 NAS share 已掛載
 if (-not (Test-Path $NasShare -ErrorAction SilentlyContinue)) {
     Write-Host "  [NAS] Connecting to $NasShare ..." -ForegroundColor DarkCyan
-    $netResult = net use $NasShare /user:$NasUser $NasPass 2>&1
-    if ($LASTEXITCODE -ne 0) { Write-Warning "  [WARN] Failed to connect to NAS: $netResult" }
+    try {
+        $netResult = net use $NasShare /user:$NasUser $NasPass 2>&1
+        if ($LASTEXITCODE -ne 0) { Write-Warning "  [WARN] Failed to connect to NAS: $netResult" }
+    } catch {
+        Write-Warning "  [WARN] Failed to connect to NAS: $_"
+    }
 }
 
 if (-not (Test-Path $Registry)) { Write-Error "tools-registry.yaml not found: $Registry"; exit 1 }

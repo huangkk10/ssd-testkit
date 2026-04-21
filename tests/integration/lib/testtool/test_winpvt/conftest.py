@@ -44,7 +44,7 @@ def winpvt_env(test_root) -> Dict[str, Any]:
     """
     install_dir = os.getenv(
         "WINPVT_INSTALL_DIR",
-        r"C:\Program Files\HP\WinPVT",
+        r"C:\Program Files\Hewlett-Packard\WinPVT 11.16.0",
     )
     return {
         "choco_package_id": os.getenv("WINPVT_CHOCO_ID", "winpvt"),

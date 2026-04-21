@@ -1,7 +1,7 @@
 # chocolateyUninstall.ps1  winpvt 11.16.0
 
 $toolVersion = "11.16.0"
-$installDir  = "C:\Program Files\HP\WinPVT"
+$installDir  = "C:\Program Files\Hewlett-Packard\WinPVT 11.16.0"
 
 Write-Host "Uninstalling WinPVT $toolVersion ..."
 

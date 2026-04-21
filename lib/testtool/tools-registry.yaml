@@ -57,9 +57,10 @@ tools:
 
   winpvt:
     version: 11.16.0
+    bin_dir: WinPVT
     source_dir: bin/installers/winpvt/11.16.0
     nexus_path: windows-tools/winpvt/11.16.0/winpvt-11.16.0.zip
-    install_dir: C:\\Program Files\\HP\\WinPVT
+    install_dir: C:\\Program Files\\Hewlett-Packard\\WinPVT 11.16.0
     binaries: [WinPVT.exe]
 
   windows-adk:
