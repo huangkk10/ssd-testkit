@@ -237,6 +237,7 @@ When a user asks about a known tool, read the corresponding reference file first
 |------|-----------|---------------|
 | **PHM** (Powerhouse Mountain) | `.claude/skills/scaffold-testtool/references/phm.md` | Web App (Node.js + browser); Playwright instead of pywinauto; non-standard `log_parser.py` module; installed at `C:\Program Files\PowerhouseMountain\PowerhouseMountain.exe`; Web UI `http://localhost:1337` |
 | **Windows ADK** | `.claude/skills/scaffold-testtool/references/windows_adk.md` | WAC WPF GUI; pywinauto `uia` backend; VirtualizingStackPanel trap (see `pywinauto_patterns.md`); auto_id constants in `ui_runner.py`; reboot-driven multi-step assessments |
+| **SmartCheck** (SmiWinTools) | `.claude/skills/scaffold-testtool/references/smartcheck.md` | CLI BAT tool; no UI; two usage patterns: standalone pre-check (stc1067) and concurrent with BurnIN (stc1685); SMIWINTOOLS_PATH env var must be set via tools.yaml `env` (auto-injection broken); controller exits on PASS/FAIL immediately |
 
 ---
 

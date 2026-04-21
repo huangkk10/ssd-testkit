@@ -1041,11 +1041,11 @@ class SmartCheckController(threading.Thread):
                 
                 # Check if test completed
                 test_result = status_dict.get('test_result', '').upper()
-                if test_result == 'PASSED':
+                if test_result in ('PASS', 'PASSED'):
                     logger.info("SmartCheck completed successfully (PASSED)")
                     self.status = True
                     break
-                elif test_result == 'FAILED':
+                elif test_result in ('FAIL', 'FAILED'):
                     logger.error("SmartCheck failed (FAILED)")
                     self.status = False
                     break

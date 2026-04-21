@@ -8,11 +8,12 @@ tools:
     reinstall: false
     phase: pre_runcard    # 確保直接跑任何 test step 時 WinPVT 都已安裝
 
-  # smiwintools (含 SmiCli2.exe) — RunCard DUT info 收集用
-  # 需要 bin/installers/SmiWinTools/<version>/ 在機器上才能安裝
-  # - id: smiwintools
-  #   reinstall: false
-  #   phase: pre_runcard
+  # smiwintools (含 SmartCheck.bat) — SmartCheck SSD health pre-check 用
+  - id: smiwintools
+    reinstall: false
+    phase: pre_runcard    # 確保直接跑任何 test step 時 SmartCheck.bat 都已安裝
+    env:
+      SMIWINTOOLS_PATH: "C:\\tools\\SmiWinTools"  # SmartCheckController auto-resolution 用
 
   # - id: cdi
   #   reinstall: false

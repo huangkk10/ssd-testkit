@@ -11,12 +11,14 @@ Workflow:
     Step 3  — Apply OsConfig: disable System Restore, MemoryDiagnostic,
               McAfee tasks, Fast Startup; enable auto admin logon.
     Step 4  — Clean Environment: reboot for a clean platform environment.
-    Step 5  — CDI Before: capture SMART baseline (Before_ prefix).
-    Step 6  — Run WinPVT Standby: execute WinPVT Standby Critical scenario
+    Step 5  — SmartCheck Pre-check: verify SSD SMART health before WinPVT run.
+    Step 6  — WinPVT Startup: launch WinPVT and dismiss startup dialogs.
+    Step 7  — Run WinPVT Standby: execute WinPVT Standby Critical scenario
               and verify it completes successfully.
-    Step 7  — CDI After: capture post-test SMART snapshot (After_ prefix).
-    Step 8  — SMART Compare: verify Unsafe Shutdowns did not increase and
-              any configured must-be-zero attributes equal 0.
+    Step 8  — SmartCheck Post-check: verify SSD SMART health after WinPVT run.
+    Step 9  — SMART Compare: verify that Critical Warning, Power Cycles,
+              Unsafe Shutdowns, Media and Data Integrity Errors, and Number of
+              Error Information Log Entries did not increase.
 
 Requirements:
     - Windows OS with Administrator privileges.
@@ -33,6 +35,7 @@ Run:
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -50,10 +53,77 @@ from lib.logger import get_module_logger, clear_log_files
 from lib.testtool.tool_installer import ToolInstaller
 from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.state_manager import OsConfigStateManager
+from lib.testtool.smartcheck import SmartCheckController
 from lib.testtool.winpvt import WinPVTController
 from lib.testtool.winpvt.exceptions import WinPVTError
 
 logger = get_module_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# SmartCheck log parsing helpers (used by test_09)
+# ---------------------------------------------------------------------------
+
+#: SMART attributes whose Curr Value must not increase between pre- and post-check
+MONITORED_ATTRIBUTES = [
+    "Critical Warning",
+    "Power Cycles",
+    "Unsafe Shutdowns",
+    "Media and Data Integrity Errors",
+    "Number of Error Information Log Entries",
+]
+
+
+def _parse_nvme_row(line: str):
+    """Return (curr_hex_str, description) from one NVMe table data row, or (None, None)."""
+    content = line.strip().strip('|').strip()
+    if not content or content.startswith('Offset') or content.startswith('-') or content.startswith('+'):
+        return None, None
+
+    tokens = content.split()
+    if len(tokens) < 2:
+        return None, None
+
+    # tokens[0] = offset (e.g. "0:0", "7F:70"), tokens[1] = curr_value hex
+    curr_hex = tokens[1]
+    if not re.match(r'^[0-9A-Fa-f]+$', curr_hex):
+        return None, None
+
+    # Description: trailing tokens that are NOT pure hex strings
+    desc_tokens: list = []
+    for tok in reversed(tokens[2:]):
+        if re.match(r'^[0-9A-Fa-f]+$', tok):
+            break
+        desc_tokens.insert(0, tok)
+
+    if not desc_tokens:
+        return None, None
+
+    return curr_hex, ' '.join(desc_tokens)
+
+
+def parse_last_nvme_table(log_path: Path) -> dict:
+    """Parse the last NVMe Log Page 0x2 table from SmartCheck.log.
+
+    Returns {description: curr_value_as_int} for all rows found.
+    Raises ValueError if the marker is not found.
+    """
+    text = log_path.read_text(encoding='utf-8', errors='replace')
+
+    marker = "===== NVMe Log Page 0x2 Data ====="
+    last_idx = text.rfind(marker)
+    if last_idx == -1:
+        raise ValueError(f"NVMe Log Page 0x2 Data table not found in {log_path}")
+
+    section = text[last_idx:]
+    result: dict = {}
+    for line in section.splitlines():
+        if not line.startswith('|'):
+            continue
+        curr_hex, description = _parse_nvme_row(line)
+        if curr_hex is not None and description in MONITORED_ATTRIBUTES:
+            result[description] = int(curr_hex, 16)
+    return result
 
 
 @pytest.mark.client_hp
@@ -78,6 +148,8 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
         Path('./testlog').mkdir(parents=True, exist_ok=True)
 
         cleanup_directory('./testlog/CDILog', 'CDI log directory', logger)
+        cleanup_directory('./testlog/SmartCheckLog_before', 'SmartCheck before log directory', logger)
+        cleanup_directory('./testlog/SmartCheckLog_after',  'SmartCheck after log directory', logger)
         cleanup_directory('./testlog/WinPVTLog', 'WinPVT log directory', logger)
         cleanup_directory('./testlog/WinPVTResult', 'WinPVT result directory', logger)
 
@@ -174,16 +246,58 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
         )
         # os._exit(0) called inside setup_reboot — code below never executes
 
-    # Shared WinPVTController instance between test_05 and test_06
+    # Shared WinPVTController instance between test_06 and test_07
     _winpvt_ctrl: "WinPVTController | None" = None
 
     # ------------------------------------------------------------------
-    # Step 5 — WinPVT Startup (launch + dismiss dialogs)
+    # Step 5 — SmartCheck SSD health pre-check
     # ------------------------------------------------------------------
 
     @pytest.mark.order(5)
-    @step(5, "WinPVT Startup: launch and dismiss dialogs")
-    def test_05_winpvt_startup(self):
+    @step(5, "SmartCheck SSD health pre-check")
+    def test_05_smartcheck_ssd(self):
+        """Run a short SmartCheck to verify SSD SMART health before WinPVT run.
+
+        Starts SmartCheck.bat for the duration configured in Config.json
+        (default: 3 minutes).  If SmartCheck detects any SMART errors the
+        test fails immediately and WinPVT is not started.
+        """
+        logger.info("[TEST_05] SmartCheck SSD health pre-check started")
+
+        smart_cfg = self.config.get('smartcheck', {})
+
+        # SmartCheckController auto-resolves SmartCheck.bat via SMIWINTOOLS_PATH env var
+        # (set by ToolInstaller when smiwintools is installed in pre_runcard phase)
+        ctrl = SmartCheckController(
+            output_dir=smart_cfg.get('output_dir_before', './testlog/SmartCheckLog_before'),
+        )
+        ctrl.set_config(
+            total_time=smart_cfg.get('total_time', 3),
+            check_interval=smart_cfg.get('check_interval', 3),
+            timeout=smart_cfg.get('timeout', 10),
+        )
+
+        ctrl.start()
+        timeout_seconds = ctrl.timeout * 60
+        ctrl.join(timeout=timeout_seconds + 30)
+
+        if ctrl.is_alive():
+            ctrl.stop()
+            ctrl.join(timeout=10)
+            pytest.fail("[TEST_05] SmartCheck pre-check timed out")
+
+        if ctrl.status is False:
+            pytest.fail("[TEST_05] SmartCheck detected SMART errors — aborting before WinPVT")
+
+        logger.info("[TEST_05] SmartCheck SSD health pre-check passed")
+
+    # ------------------------------------------------------------------
+    # Step 6 — WinPVT Startup (launch + dismiss dialogs)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.order(6)
+    @step(6, "WinPVT Startup: launch and dismiss dialogs")
+    def test_06_winpvt_startup(self):
         """Launch WinPVT and dismiss all startup dialogs (License, AccessKey, Configurations).
 
         After this step WinPVT main window is idle and ready to load a test plan.
@@ -207,28 +321,28 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
             if not pvt_path.is_absolute():
                 pvt_path = Path(__file__).parent / pvt_path
             ctrl_kwargs['pvt_file'] = str(pvt_path)
-            logger.info(f"[TEST_05] Using pvt_file from Config: {pvt_path}")
+            logger.info(f"[TEST_06] Using pvt_file from Config: {pvt_path}")
         ctrl = WinPVTController(**ctrl_kwargs)
 
         try:
             ctrl.setup_phase()
         except WinPVTError as exc:
-            pytest.fail(f"[TEST_05] WinPVT startup failed: {exc}")
+            pytest.fail(f"[TEST_06] WinPVT startup failed: {exc}")
 
         TestSTC1067WinPVTStandbyCritical._winpvt_ctrl = ctrl
-        logger.info("[TEST_05] WinPVT startup complete — main window ready")
+        logger.info("[TEST_06] WinPVT startup complete — main window ready")
 
     # ------------------------------------------------------------------
-    # Step 6 — Run WinPVT Standby Critical
+    # Step 7 — Run WinPVT Standby Critical
     # ------------------------------------------------------------------
 
-    @pytest.mark.order(6)
-    @step(6, "Run WinPVT Standby Critical")
-    def test_06_run_winpvt_standby(self):
+    @pytest.mark.order(7)
+    @step(7, "Run WinPVT Standby Critical")
+    def test_07_run_winpvt_standby(self):
         """Open Standby Critical Only.pvt, click GO, wait for completion, verify results."""
         ctrl = TestSTC1067WinPVTStandbyCritical._winpvt_ctrl
         if ctrl is None:
-            pytest.fail("[TEST_06] WinPVT controller not initialised — test_05 may have failed")
+            pytest.fail("[TEST_07] WinPVT controller not initialised — test_06 may have failed")
 
         timeout_minutes = self.config['winpvt'].get('timeout_minutes', 120)
 
@@ -238,12 +352,12 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
         if ctrl.is_alive():
             ctrl.stop()
             pytest.fail(
-                f"[TEST_06] WinPVT timed out after {timeout_minutes} minutes"
+                f"[TEST_07] WinPVT timed out after {timeout_minutes} minutes"
             )
 
         if ctrl.status is not True:
             pytest.fail(
-                f"[TEST_06] WinPVT Standby Critical failed: {ctrl.error_message}"
+                f"[TEST_07] WinPVT Standby Critical failed: {ctrl.error_message}"
             )
 
         # Write completed cycle count to Runcard.ini
@@ -251,8 +365,106 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
         if self.runcard is not None and cycles > 0:
             self.runcard.update_test_status(test_cycle=cycles)
             self.runcard.save_to_file()
-            logger.info(f"[TEST_06] Runcard updated: Test Cycle={cycles}")
+            logger.info(f"[TEST_07] Runcard updated: Test Cycle={cycles}")
 
-        logger.info("[TEST_06] WinPVT Standby Critical completed successfully")
+        logger.info("[TEST_07] WinPVT Standby Critical completed successfully")
+
+    # ------------------------------------------------------------------
+    # Step 8 — SmartCheck SSD health post-check
+    # ------------------------------------------------------------------
+
+    @pytest.mark.order(8)
+    @step(8, "SmartCheck SSD health post-check")
+    def test_08_smartcheck_ssd_post(self):
+        """Run a short SmartCheck to verify SSD SMART health after WinPVT run.
+
+        Starts SmartCheck.bat for the duration configured in Config.json
+        (default: 3 minutes).  If SmartCheck detects any SMART errors the
+        test fails, indicating that the WinPVT standby stress caused damage.
+        """
+        logger.info("[TEST_08] SmartCheck SSD health post-check started")
+
+        smart_cfg = self.config.get('smartcheck', {})
+
+        ctrl = SmartCheckController(
+            output_dir=smart_cfg.get('output_dir_after', './testlog/SmartCheckLog_after'),
+        )
+        ctrl.set_config(
+            total_time=smart_cfg.get('total_time', 3),
+            check_interval=smart_cfg.get('check_interval', 3),
+            timeout=smart_cfg.get('timeout', 10),
+        )
+
+        ctrl.start()
+        timeout_seconds = ctrl.timeout * 60
+        ctrl.join(timeout=timeout_seconds + 30)
+
+        if ctrl.is_alive():
+            ctrl.stop()
+            ctrl.join(timeout=10)
+            pytest.fail("[TEST_08] SmartCheck post-check timed out")
+
+        if ctrl.status is False:
+            pytest.fail("[TEST_08] SmartCheck detected SMART errors after WinPVT run")
+
+        logger.info("[TEST_08] SmartCheck SSD health post-check passed")
+
+    # ------------------------------------------------------------------
+    # Step 9 — Compare SmartCheck SMART attributes (before vs after)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.order(9)
+    @step(9, "Compare SmartCheck SMART attributes (before vs after)")
+    def test_09_compare_smartcheck(self):
+        """Compare NVMe SMART attributes from before- and after-WinPVT SmartCheck logs.
+
+        Parses the last NVMe Log Page 0x2 table from each SmartCheck.log and
+        verifies that none of the monitored Curr Values increased:
+
+            Critical Warning
+            Power Cycles
+            Unsafe Shutdowns
+            Media and Data Integrity Errors
+            Number of Error Information Log Entries
+        """
+        logger.info("[TEST_09] SmartCheck before/after SMART comparison started")
+
+        before_log = Path('./testlog/SmartCheckLog_before/SmartCheck.log')
+        after_log  = Path('./testlog/SmartCheckLog_after/SmartCheck.log')
+
+        if not before_log.exists():
+            pytest.fail(f"[TEST_09] Before log not found: {before_log}")
+        if not after_log.exists():
+            pytest.fail(f"[TEST_09] After log not found: {after_log}")
+
+        try:
+            before_values = parse_last_nvme_table(before_log)
+        except ValueError as exc:
+            pytest.fail(f"[TEST_09] Failed to parse before log: {exc}")
+
+        try:
+            after_values = parse_last_nvme_table(after_log)
+        except ValueError as exc:
+            pytest.fail(f"[TEST_09] Failed to parse after log: {exc}")
+
+        failures = []
+        for attr in MONITORED_ATTRIBUTES:
+            b = before_values.get(attr)
+            a = after_values.get(attr)
+            if b is None or a is None:
+                failures.append(f"  [{attr}] 無法解析 (before={b}, after={a})")
+            elif a > b:
+                failures.append(
+                    f"  [{attr}] 增加: {b:#018x} → {a:#018x} (+{a - b})"
+                )
+            else:
+                logger.info(f"[TEST_09] OK  {attr}: {b:#018x} → {a:#018x}")
+
+        if failures:
+            pytest.fail(
+                "[TEST_09] SmartCheck SMART 屬性不可增加，違規項目:\n" + "\n".join(failures)
+            )
+
+        logger.info("[TEST_09] SmartCheck before/after 比對通過")
 
 
