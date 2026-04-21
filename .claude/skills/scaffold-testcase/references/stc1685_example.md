@@ -114,6 +114,36 @@ def testcase_config():
 
 ---
 
+## test_main.py Imports
+
+```python
+import os
+import sys
+import time
+import pytest
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).resolve().parents[4]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from framework.base_test import BaseTestCase
+from framework.decorators import step
+from framework.test_utils import cleanup_directory
+from lib.testtool.burnin import BurnInController
+from lib.testtool.smartcheck import SmartCheckController   # ← SMART monitoring
+from lib.testtool.cdi import CDIController
+from lib.testtool.choco_manager import ChocoManager
+from lib.testtool import RunCard as RC
+from lib.testtool.DiskPrd import DiskPrd
+from lib.logger import get_module_logger, logConfig
+
+logger = get_module_logger(__name__)
+```
+
+---
+
 ## Class-level Markers
 
 ```python
