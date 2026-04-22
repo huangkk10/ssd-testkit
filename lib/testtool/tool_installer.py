@@ -122,14 +122,18 @@ class ToolInstaller:
         install_dir = meta.get("install_dir")
         if not env_var or not install_dir:
             return
-        binaries = meta.get("binaries", [])
-        exe_name = binaries[0] if binaries else ""
-        if not exe_name:
-            return
-        exe_path = str(Path(install_dir) / exe_name)
+        env_value_type = meta.get("env_value_type", "binary")
+        if env_value_type == "directory":
+            inject_value = str(Path(install_dir))
+        else:
+            binaries = meta.get("binaries", [])
+            exe_name = binaries[0] if binaries else ""
+            if not exe_name:
+                return
+            inject_value = str(Path(install_dir) / exe_name)
         if env_var not in os.environ:
-            os.environ[env_var] = exe_path
-            logger.debug(f"[ToolInstaller] env auto-set from meta: {env_var}={exe_path}")
+            os.environ[env_var] = inject_value
+            logger.debug(f"[ToolInstaller] env auto-set from meta: {env_var}={inject_value}")
 
     def _install(self, entries: "List[ToolEntry]") -> None:
         """Core install loop for a given subset of entries."""

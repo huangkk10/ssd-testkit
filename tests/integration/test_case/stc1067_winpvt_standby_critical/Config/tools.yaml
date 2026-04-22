@@ -11,8 +11,4 @@ tools:
   # smiwintools (含 SmartCheck.bat) — SmartCheck SSD health pre-check 用
   - id: smiwintools
     reinstall: false
-    env:
-      SMIWINTOOLS_PATH: "C:\\tools\\SmiWinTools"  # SmartCheckController auto-resolution 用
 
-  # - id: cdi
-  #   reinstall: false

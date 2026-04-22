@@ -16,6 +16,7 @@ versions:
 
 install_dir: "C:\\tools\\SmiWinTools"
 env_var: "SMIWINTOOLS_PATH"         # Points to install_dir (the directory, not a single exe)
+env_value_type: directory           # env_var 指向目錄而非 exe；ToolInstaller auto-injection 用
 entry_points:
   - "SmartCheck.bat"
   - "PowerCyclingTest.bat"

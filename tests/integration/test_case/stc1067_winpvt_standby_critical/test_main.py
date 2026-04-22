@@ -147,7 +147,7 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
 
     @pytest.mark.order(3)
     @step(3, "Apply OS configuration")
-    @pytest.mark.skip(reason="Test")
+    # @pytest.mark.skip(reason="Test")
     def test_03_apply_osconfig(self):
         """Apply OS configuration from Config/osconfig.yaml.
 
@@ -168,7 +168,7 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
 
     @pytest.mark.order(4)
     @step(4, "Clean Environment")
-    @pytest.mark.skip(reason="Test")
+    # @pytest.mark.skip(reason="Test")
     def test_04_clean_environment(self, request: pytest.FixtureRequest):
         """Reboot the DUT for a clean platform environment before WinPVT run.
 
@@ -199,7 +199,7 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
 
     @pytest.mark.order(5)
     @step(5, "SmartCheck SSD health pre-check")
-    @pytest.mark.skip(reason="Test")
+    # @pytest.mark.skip(reason="Test")
     def test_05_smartcheck_ssd(self):
         """Run a short SmartCheck to verify SSD SMART health before WinPVT run.
 
@@ -324,7 +324,7 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
 
     @pytest.mark.order(8)
     @step(8, "SmartCheck SSD health post-check")
-    @pytest.mark.skip(reason="Test")
+    # @pytest.mark.skip(reason="Test")
     def test_08_smartcheck_ssd_post(self):
         """Run a short SmartCheck to verify SSD SMART health after WinPVT run.
 
@@ -365,7 +365,7 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
 
     @pytest.mark.order(9)
     @step(9, "Compare SmartCheck SMART attributes (before vs after)")
-    @pytest.mark.skip(reason="Test")
+    # @pytest.mark.skip(reason="Test")
     def test_09_compare_smartcheck(self):
         """Compare NVMe SMART attributes from before- and after-WinPVT SmartCheck logs.
 
