@@ -313,6 +313,10 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
 
         logger.info("[TEST_07] WinPVT Standby Critical completed successfully")
 
+        # Close the WinPVT application
+        ctrl.close_app()
+        logger.info("[TEST_07] WinPVT process closed")
+
     # ------------------------------------------------------------------
     # Step 8 — SmartCheck SSD health post-check
     # ------------------------------------------------------------------

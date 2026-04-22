@@ -99,6 +99,28 @@ class WinPVTController(threading.Thread):
         """Signal the controller thread to stop."""
         self._stop_event.set()
 
+    def close_app(self) -> None:
+        """Terminate the WinPVT process.
+
+        Attempts a graceful close via Alt+F4 on the main window first; if
+        the process is still alive after 5 seconds, falls back to kill().
+        Safe to call even if the process has already exited.
+        """
+        if self._app is None:
+            return
+        try:
+            windows = self._app.windows()
+            if windows:
+                try:
+                    windows[0].type_keys('%{F4}')
+                    time.sleep(5)
+                except Exception:
+                    pass
+            self._app.kill()
+            logger.info("[WINPVT] WinPVT process terminated")
+        except Exception as exc:
+            logger.warning(f"[WINPVT] close_app: {exc}")
+
     @property
     def status(self) -> Optional[bool]:
         """``None`` while running, ``True`` on pass, ``False`` on failure."""
