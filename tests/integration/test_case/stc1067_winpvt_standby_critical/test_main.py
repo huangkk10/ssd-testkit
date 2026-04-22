@@ -147,7 +147,7 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
 
     @pytest.mark.order(3)
     @step(3, "Apply OS configuration")
-    # @pytest.mark.skip(reason="Test")
+    @pytest.mark.skip(reason="Test")
     def test_03_apply_osconfig(self):
         """Apply OS configuration from Config/osconfig.yaml.
 

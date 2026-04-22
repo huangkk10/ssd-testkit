@@ -7,10 +7,11 @@ pywinauto-based helpers for WinPVT UI automation:
 - Startup dialog dismissal loop
 """
 
+import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import FrozenSet, Optional
 
 from lib.logger import get_module_logger
 
@@ -42,8 +43,16 @@ class WinPVTUIMonitor:
         monitor.dismiss_all_dialogs(app, main_handle, timeout=120)
     """
 
-    def __init__(self, screenshot_dir: Path):
+    # Labels that are always captured regardless of debug_screenshots setting.
+    _ALWAYS_CAPTURE: FrozenSet[str] = frozenset({"final_state"})
+
+    def __init__(self, screenshot_dir: Path, debug_screenshots: bool = False):
         self._screenshot_dir = Path(screenshot_dir)
+        # Honour env var WINPVT_DEBUG_SCREENSHOTS=1 to enable all screenshots.
+        self._debug_screenshots: bool = (
+            debug_screenshots
+            or os.environ.get("WINPVT_DEBUG_SCREENSHOTS", "").strip() == "1"
+        )
 
     # ------------------------------------------------------------------
     # Screenshots
@@ -52,15 +61,18 @@ class WinPVTUIMonitor:
     def take_screenshot(self, label: str) -> Optional[Path]:
         """Capture a full-screen screenshot and save it to the screenshot directory.
 
-        The filename is ``HHMMSS_ff_<label>.png`` where ``ff`` are the first
-        two digits of microseconds (ensures chronological sort order).
+        Only captures when *debug_screenshots* is enabled **or** the label is
+        in :attr:`_ALWAYS_CAPTURE` (e.g. ``final_state``).  Set the env var
+        ``WINPVT_DEBUG_SCREENSHOTS=1`` to enable all screenshots.
 
         Args:
             label: Short descriptive label embedded in the filename.
 
         Returns:
-            Path to the saved file, or ``None`` if the capture failed.
+            Path to the saved file, or ``None`` if the capture was skipped or failed.
         """
+        if not self._debug_screenshots and label not in self._ALWAYS_CAPTURE:
+            return None
         try:
             from PIL import ImageGrab
             self._screenshot_dir.mkdir(parents=True, exist_ok=True)
