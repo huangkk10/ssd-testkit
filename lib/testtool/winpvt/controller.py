@@ -265,6 +265,15 @@ class WinPVTController(threading.Thread):
         app = self._app
         monitor = self._monitor
 
+        # Pre-run residual dialog flush: WinPVT sometimes shows dialogs AFTER
+        # setup_phase's dismiss loop exits (e.g., "No AccessKey.txt" popup appears
+        # after full initialization, just after the main window becomes visible).
+        # This flush catches those late-appearing dialogs before we try to open
+        # the test plan. Takes ~6 s if no dialog is present (3 clean checks × 2 s).
+        logger.info("[WINPVT] Pre-run dialog flush (residual startup dialogs)...")
+        print("[WINPVT] Pre-run dialog flush...")
+        monitor.dismiss_all_dialogs(app, 0, timeout=30)
+
         # -- Load test plan and click GO ----------------------------------
         logger.info("[WINPVT] Loading test plan and starting test...")
         print("[WINPVT] Loading test plan and starting test...")
