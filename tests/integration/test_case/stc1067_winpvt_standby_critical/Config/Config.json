@@ -2,6 +2,9 @@
     "test_name": "STC-1067",
     "description": "WinPVT Standby Critical — HP WinPVT standby stress with SMART health verification",
     "log_path": "./log/STC-1067",
+    "DUT_info": {
+        "DiskType": 0
+    },
 
     "winpvt": {
         "ExePath": "C:\\Program Files\\Hewlett-Packard\\WinPVT 11.16.0\\WinPVT.exe",
