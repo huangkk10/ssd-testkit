@@ -246,8 +246,16 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
         """Launch WinPVT and dismiss all startup dialogs (License, AccessKey, Configurations).
 
         After this step WinPVT main window is idle and ready to load a test plan.
-        The controller instance is stored in _winpvt_ctrl for test_06.
+        The controller instance is stored in _winpvt_ctrl for test_07.
         """
+        import subprocess
+        result = subprocess.run(
+            ['taskkill', '/F', '/IM', 'WinPVT.exe'],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            logger.info("[TEST_06] Killed stale WinPVT.exe process(es) before startup")
+
         winpvt_cfg = self.config['winpvt']
         timeout_minutes = winpvt_cfg.get('timeout_minutes', 120)
 
