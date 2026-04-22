@@ -84,12 +84,14 @@ def testcase_config():
   },
 
   "smartcheck": {
-    "bat_path": "./bin/SmiWinTools/SmartCheck.bat",
     "output_dir": "./testlog/SmartLog",
     "total_time": 10080,
     "check_interval": 3,
     "timeout": 120
   },
+  // NOTE: bat_path is NO LONGER needed. SmartCheckController auto-resolves
+  // SmartCheck.bat via SMIWINTOOLS_PATH env var (set by ToolInstaller).
+  // See tools.yaml smiwintools entry below.
 
   "cdi": {
     "ExePath": "./bin/CrystalDiskInfo/DiskInfo64.exe",
@@ -256,6 +258,96 @@ def test_05_burnin_smartcheck(self):
     if smartcheck_controller.status is False:
         pytest.fail("SmartCheck detected SMART errors")
 ```
+
+---
+
+## Standalone SmartCheck Pre-Check Pattern (stc1067)
+
+Use this when you need SmartCheck as a **one-shot SSD health gate** before another test tool
+runs — NOT as concurrent monitoring. The controller exits immediately when RunCard shows PASS or FAIL.
+
+### Config.json (standalone)
+
+```json
+"smartcheck": {
+  "output_dir": "./testlog/SmartCheckLog",
+  "total_time": 3,
+  "check_interval": 3,
+  "timeout": 10
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `total_time` | Minutes SmartCheck.bat runs its check cycle (3 min is enough for a quick health scan) |
+| `check_interval` | Seconds between RunCard.ini polls (3s) |
+| `timeout` | Controller outer deadline in minutes; set >  `total_time` + startup overhead (~4 min wait for RunCard.ini) |
+
+### tools.yaml (smiwintools entry)
+
+```yaml
+- id: smiwintools
+  reinstall: false
+  phase: pre_runcard    # inject env before any test step runs
+  env:
+    SMIWINTOOLS_PATH: "C:\\tools\\SmiWinTools"
+```
+
+> **Why explicit `env`?** `ToolInstaller._inject_env_from_meta('smiwintools')` looks for
+> `lib/testtool/smiwintools/package_meta.yaml` but the meta is at
+> `lib/testtool/smartcheck/package_meta.yaml` → env is not auto-injected.
+> Adding `env.SMIWINTOOLS_PATH` in tools.yaml is the reliable workaround.
+
+### test_XX — Standalone Pre-Check (Full Pattern)
+
+```python
+@pytest.mark.order(5)
+@step(5, "SmartCheck SSD health pre-check")
+def test_05_smartcheck_ssd(self):
+    """Run a short SmartCheck to verify SSD SMART health.
+
+    Controller exits immediately when RunCard shows PASS or FAIL.
+    If SMART errors are detected the test fails and subsequent steps are skipped.
+    """
+    smart_cfg = self.config.get('smartcheck', {})
+
+    # SmartCheckController auto-resolves SmartCheck.bat via SMIWINTOOLS_PATH env var
+    # (set by ToolInstaller when smiwintools is installed in pre_runcard phase)
+    ctrl = SmartCheckController(
+        output_dir=smart_cfg.get('output_dir', './testlog/SmartCheckLog'),
+    )
+    ctrl.set_config(
+        total_time=smart_cfg.get('total_time', 3),
+        check_interval=smart_cfg.get('check_interval', 3),
+        timeout=smart_cfg.get('timeout', 10),
+    )
+
+    ctrl.start()
+    timeout_seconds = ctrl.timeout * 60
+    ctrl.join(timeout=timeout_seconds + 30)
+
+    if ctrl.is_alive():
+        ctrl.stop()
+        ctrl.join(timeout=10)
+        pytest.fail("[TEST_05] SmartCheck pre-check timed out")
+
+    if ctrl.status is False:
+        pytest.fail("[TEST_05] SmartCheck detected SMART errors — aborting")
+
+    logger.info("[TEST_05] SmartCheck SSD health pre-check passed")
+```
+
+> **Source**: `tests/integration/test_case/stc1067_winpvt_standby_critical/test_main.py`
+
+### Controller Exit Behaviour (after fix 2026-04-21)
+
+The `SmartCheckController.run()` loop exits **immediately** when RunCard.ini shows:
+- `PASS` → `self.status = True`, break
+- `FAIL` → `self.status = False`, break
+
+It also exits on timeout (`timeout` minutes) or `_stop_event`. Before this fix the loop
+compared `test_result == 'PASSED'` but SmartCheck.bat writes `PASS` (not `PASSED`) →
+the loop never matched and ran until the full `timeout` expired.
 
 ---
 

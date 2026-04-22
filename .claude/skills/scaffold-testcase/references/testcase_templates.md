@@ -41,6 +41,10 @@ def testcase_config():
   "description": "<One-line description>",
   "log_path": "./log/STC-XXXX",
 
+  "DUT_info": {
+    "DiskType": 0
+  },
+
   "<tool1>": {
     "ExePath": "./bin/<ToolDir>/<executable>",
     "LogPath": "./testlog/<ToolLog>",
