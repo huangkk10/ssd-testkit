@@ -25,7 +25,3 @@
 # UAC：設定為 Never Notify（最低通知等級），避免 UAC 提示干擾自動化測試
 # 等同 UAC slider 設到最低 (EnableLUA=0)
 disable_uac: true
-
-# UAC：設定為 Never Notify（最低通知等級），避免 UAC 提示干擾自動化測試
-# 等同 UAC slider 設到最低 (EnableLUA=0)
-disable_uac: true
