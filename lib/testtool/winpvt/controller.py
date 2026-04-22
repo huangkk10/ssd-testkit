@@ -100,14 +100,25 @@ class WinPVTController(threading.Thread):
         self._stop_event.set()
 
     def close_app(self) -> None:
-        """Terminate the WinPVT process.
+        """Terminate the WinPVT process tree.
 
-        Attempts a graceful close via Alt+F4 on the main window first; if
-        the process is still alive after 5 seconds, falls back to kill().
+        Attempts a graceful close via Alt+F4 on the main window first; then
+        uses ``taskkill /F /T`` to forcefully terminate the entire process
+        tree (parent + all child processes).  This ensures child WinPVT.exe
+        processes (which own dialogs) are also killed.
         Safe to call even if the process has already exited.
         """
+        import subprocess
+
         if self._app is None:
             return
+        pid = None
+        try:
+            pid = self._app.process
+        except Exception:
+            pass
+
+        # Graceful close attempt
         try:
             windows = self._app.windows()
             if windows:
@@ -116,10 +127,30 @@ class WinPVTController(threading.Thread):
                     time.sleep(5)
                 except Exception:
                     pass
-            self._app.kill()
-            logger.info("[WINPVT] WinPVT process terminated")
-        except Exception as exc:
-            logger.warning(f"[WINPVT] close_app: {exc}")
+        except Exception:
+            pass
+
+        # Kill entire process tree so child WinPVT.exe dialogs are also terminated
+        if pid:
+            try:
+                result = subprocess.run(
+                    ['taskkill', '/F', '/T', '/PID', str(pid)],
+                    capture_output=True,
+                )
+                logger.info(f"[WINPVT] taskkill /F /T /PID {pid} → exit {result.returncode}")
+            except Exception as exc:
+                logger.warning(f"[WINPVT] taskkill failed: {exc}")
+
+        # Fallback: kill by image name to catch any remaining instances
+        try:
+            subprocess.run(
+                ['taskkill', '/F', '/IM', 'WinPVT.exe'],
+                capture_output=True,
+            )
+        except Exception:
+            pass
+
+        logger.info("[WINPVT] WinPVT process tree terminated")
 
     @property
     def status(self) -> Optional[bool]:

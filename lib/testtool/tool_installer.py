@@ -143,6 +143,11 @@ class ToolInstaller:
                     f"(exit {result.exit_code}):\n{result.output}"
                     + (f"\n{result.error}" if result.error else "")
                 )
+                if result.exit_code == 3010:
+                    logger.info(
+                        f"[ToolInstaller] Uninstall of '{entry.id}' returned 3010 — "
+                        "reboot pending; will be handled by test_04_clean_environment."
+                    )
 
             if not mgr.is_installed(entry.id):
                 ver_label = entry.version or "(default)"

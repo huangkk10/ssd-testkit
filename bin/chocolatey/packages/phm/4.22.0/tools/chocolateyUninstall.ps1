@@ -9,7 +9,8 @@ Write-Host "Uninstalling PHM $toolVersion ..."
 if ($toolkitRoot) {
     $installer = Join-Path $toolkitRoot "bin\installers\PHM\$toolVersion\$installerExe"
     if (Test-Path $installer) {
-        $proc = Start-Process -FilePath $installer -ArgumentList "/S /uninstall" -Wait -PassThru
+        # /norestart: suppress automatic reboot; handled by test_04_clean_environment.
+        $proc = Start-Process -FilePath $installer -ArgumentList "/S /uninstall /norestart" -Wait -PassThru
         if ($proc.ExitCode -notin @(0, 3010)) {
             Write-Warning "PHM uninstaller returned exit code: $($proc.ExitCode)"
         }

@@ -17,6 +17,7 @@ Write-Host "Installing Python $pythonVersion ..."
 
 $arguments = @(
     "/quiet"
+    "/norestart"          # suppress automatic reboot; handled by test_04_clean_environment
     "InstallAllUsers=1"
     "PrependPath=1"
     "Include_test=0"

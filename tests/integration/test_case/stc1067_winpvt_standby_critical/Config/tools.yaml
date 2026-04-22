@@ -6,12 +6,11 @@
 tools:
   - id: winpvt
     reinstall: false
-    phase: pre_runcard    # 確保直接跑任何 test step 時 WinPVT 都已安裝
+    phase: test           # 在 test_02_install_tools 安裝，避免 setup 時重複安裝
 
   # smiwintools (含 SmartCheck.bat) — SmartCheck SSD health pre-check 用
   - id: smiwintools
     reinstall: false
-    phase: pre_runcard    # 確保直接跑任何 test step 時 SmartCheck.bat 都已安裝
     env:
       SMIWINTOOLS_PATH: "C:\\tools\\SmiWinTools"  # SmartCheckController auto-resolution 用
 

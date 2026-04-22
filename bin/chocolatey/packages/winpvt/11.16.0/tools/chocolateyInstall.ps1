@@ -17,10 +17,18 @@ if ($toolkitRoot) {
     throw "SSD_TESTKIT_ROOT is not set. Cannot locate WinPVT installer."
 }
 
-# NOTE: WinPVT (HP) uses /quiet for silent install.
-# If installation fails, verify the correct silent flag with: WinPVT.exe /?
+# WinPVT.exe is an InstallShield EXE wrapper around an MSI.
+# InstallShield EXE flags:
+#   /s              — suppress the outer extraction UI (silent mode for the EXE launcher)
+#   /v"..."         — pass the quoted string as arguments directly to msiexec
+# msiexec flags (inside /v):
+#   /qn             — quiet, no UI
+#   REBOOT=ReallySuppress — MSI property: absolutely no reboot (stronger than /norestart)
+#   /norestart      — Windows Installer flag for no reboot
+# Reboot is handled centrally by test_04_clean_environment.
+# Exit 3010 = success but reboot pending; treated as success.
 $proc = Start-Process -FilePath $installer `
-    -ArgumentList "/quiet" `
+    -ArgumentList '/s /v"/qn REBOOT=ReallySuppress /norestart"' `
     -Wait -PassThru
 if ($proc.ExitCode -notin @(0, 3010)) {
     throw "WinPVT installer failed with exit code: $($proc.ExitCode)"

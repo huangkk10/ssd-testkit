@@ -15,6 +15,7 @@ Write-Host "Uninstalling Python $pythonVersion ..."
 
 $arguments = @(
     "/quiet"
+    "/norestart"          # suppress automatic reboot; handled by test_04_clean_environment
     "/uninstall"
 )
 

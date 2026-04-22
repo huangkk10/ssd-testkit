@@ -29,7 +29,10 @@ if ($toolkitRoot) {
 Write-Host "Installing PHM $toolVersion ..."
 Write-Host "Installer: $installer"
 
-$proc = Start-Process -FilePath $installer -ArgumentList "/S" -Wait -PassThru
+# /norestart: suppress automatic reboot after install (NSIS flag).
+# Reboot is handled centrally by test_04_clean_environment.
+# exit code 3010 = success but reboot recommended; treated as normal.
+$proc = Start-Process -FilePath $installer -ArgumentList "/S /norestart" -Wait -PassThru
 
 if ($proc.ExitCode -notin @(0, 3010)) {
     throw "PHM installer failed with exit code: $($proc.ExitCode)"
