@@ -180,8 +180,18 @@ def test_04_clean_environment(self, request):
 Contains tool executable paths and execution parameters. Loaded automatically by
 `testcase_config.tool_config` (lazy JSON parse).
 
+> **`DUT_info.DiskType` is REQUIRED.** Without it, `RunCard.load_dut_info()` returns
+> `False` immediately and all DUT fields in `Runcard.ini` will be empty (Disk Number,
+> Capacity, Firmware, CPU, RAM, BIOS, OS, etc.).
+> - `0` = PRIMARY disk (C:\\ drive — the SSD under test in most cases)
+> - `1` = SECONDARY disk (non-C:\\ NVMe/SSD)
+
 ```json
 {
+  "DUT_info": {
+    "DiskType": 0
+  },
+
   "<tool1>": {
     "ExePath": "C:\\tools\\<Tool>\\<exe>.exe",
     "LogPath": "./testlog/<ToolLog>",
