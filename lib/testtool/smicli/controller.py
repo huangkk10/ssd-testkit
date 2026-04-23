@@ -242,7 +242,7 @@ class SmiCliController(threading.Thread):
             self._status = True
 
         except (SmiCliProcessError, SmiCliTimeoutError, SmiCliTestFailedError) as exc:
-            logger.error(str(exc))
+            logger.warning(str(exc))
             self.error_message = str(exc)
             self._status = False
         except Exception as exc:

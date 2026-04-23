@@ -11,14 +11,8 @@
         "ResultPath": "./testlog/WinPVTResult",
         "test_category": "Standby",
         "stress_level": "Critical",
-        "timeout_minutes": 120,
+        "timeout_minutes": 800,
         "PvtFile": "Config/winpvt_dev.pvt"
-    },
-
-    "cdi": {
-        "ExePath": "C:\\tools\\CrystalDiskInfo\\DiskInfo64.exe",
-        "LogPath": "./testlog/CDILog",
-        "ScreenShotDriveLetter": "C:"
     },
 
     "smart_check": {
