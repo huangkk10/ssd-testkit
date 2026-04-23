@@ -1,6 +1,6 @@
 ---
 name: scaffold-testtool
-description: Scaffold a new testtool library sub-package under lib/testtool/ using the burnin package as the standard template. Use when user asks to create a new testtool, add a library for a tool, migrate a legacy single-file testtool, scaffold a testtool package, or mentions 建 testtool, 新增工具 library, 遷移, or wrapping a CLI/GUI/BAT tool. Also answers questions about known tools (PHM, burnin, CDI, smartcheck) — check the Known Tools Reference section and read the corresponding reference file.
+description: Scaffold a new testtool library sub-package under lib/testtool/ using the burnin package as the standard template. Use when user asks to create a new testtool, add a library for a tool, migrate a legacy single-file testtool, scaffold a testtool package, or mentions 建 testtool, 新增工具 library, 遷移, or wrapping a CLI/GUI/BAT tool. Also answers questions about known tools (PHM, burnin, CDI, smartcheck, winpvt) — check the Known Tools Reference section and read the corresponding reference file.
 ---
 
 # Scaffold Testtool Library Skill
@@ -238,6 +238,7 @@ When a user asks about a known tool, read the corresponding reference file first
 | **PHM** (Powerhouse Mountain) | `.claude/skills/scaffold-testtool/references/phm.md` | Web App (Node.js + browser); Playwright instead of pywinauto; non-standard `log_parser.py` module; installed at `C:\Program Files\PowerhouseMountain\PowerhouseMountain.exe`; Web UI `http://localhost:1337` |
 | **Windows ADK** | `.claude/skills/scaffold-testtool/references/windows_adk.md` | WAC WPF GUI; pywinauto `uia` backend; VirtualizingStackPanel trap (see `pywinauto_patterns.md`); auto_id constants in `ui_runner.py`; reboot-driven multi-step assessments |
 | **SmartCheck** (SmiWinTools) | `.claude/skills/scaffold-testtool/references/smartcheck.md` | CLI BAT tool; no UI; two usage patterns: standalone pre-check (stc1067) and concurrent with BurnIN (stc1685); SMIWINTOOLS_PATH env var must be set via tools.yaml `env` (auto-injection broken); controller exits on PASS/FAIL immediately |
+| **WinPVT** | `.claude/skills/scaffold-testtool/references/winpvt.md` | HP GUI stress tool; pywinauto `uia` backend; **two-phase API** (`setup_phase()` sync + `start()/join()` threaded); `.pvt` test plan file required; does NOT self-terminate — must call `ctrl.close_app()`; install via `phase: test` (not pre_runcard) |
 
 ---
 
@@ -255,6 +256,7 @@ When a user asks about a known tool, read the corresponding reference file first
 - **PHM Tool Reference**: `.claude/skills/scaffold-testtool/references/phm.md`
 - **Windows ADK Tool Reference**: `.claude/skills/scaffold-testtool/references/windows_adk.md`
 - **pywinauto Patterns & Pitfalls**: `.claude/skills/scaffold-testtool/references/pywinauto_patterns.md`
+- **WinPVT Tool Reference**: `.claude/skills/scaffold-testtool/references/winpvt.md`
 
 ## Important Notes
 
