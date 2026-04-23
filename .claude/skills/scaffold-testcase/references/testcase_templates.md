@@ -97,7 +97,7 @@ from framework.base_test import BaseTestCase
 from framework.decorators import step
 from framework.test_utils import cleanup_directory
 from lib.testtool import RunCard as RC
-from lib.logger import get_module_logger, logConfig
+from lib.logger import get_module_logger, logConfig, clear_log_files
 
 # Import controllers as needed:
 # from lib.testtool.burnin import BurnInController
@@ -183,50 +183,32 @@ class TestSTC<XXXX><Name>(BaseTestCase):
 
     def _cleanup_test_logs(self) -> None:
         """
-        Remove leftover logs from previous test runs.
+        SPECIAL CASE ONLY: custom cleanup when specific subdirs must be preserved.
 
-        Cleans all tool-specific output directories and log files so each
-        full test run starts from a clean state.
+        For most test cases use BaseTestCase._cleanup_testlog_directory() instead,
+        which wipes all of testlog/ (except Runcard.ini) in one call.
+        Only implement this method when you need finer-grained control.
         """
-        logger.info("[_cleanup_test_logs] Starting test log cleanup")
+        log_path = self.config.get('log_path', './log/STC-XXXX')
 
-        # Ensure base testlog dir exists before any cleanup attempts
-        Path('./testlog').mkdir(parents=True, exist_ok=True)
-
-        # 0. Reboot state file — remove so next full run starts in PRE-REBOOT phase
-        #    (only relevant for tests that use OsRebootController)
-        # state_file = Path('./testlog/reboot_state.json')
-        # if state_file.exists():
-        #     state_file.unlink()
-        #     logger.info(f"[_cleanup_test_logs] Removed reboot state file")
-
-        # 1. Tool-specific log directories — add one line per tool used:
+        # 1. Tool log dirs
         cleanup_directory('./testlog/CDILog', 'CDI log directory', logger)
         # cleanup_directory('./testlog/PwrTestLog', 'PwrTest log directory', logger)
-        # cleanup_directory('./testlog/PEPChecker_Log', 'PEPChecker log directory', logger)
 
-        # 2. Single-file outputs — add one block per output file:
-        # ss_report = Path(self.config.get('sleepstudy', {}).get('output_path', './testlog/sleepstudy-report.html'))
-        # if ss_report.exists():
-        #     ss_report.unlink()
-        #     logger.info(f"[_cleanup_test_logs] Removed sleepstudy report")
+        # 2. Single-file outputs
+        # ss_report = Path('./testlog/sleepstudy-report.html')
+        # if ss_report.exists(): ss_report.unlink()
 
-        # 3. Test-specific log directory (log.txt, log.err, etc.)
-        log_path = self.config.get('log_path', './log/STC-XXXX')
+        # 3. Main test log directory + log.txt / log.err
         cleanup_directory(log_path, 'test log directory', logger)
-
-        # Explicitly remove log.txt and log.err (accumulated across runs)
         log_dir = Path(log_path)
         for log_file in ['log.txt', 'log.err']:
             p = log_dir / log_file
             if p.exists():
                 try:
                     p.unlink()
-                    logger.info(f"[_cleanup_test_logs] Removed {p}")
                 except Exception as exc:
-                    logger.warning(f"[_cleanup_test_logs] Could not remove {p}: {exc}")
-
-        logger.info("[_cleanup_test_logs] Cleanup complete")
+                    logger.warning(f"Could not remove {p}: {exc}")
 
     # ─────────────────────────────────────────────────────────
     # Test steps
@@ -236,12 +218,14 @@ class TestSTC<XXXX><Name>(BaseTestCase):
     @step(1, "Setup precondition")
     def test_01_precondition(self):
         """
-        Basic setup:
-        - Clean up previous test logs
-        - Create log directory structure
+        Clean testlog (preserve Runcard.ini) and prepare log directory.
+        Uses BaseTestCase._cleanup_testlog_directory() for a full wipe.
+        Override with _cleanup_test_logs() only when subdirs must be preserved.
         """
         logger.info("[TEST_01] Precondition setup started")
-        self._cleanup_test_logs()
+        self._cleanup_testlog_directory()   # wipes testlog/, preserves Runcard.ini
+        clear_log_files()                   # clears log.txt / log.err
+        Path(self.log_path).mkdir(parents=True, exist_ok=True)
         logger.info("[TEST_01] Precondition completed")
 
     @pytest.mark.order(2)

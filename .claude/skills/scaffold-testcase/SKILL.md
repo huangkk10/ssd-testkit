@@ -23,7 +23,8 @@ tests/integration/test_case/<stcXXXX_name>/
 ├── Config/
 │   ├── Config.json           # Tool paths + execution params
 │   ├── osconfig.yaml         # OS configuration (power, tasks, auto-login)
-│   └── tools.yaml            # Tool installation declarations
+│   ├── tools.yaml            # Tool installation declarations
+│   └── <tool>.pvt / *.ini   # Optional: tool-specific config files
 ├── conftest.py               # testcase_config fixture (local)
 ├── test_main.py              # Main test class (all steps)
 ├── README.md                 # Test overview and run instructions
@@ -253,6 +254,29 @@ tools:
 
 Tool IDs correspond to entries in `tool-manager/tools-registry.yaml`.
 
+### Tool-Specific Config Files in Config/
+
+Tool-specific binary or config files (e.g. `.pvt`, `.ini`) that must ship with
+the test case should be placed in `Config/`. Reference them in `Config.json` as
+relative paths and resolve against the test case directory in the test step:
+
+```json
+// Config.json
+"winpvt": {
+    "PvtFile": "Config/winpvt_prod.pvt"
+}
+```
+
+```python
+# In test step — resolve relative path against test case dir
+pvt_file = self.config['winpvt'].get('PvtFile', '').strip()
+if pvt_file:
+    pvt_path = Path(pvt_file)
+    if not pvt_path.is_absolute():
+        pvt_path = Path(__file__).parent / pvt_path
+    ctrl_kwargs['pvt_file'] = str(pvt_path)
+```
+
 ---
 
 ## Runcard.ini
@@ -477,19 +501,31 @@ Apply markers on the test class level. Use `@pytest.mark.<marker>` for:
 
 | Category | Marker examples |
 |----------|----------------|
-| Client | `@pytest.mark.client_lenovo`, `@pytest.mark.client_samsung` |
+| Client | `@pytest.mark.client_lenovo`, `@pytest.mark.client_samsung`, `@pytest.mark.client_hp` |
 | Interface | `@pytest.mark.interface_pcie`, `@pytest.mark.interface_sata` |
-| Project | `@pytest.mark.project_storagedv`, `@pytest.mark.project_burnin` |
-| Feature | `@pytest.mark.feature_burnin`, `@pytest.mark.feature_smart` |
+| Project | `@pytest.mark.project_storagedv`, `@pytest.mark.project_burnin`, `@pytest.mark.project_standard` |
+| Feature | `@pytest.mark.feature_burnin`, `@pytest.mark.feature_smart`, `@pytest.mark.feature_power` |
+| Tool requirement | `@pytest.mark.requires_winpvt`, `@pytest.mark.requires_cdi` |
 | Speed | `@pytest.mark.slow` (for tests > 30 min) |
 
 Register new markers in `pytest.ini` under `markers =`. The project uses `--strict-markers`.
 
 ---
 
-## `_cleanup_test_logs` Pattern
+## Testlog Cleanup Pattern
 
-Every test case must implement `_cleanup_test_logs()` in its test class and call it from `test_01_precondition`. The method must clean **all** log/output files so each full run starts clean.
+`test_01_precondition` must clean **all** log/output files so each full run starts fresh.
+
+### When to use which approach
+
+| Scenario | Recommended approach |
+|----------|---------------------|
+| Standard case — full testlog wipe is OK | Call `self._cleanup_testlog_directory()` (BaseTestCase built-in) — no custom method needed |
+| Special case — need to preserve specific subdirs/files | Implement local `_cleanup_test_logs()` and call it **instead of** `_cleanup_testlog_directory()` |
+
+`_cleanup_testlog_directory()` (from `framework/base_test.py`) wipes the entire `./testlog/`
+directory (all files and subdirs), except `Runcard.ini`, then recreates it empty. This is the
+**preferred default** for most test cases.
 
 ### Mandatory cleanup items
 
@@ -505,6 +541,16 @@ Every test case must implement `_cleanup_test_logs()` in its test class and call
 這兩個檔案由 `logConfig()` 在 `setup_test_class` 中建立，**不會被 `cleanup_directory` 自動刪除**（因 cleanup 在 test_01 執行，此時 logger 已啟動並持有 file handle）。
 
 ```python
+# Standard case — call BaseTestCase built-in (preferred default)
+def test_01_precondition(self):
+    self._cleanup_testlog_directory()   # wipes testlog/, preserves Runcard.ini
+    clear_log_files()
+    Path(self.log_path).mkdir(parents=True, exist_ok=True)
+    ...
+```
+
+```python
+# Special case — custom method when specific subdirs must be preserved
 def _cleanup_test_logs(self) -> None:
     log_path = self.config.get('log_path', './log/STC-XXXX')
 
@@ -594,9 +640,52 @@ if ctrl.status is not True:
 - `True` — passed
 - `False` — failed
 
----
+### Stale Process Cleanup Before GUI Tool Launch
 
-## Concurrent Test Pattern
+Before launching a GUI tool, kill any lingering process from a previous interrupted run.
+Do **not** raise an error when the process is not found — `returncode != 0` is expected
+on a clean machine:
+
+```python
+import subprocess
+result = subprocess.run(
+    ['taskkill', '/F', '/IM', 'WinPVT.exe'],
+    capture_output=True,
+)
+if result.returncode == 0:
+    logger.info("[TEST_0N] Killed stale WinPVT.exe process(es) before startup")
+# No error raised if process not found (returncode != 0 is normal)
+```
+
+Replace `WinPVT.exe` with the actual process image name of the tool being launched.
+
+### close_app() — Explicit Close for GUI Tools
+
+GUI tools that do not self-terminate after completion must be closed explicitly:
+
+```python
+# 1. Instantiate
+ctrl = SomeController.from_config_dict(self.config['<key>'])
+
+# 2. (Optional) override specific params
+ctrl.set_config(log_path='./testlog/run1.log')
+
+# 3. Run in thread
+ctrl.start()
+
+# 4. Wait for completion
+ctrl.join(timeout=ctrl.timeout * 60)
+
+# 5. Check result
+if ctrl.status is not True:
+    pytest.fail("Controller failed")
+
+# 6. Close GUI (for tools that don't self-terminate)
+ctrl.close_app()
+```
+
+Call `close_app()` even on failure paths when the process may still be running, to avoid
+leaving ghost processes that would interfere with the next run.
 
 Use when two controllers must run in parallel (e.g., BurnIN + SmartCheck):
 
@@ -691,6 +780,85 @@ if not result:
 
 ---
 
+## SmartCheck Before/After SMART Comparison Pattern
+
+Use when the test must verify SSD SMART health before and after a stress run via
+`SmartCheckController` + `SmartCheckLogParser`:
+
+**Imports:**
+```python
+from lib.testtool.smartcheck import SmartCheckController, SmartCheckLogParser
+```
+
+**Module-level constant (outside class):**
+```python
+MONITORED_ATTRIBUTES = [
+    "Critical Warning",
+    "Power Cycles",
+    "Unsafe Shutdowns",
+    "Media and Data Integrity Errors",
+    "Number of Error Information Log Entries",
+]
+_smartcheck_parser = SmartCheckLogParser(MONITORED_ATTRIBUTES)
+```
+
+**Pre-check step (test_0N):**
+```python
+def test_0N_smartcheck_pre(self):
+    smart_cfg = self.config.get('smartcheck', {})
+    ctrl = SmartCheckController(
+        output_dir=smart_cfg.get('output_dir_before', './testlog/SmartCheckLog_before'),
+    )
+    ctrl.set_config(
+        total_time=smart_cfg.get('total_time', 3),
+        check_interval=smart_cfg.get('check_interval', 3),
+        timeout=smart_cfg.get('timeout', 10),
+    )
+    ctrl.start()
+    ctrl.join(timeout=ctrl.timeout * 60 + 30)
+
+    if ctrl.is_alive():
+        ctrl.stop()
+        ctrl.join(timeout=10)
+        pytest.fail("[TEST_0N] SmartCheck pre-check timed out")
+    if ctrl.status is False:
+        pytest.fail("[TEST_0N] SmartCheck detected SMART errors — aborting")
+```
+
+**Post-check step (test_0M):** identical structure, use `output_dir_after`.
+
+**Compare step (test_0M+1):**
+```python
+def test_0P_compare_smartcheck(self):
+    before_log = Path('./testlog/SmartCheckLog_before/SmartCheck.log')
+    after_log  = Path('./testlog/SmartCheckLog_after/SmartCheck.log')
+    try:
+        ok, failures = _smartcheck_parser.compare_no_increase(
+            before_log=before_log,
+            after_log=after_log,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        pytest.fail(f"{exc}")
+    if not ok:
+        pytest.fail(
+            "SmartCheck SMART attributes must not increase. Violations:\n"
+            + "\n".join(f"  {m}" for m in failures)
+        )
+```
+
+**Config.json entries:**
+```json
+"smartcheck": {
+    "output_dir_before": "./testlog/SmartCheckLog_before",
+    "output_dir_after":  "./testlog/SmartCheckLog_after",
+    "total_time": 3,
+    "check_interval": 3,
+    "timeout": 10
+}
+```
+
+---
+
 ## RunCard Integration
 
 RunCard records the test result (PASS/FAIL) at the end of the class fixture:
@@ -709,6 +877,25 @@ cls.runcard.end_test(
 
 Always wrap RunCard calls in `try/except`; RunCard failure must not block the test.
 
+### Mid-Test Cycle Count Update
+
+When a test step completes a countable iteration (e.g., stress cycles), update RunCard
+before closing the controller:
+
+```python
+cycles = ctrl.cycles          # retrieve completed cycle count from controller
+if self.runcard is not None and cycles > 0:
+    self.runcard.update_test_status(test_cycle=cycles)
+    self.runcard.save_to_file()
+    logger.info(f"[TEST_0N] Runcard updated: Test Cycle={cycles}")
+
+# Close GUI after saving Runcard, so the record is saved even if close fails
+ctrl.close_app()
+```
+
+- Always guard with `if self.runcard is not None`.
+- Call `update_test_status` / `save_to_file` **before** `ctrl.close_app()`.
+
 ---
 
 ## Known Test Cases Reference
@@ -716,6 +903,7 @@ Always wrap RunCard calls in `try/except`; RunCard failure must not block the te
 | STC | Directory | Description |
 |-----|-----------|-------------|
 | **STC-2557** ⭐ | `tests/integration/test_case/stc2557_adk_s3s4s5/` | **Canonical template** — ADK S3/S4/S5 power state tests with fixed steps 01–04, OsConfig, ToolInstaller, RebootManager |
+| **STC-1067** | `tests/integration/test_case/stc1067_winpvt_standby_critical/` | SmartCheck before/after SMART pattern · GUI tool automation (WinPVT) · `.pvt` config in Config/ · RunCard mid-test cycle update |
 | **STC-1685** | `tests/integration/client_pcie_lenovo_storagedv/stc1685_burnin/` | Legacy template — BurnIN install + 24h disk stress + SMART monitor (older pattern, no osconfig.yaml/tools.yaml) |
 
 ---
