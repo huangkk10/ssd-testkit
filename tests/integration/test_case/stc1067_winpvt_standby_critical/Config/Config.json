@@ -12,7 +12,7 @@
         "test_category": "Standby",
         "stress_level": "Critical",
         "timeout_minutes": 800,
-        "PvtFile": "Config/winpvt_dev.pvt"
+        "PvtFile": "Config/winpvt_prod.pvt"
     },
 
     "smart_check": {
