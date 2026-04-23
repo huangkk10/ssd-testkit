@@ -54,6 +54,7 @@ from lib.testtool.osconfig import OsConfigController
 from lib.testtool.osconfig.state_manager import OsConfigStateManager
 from lib.testtool.smartcheck import SmartCheckController, SmartCheckLogParser
 from lib.testtool.winpvt import WinPVTController
+from lib.testtool.winpvt.config import WinPVTConfig
 from lib.testtool.winpvt.exceptions import WinPVTError
 
 logger = get_module_logger(__name__)
@@ -260,7 +261,7 @@ class TestSTC1067WinPVTStandbyCritical(BaseTestCase):
         timeout_minutes = winpvt_cfg.get('timeout_minutes', 120)
 
         ctrl_kwargs = dict(
-            exe_path=winpvt_cfg['ExePath'],
+            exe_path=winpvt_cfg.get('ExePath') or WinPVTConfig.DEFAULT_CONFIG['exe_path'],
             result_path=winpvt_cfg['ResultPath'],
             test_category=winpvt_cfg.get('test_category', 'Standby'),
             stress_level=winpvt_cfg.get('stress_level', 'Critical'),

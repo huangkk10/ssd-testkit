@@ -7,7 +7,6 @@
     },
 
     "winpvt": {
-        "ExePath": "C:\\Program Files\\Hewlett-Packard\\WinPVT 11.16.0\\WinPVT.exe",
         "LogPath": "./testlog/WinPVTLog",
         "ResultPath": "./testlog/WinPVTResult",
         "test_category": "Standby",
