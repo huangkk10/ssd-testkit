@@ -266,3 +266,46 @@ When a user asks about a known tool, read the corresponding reference file first
 - Use `sys.path.insert(0, str(Path(__file__).parent.parent.parent))` for imports
 - Config validation should raise `<Tool>ConfigError`, not generic exceptions
 - pywinauto imports must be wrapped in `try/except ImportError` for testability
+
+---
+
+## Known Pitfalls
+
+### ⚠️ exe_path 解析：Stale / Directory env var
+
+**症狀**：Chocolatey 安裝後，系統 env var（如 `DISKERCISE_PATH`）可能指向安裝目錄（`C:\tools\Diskercise`）而非完整 exe 路徑。
+`ToolInstaller._inject_env_from_meta` 使用 `if not current or not os.path.isfile(current)` 來決定是否注入；若 env var 已存在但指向目錄，會先嘗試覆蓋為正確值。
+但 packaged exe 環境下仍可能拿到舊的系統 env var，導致 `CreateProcess: Access Denied (5)`。
+
+**防禦性修正**：在 `controller.py` 的 exe_path 解析之後，**必須**加 directory 補全檢查：
+
+```python
+resolved = (
+    exe_path
+    or os.environ.get('TOOL_PATH_ENV', '')
+    or ToolConfig.DEFAULT_CONFIG['exe_path']
+)
+# Defensive: Chocolatey may set env var to install dir (not full exe path)
+if resolved and os.path.isdir(resolved):
+    resolved = os.path.join(resolved, 'ToolName.exe')
+```
+
+**適用條件**：任何 GUI 工具（has_ui: true）或 CLI 工具，只要 `package_meta.yaml` 有 `env_var` 欄位。
+
+---
+
+### ⚠️ `_inject_env_from_meta` 覆蓋條件（tool_installer.py）
+
+`ToolInstaller._inject_env_from_meta` 的覆蓋條件是：
+
+```python
+current = os.environ.get(env_var, '')
+if not current or not os.path.isfile(current):
+    os.environ[env_var] = inject_value
+```
+
+- 若 env var 不存在 → 注入
+- 若 env var 存在但指向的路徑**不是有效檔案**（包含目錄、不存在的路徑）→ 也會覆蓋
+- 若 env var 已指向有效的 `.exe` → 保留不動
+
+這解決了 Chocolatey 留下目錄路徑的問題。但 controller.py 的防禦性 directory 補全仍建議保留，作為最後一道防線。

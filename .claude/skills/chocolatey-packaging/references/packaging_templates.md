@@ -181,6 +181,24 @@ Write-Host "<ToolName> uninstalled."
 
 ## `package_meta.yaml` Templates
 
+### ⚠️ CRITICAL — `_inject_env_from_meta()` Reading Rules
+
+`ToolInstaller._inject_env_from_meta()` (`lib/testtool/tool_installer.py`) reads:
+- `meta.get("install_dir")` — target install directory
+- `meta.get("env_var")` — environment variable name to set
+- `meta.get("binaries")` — list of executables; first entry appended to `install_dir`
+
+**These keys MUST be at the top level of the YAML file.**
+If placed inside `versions[]` entries, `meta.get(...)` returns `None` → env var is never
+injected → `os.environ.get('TOOL_PATH', '')` returns `''` → exe_path becomes a bare
+filename → `CreateProcess` fails with "The system cannot find the file specified".
+
+| ✅ Correct (top-level) | ❌ Wrong (inside versions[]) |
+|------------------------|------------------------------|
+| `install_dir: "C:\\tools\\X"` at root | `versions: [{install_path: ...}]` |
+| `env_var: "X_PATH"` at root | `versions: [{env_var: ...}]` |
+| `binaries: ["X.exe"]` at root | not read at all |
+
 ### Type B — Portable
 
 ```yaml
@@ -196,8 +214,10 @@ versions:
     tool_version: "<tool_version>"  # From <ToolExe>.exe --version
     source_dir: "bin/installers/<ToolName>/<tool_version>"
     default: true
+    # ↑ versions[] entries contain ONLY: version, tool_version, source_dir, default
+    # ↑ NEVER put install_dir / env_var / binaries inside versions[]
 
-install_dir: "C:\\tools\\<ToolName>"
+install_dir: "C:\\tools\\<ToolName>"  # MUST be top-level
 env_var: "<TOOL_PATH>"           # Remove this line if no env var needed
 
 binaries:
