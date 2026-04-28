@@ -8,9 +8,9 @@ disable_memory_diagnostic_tasks: true
 disable_mcafee_tasks: true
 
 # Power Plan：高效能模式，確保磁碟 I/O 不受節能政策影響
-power_plan: "high performance"
+power_plan: "high_performance"
 
 # 自動登入：重開機後自動以 Administrator 帳號登入，讓 pytest 可以繼續執行
 # 密碼由環境變數 SSD_TESTKIT_AUTO_LOGIN_PASSWORD 提供（不寫入此檔）
-enable_auto_admin_logon: true
-auto_login_password: ""
+# enable_auto_admin_logon: true
+# auto_login_password: ""

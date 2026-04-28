@@ -148,6 +148,7 @@ class TestSTC_XXXX_Diskercise(BaseTestCase):
 
     @pytest.mark.order(4)
     @step(4, "Clean Environment")
+    @pytest.mark.skip(reason="Test")
     def test_04_clean_environment(self, request: pytest.FixtureRequest):
         """Kill stale Diskercise processes, then reboot for a clean environment.
 

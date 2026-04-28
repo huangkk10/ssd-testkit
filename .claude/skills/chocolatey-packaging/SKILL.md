@@ -206,6 +206,12 @@ CertUtil -hashfile <id>.<version>.nupkg SHA256 | Out-File <id>.<version>.sha256
 
 **For full schema**, see `references/packaging_templates.md`
 
+> ⚠️ **CRITICAL — Top-level placement rule:**
+> `install_dir`, `env_var`, `binaries` **MUST be at the top level** of the YAML file.
+> `_inject_env_from_meta()` in `tool_installer.py` reads these keys from `meta.get(...)` directly.
+> Placing them inside `versions[]` entries causes silent failure — the env var is never injected,
+> the tool's exe_path resolves to a relative path, and the process launch fails.
+
 ```yaml
 # lib/testtool/<tool>/package_meta.yaml
 
@@ -218,11 +224,26 @@ versions:
     tool_version: "v1.2.3"   # 工具自身版本（--version 輸出）
     source_dir: "bin/installers/MyTool/v1.2.3"
     default: true
+    # ↑ versions[] entries: version/tool_version/source_dir/default ONLY
+    # ↑ DO NOT put install_dir/env_var/binaries inside versions[]
 
-install_dir: "C:\\tools\\MyTool"
+install_dir: "C:\\tools\\MyTool"   # TOP LEVEL — read by _inject_env_from_meta()
+env_var: "MYTOOL_PATH"             # TOP LEVEL — injected as full path: install_dir\binaries[0]
 binaries:
-  - "mytool.exe"
+  - "mytool.exe"                   # TOP LEVEL — first entry used as env var target
 ```
+
+> ⚠️ **CRITICAL — env var value is the FULL EXE PATH, not a directory:**
+> `_inject_env_from_meta()` injects `env_var = install_dir\binaries[0]` (e.g. `C:\tools\MyTool\mytool.exe`).
+> In the controller's `__init__`, consume the env var **directly** — do NOT `os.path.join()` it with the exe name again:
+>
+> ```python
+> # ✅ Correct
+> resolved = exe_path or os.environ.get('MYTOOL_PATH', '') or DEFAULT_EXE_PATH
+>
+> # ❌ Wrong — doubles the exe name: C:\tools\MyTool\mytool.exe\mytool.exe
+> resolved = exe_path or os.path.join(os.environ.get('MYTOOL_PATH', ''), 'mytool.exe')
+> ```
 
 ### Step 9 — 更新 packages.config
 

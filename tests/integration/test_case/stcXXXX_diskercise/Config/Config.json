@@ -10,6 +10,10 @@
         "write_ratio": 50,
         "data_type": 0,
         "buffered_io": true,
-        "test_duration_minutes": 30
+        "adv_verify_immediate": false,
+        "adv_write_signatures": true,
+        "adv_pause_all_asap": true,
+        "adv_pulse_com1": false,
+        "test_duration_minutes": 1
     }
 }

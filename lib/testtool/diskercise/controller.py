@@ -72,9 +72,12 @@ class DiskerciseController(threading.Thread):
         """
         super().__init__(daemon=True)
 
-        # Resolve exe_path
-        resolved = exe_path or os.path.join(
-            os.environ.get('DISKERCISE_PATH', ''), 'Diskercise.exe'
+        # Resolve exe_path: prefer explicit arg, then DISKERCISE_PATH env var (full path),
+        # then DEFAULT_CONFIG fallback.
+        resolved = (
+            exe_path
+            or os.environ.get('DISKERCISE_PATH', '')
+            or DiskerciseConfig.DEFAULT_CONFIG['exe_path']
         )
 
         self._config: Dict[str, Any] = DiskerciseConfig.get_default_config()
@@ -319,9 +322,16 @@ class DiskerciseController(threading.Thread):
             f"duration={duration_secs}s"
         )
 
+        last_progress_log = time.monotonic()
+        progress_interval = 30.0  # log progress every 30 seconds
+
         while not self._stop_event.is_set():
             with self._instances_lock:
                 instances = list(self._instances)
+
+            # Dismiss any unexpected dialogs (e.g. COM1 Error appearing after Start)
+            for inst in instances:
+                self._monitor.dismiss_instance_dialogs(inst)
 
             # Check for Operation Failure popups
             failed, msg = self._monitor.has_any_failure_popup(instances)
@@ -330,7 +340,7 @@ class DiskerciseController(threading.Thread):
 
             # Check all windows still exist
             for inst in instances:
-                if not self._monitor.window_exists(inst, timeout=10):
+                if not self._monitor.window_exists(inst, timeout=5):
                     retry_count += 1
                     logger.warning(
                         f"DiskerciseController: window not found (retry {retry_count}/{max_retry})"
@@ -352,6 +362,16 @@ class DiskerciseController(threading.Thread):
                     except Exception:
                         pass
                 break
+
+            # Periodic progress log so operator knows the test is running
+            now = time.monotonic()
+            if now - last_progress_log >= progress_interval:
+                remaining = max(0, duration_secs - elapsed)
+                logger.info(
+                    f"DiskerciseController: running — elapsed={elapsed:.0f}s  "
+                    f"remaining={remaining:.0f}s"
+                )
+                last_progress_log = now
 
             time.sleep(interval)
 

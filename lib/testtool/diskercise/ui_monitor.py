@@ -29,6 +29,9 @@ except ImportError:
 
 from .exceptions import DiskerciseUIError, DiskerciseTimeoutError
 
+from lib.logger import get_module_logger
+logger = get_module_logger(__name__)
+
 
 class DiskerciseInstance:
     """Represents a single running Diskercise.exe process and its window."""
@@ -290,24 +293,103 @@ class DiskerciseUIMonitor:
     def click_start(self, instance: 'DiskerciseInstance') -> None:
         """
         Click the Start button and wait for it to become disabled.
+        Automatically dismisses any unexpected modal dialog (e.g. "COM1 Error")
+        that appears immediately after clicking Start.
 
         Raises:
             DiskerciseUIError: If click fails after retries.
         """
         self._click_button_with_retry(instance.window, instance.window["Start"],
                                       wait_disabled=True)
+        # Dismiss any unexpected modal dialog (e.g. COM1 Error popup)
+        self._dismiss_startup_dialogs(instance.app)
         logger.info("[UI] Start button clicked")
         self.take_screenshot("after_click_start")
 
+    def _dismiss_startup_dialogs(self, app: Any) -> None:
+        """Dismiss any modal OK-only dialogs that appear right after Start.
+
+        Polls for up to 3 seconds so that late-appearing dialogs (e.g. COM1
+        Error appearing ~1-2s after Start click) are also caught.
+        """
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            self._dismiss_app_dialogs(app)
+            time.sleep(0.3)
+
+    def _dismiss_app_dialogs(self, app: Any) -> None:
+        """Dismiss all non-main OK-only dialogs belonging to *app*.
+
+        Strategy: for every non-main top-level window owned by the process,
+        log that it was found, then try three methods in order:
+          1. win['OK'].click_input()           — pywinauto win32 shorthand
+          2. win.child_window(best_match='OK') — fuzzy match
+          3. win.type_keys('{ENTER}')          — keyboard fallback
+        Errors in each method are swallowed; we move to the next.
+        """
+        try:
+            main_handle = app.window(title_re=self.WINDOW_TITLE_RE, found_index=0).handle
+        except Exception:
+            main_handle = None
+        try:
+            for win in app.windows():
+                try:
+                    if main_handle is not None and win.handle == main_handle:
+                        continue
+                    dlg_title = win.window_text()
+                    if not dlg_title:
+                        continue
+                    # Log immediately so we can see it was found even if click fails
+                    logger.warning(
+                        f"[UI] Dialog detected: '{dlg_title}' — attempting to dismiss"
+                    )
+                    self.take_screenshot(f"dialog_{dlg_title.replace(' ', '_')}")
+                    dismissed = False
+                    # Method 1: pywinauto win32 shorthand (no exists() check)
+                    if not dismissed:
+                        try:
+                            win['OK'].click_input()
+                            dismissed = True
+                        except Exception:
+                            pass
+                    # Method 2: best_match fuzzy search
+                    if not dismissed:
+                        try:
+                            win.child_window(best_match='OK').click_input()
+                            dismissed = True
+                        except Exception:
+                            pass
+                    # Method 3: press Enter (works for any focused OK/default button)
+                    if not dismissed:
+                        try:
+                            win.set_focus()
+                            win.type_keys('{ENTER}')
+                            dismissed = True
+                        except Exception:
+                            pass
+                    if dismissed:
+                        logger.warning(f"[UI] Dismissed dialog '{dlg_title}'")
+                        time.sleep(0.3)
+                    else:
+                        logger.error(f"[UI] Failed to dismiss dialog '{dlg_title}'")
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    def dismiss_instance_dialogs(self, instance: 'DiskerciseInstance') -> None:
+        """Dismiss any unexpected dialogs for an instance. Safe to call in scan loop."""
+        self._dismiss_app_dialogs(instance.app)
+
     def click_stop(self, instance: 'DiskerciseInstance') -> None:
         """
-        Click the Stop button and wait for it to become disabled.
+        Click the Stop button.
 
         Raises:
             DiskerciseUIError: If click fails after retries.
         """
         self._click_button_with_retry(instance.window, instance.window["Stop"],
-                                      wait_disabled=True)
+                                      wait_disabled=False)
         logger.info("[UI] Stop button clicked")
         self.take_screenshot("after_click_stop")
 

@@ -6,7 +6,11 @@ versions:
   - version: "1.0.0.1"
     tool_version: "1.0.0.1"
     source_dir: "bin/installers/Diskercise/1.0.0.1"
-    install_path: "C:\\tools\\Diskercise"
-    env_var: DISKERCISE_PATH
     default: true
     notes: "Portable exe — copy to install dir, no installer required."
+
+install_dir: "C:\\tools\\Diskercise"
+env_var: DISKERCISE_PATH
+
+binaries:
+  - "Diskercise.exe"
