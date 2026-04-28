@@ -92,9 +92,13 @@ class DiskerciseController(threading.Thread):
         self._failure_message: str = ''
 
         # UI monitor
+        _screenshot_dir = os.path.join(
+            self._config.get('log_path', './testlog/diskercise'), 'screenshots'
+        )
         self._monitor = DiskerciseUIMonitor(
             window_wait_timeout=self._config['window_wait_timeout'],
             ui_retry_max=self._config['ui_retry_max'],
+            screenshot_dir=_screenshot_dir,
         )
 
         # Instances managed in multi-instance mode

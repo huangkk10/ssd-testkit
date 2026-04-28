@@ -1,0 +1,15 @@
+{
+    "DUT_info": {
+        "DiskType": 0
+    },
+    "diskercise": {
+        "thread_count": 4,
+        "file_size_mb": 1024,
+        "access_size_kb": 4,
+        "read_ratio": 50,
+        "write_ratio": 50,
+        "data_type": 0,
+        "buffered_io": true,
+        "test_duration_minutes": 30
+    }
+}

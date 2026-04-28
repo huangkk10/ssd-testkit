@@ -8,7 +8,14 @@ Uses pywinauto win32 backend to control Diskercise.exe windows.
 import time
 import os
 import shutil
+from datetime import datetime
+from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
+
+try:
+    from PIL import ImageGrab as _ImageGrab
+except ImportError:
+    _ImageGrab = None
 
 try:
     from pywinauto import Application
@@ -56,6 +63,7 @@ class DiskerciseUIMonitor:
         self,
         window_wait_timeout: int = 30,
         ui_retry_max: int = 3,
+        screenshot_dir: str = '',
     ):
         """
         Initialize the UI monitor.
@@ -63,11 +71,69 @@ class DiskerciseUIMonitor:
         Args:
             window_wait_timeout: Seconds to wait for window to become enabled.
             ui_retry_max: Number of retry attempts for button clicks.
+            screenshot_dir: Directory to save screenshots (empty = disabled).
         """
         if Application is None:
             raise ImportError("pywinauto is required for DiskerciseUIMonitor")
         self.window_wait_timeout = window_wait_timeout
         self.ui_retry_max = ui_retry_max
+        self._screenshot_dir: str = screenshot_dir
+
+    # ------------------------------------------------------------------ #
+    #  Screenshot + topology helpers
+    # ------------------------------------------------------------------ #
+
+    def take_screenshot(self, label: str) -> Optional[Path]:
+        """Capture a full-screen screenshot and save to screenshot_dir.
+
+        Only captures when screenshot_dir is set and PIL is available.
+
+        Args:
+            label: Short descriptive label embedded in the filename.
+
+        Returns:
+            Path to the saved file, or None if skipped / failed.
+        """
+        if not self._screenshot_dir or _ImageGrab is None:
+            return None
+        try:
+            Path(self._screenshot_dir).mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%H%M%S_%f")[:10]
+            safe = label.replace(" ", "_").replace("/", "_").replace(":", "")[:40]
+            path = Path(self._screenshot_dir) / f"{ts}_{safe}.png"
+            img = _ImageGrab.grab()
+            img.save(str(path))
+            logger.info(f"[SCREENSHOT] {path.name}")
+            return path
+        except Exception as exc:
+            logger.warning(f"[SCREENSHOT] Failed ({label}): {exc}")
+            return None
+
+    def log_topology(self, window: Any, label: str) -> None:
+        """Log DEBUG-level snapshot of all UI controls in *window*.
+
+        Zero overhead when effective log level is above DEBUG.
+        Mirrors the log_topology pattern in winpvt.ui_monitor.
+
+        Args:
+            window: A pywinauto window wrapper to walk.
+            label: Short context string for the log entry.
+        """
+        if not logger.isEnabledFor(10):   # logging.DEBUG == 10
+            return
+        try:
+            lines = [f"[topology] {label}:"]
+            for ctrl in window.descendants():
+                try:
+                    ct = ctrl.element_info.control_type
+                    title = ctrl.window_text()
+                    if title:
+                        lines.append(f"  [{ct}] {title!r}")
+                except Exception:
+                    continue
+            logger.debug("\n".join(lines))
+        except Exception as exc:
+            logger.debug(f"[topology] {label} — failed: {exc}")
 
     # ------------------------------------------------------------------ #
     #  Launch / Close
@@ -105,6 +171,9 @@ class DiskerciseUIMonitor:
                 pass
             raise DiskerciseUIError(f"Diskercise window not found after launch: {e}")
 
+        logger.info(f"[UI] Diskercise window connected: {abs_path}")
+        self.log_topology(window, "after launch")
+        self.take_screenshot("after_launch")
         return DiskerciseInstance(app=app, window=window, exe_path=exe_path)
 
     def close_instance(self, instance: 'DiskerciseInstance') -> None:
@@ -163,6 +232,9 @@ class DiskerciseUIMonitor:
             raise DiskerciseUIError(f"Failed to set main GUI config: {e}")
 
         self._set_advance_settings(instance, config)
+        logger.info("[UI] GUI config applied")
+        self.log_topology(instance.window, "after set_gui_config")
+        self.take_screenshot("after_set_gui_config")
 
     def _set_advance_settings(self, instance: 'DiskerciseInstance', config: Dict[str, Any]) -> None:
         """Open Advance Settings dialog and apply adv_* config values."""
@@ -224,6 +296,8 @@ class DiskerciseUIMonitor:
         """
         self._click_button_with_retry(instance.window, instance.window["Start"],
                                       wait_disabled=True)
+        logger.info("[UI] Start button clicked")
+        self.take_screenshot("after_click_start")
 
     def click_stop(self, instance: 'DiskerciseInstance') -> None:
         """
@@ -234,6 +308,8 @@ class DiskerciseUIMonitor:
         """
         self._click_button_with_retry(instance.window, instance.window["Stop"],
                                       wait_disabled=True)
+        logger.info("[UI] Stop button clicked")
+        self.take_screenshot("after_click_stop")
 
     def _click_button_with_retry(self, window: Any, btn: Any, wait_disabled: bool = False) -> None:
         """Click a button with up to ui_retry_max attempts."""
@@ -286,6 +362,8 @@ class DiskerciseUIMonitor:
                 try:
                     name = w.element_info.name
                     if "Operation Failure" in name:
+                        logger.error(f"[UI] Operation Failure popup detected: {name!r}")
+                        self.take_screenshot("operation_failure_popup")
                         return True, name
                 except Exception:
                     continue

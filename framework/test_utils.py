@@ -1,10 +1,19 @@
 ﻿"""
 Common test utility functions
 """
+import configparser
 import shutil
+import tempfile
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
 import subprocess
 import time
+
+try:
+    from PIL import ImageGrab as _ImageGrab
+except ImportError:
+    _ImageGrab = None
 
 # ========== Environment Management ==========
 def setup_test_environment(log_path: str):
@@ -112,3 +121,76 @@ def ensure_file_exists(file_path: str, timeout: int = 30) -> bool:
             return True
         time.sleep(1)
     return False
+
+
+# ========== Debug Utilities ==========
+
+def take_screenshot(label: str, screenshot_dir: str) -> Optional[Path]:
+    """Capture a full-screen screenshot and save it to screenshot_dir.
+
+    Silently skipped when Pillow is not installed or screenshot_dir is empty.
+
+    Args:
+        label:          Short descriptive label embedded in the filename.
+        screenshot_dir: Directory to save the PNG file (created if needed).
+
+    Returns:
+        Path to the saved file, or None if skipped / failed.
+
+    Example:
+        from framework.test_utils import take_screenshot
+        take_screenshot("before_launch", "./testlog/diskercise/screenshots")
+    """
+    if not screenshot_dir or _ImageGrab is None:
+        return None
+    try:
+        Path(screenshot_dir).mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%H%M%S_%f")[:10]
+        safe = label.replace(" ", "_").replace("/", "_").replace(":", "")[:40]
+        path = Path(screenshot_dir) / f"{ts}_{safe}.png"
+        img = _ImageGrab.grab()
+        img.save(str(path))
+        return path
+    except Exception:
+        return None
+
+
+def log_dut_info(logger=None) -> None:
+    """Collect and log DUT / disk topology via WMI (PowerShell fallback).
+
+    Uses WmiDutInfoCollector.  Only emits log messages — does not write any
+    file to disk permanently.  Safe to call even when SmiCli is absent.
+
+    Args:
+        logger: Optional logger object with an ``info`` / ``warning`` method.
+                Falls back to ``print`` when not provided.
+
+    Example:
+        from framework.test_utils import log_dut_info
+        log_dut_info(logger)
+    """
+    _info = logger.info if logger else print
+    _warn = logger.warning if logger else print
+
+    try:
+        from lib.testtool.wmi_dut_collector import WmiDutInfoCollector
+
+        tmp = Path(tempfile.mktemp(suffix=".ini"))
+        collector = WmiDutInfoCollector(output_file=str(tmp))
+        if collector.collect():
+            cfg = configparser.ConfigParser()
+            cfg.read(str(tmp))
+            lines = ["[DUT topology]"]
+            for section in cfg.sections():
+                lines.append(f"  [{section}]")
+                for k, v in cfg.items(section):
+                    lines.append(f"    {k:<20} = {v}")
+            _info("\n".join(lines))
+        else:
+            _warn(f"[DUT] WmiDutInfoCollector failed: {collector.error_message}")
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
+    except Exception as exc:
+        _warn(f"[DUT] Could not collect DUT topology: {exc}")

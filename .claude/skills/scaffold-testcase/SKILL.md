@@ -732,6 +732,63 @@ if smartcheck.status is False:
 
 ---
 
+## framework/test_utils.py — Available Utilities
+
+`framework/test_utils.py` provides shared helper functions for use in any testcase.
+
+Import pattern:
+```python
+from framework.test_utils import take_screenshot, log_dut_info, cleanup_directory
+```
+
+### Debug Utilities
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `take_screenshot` | `(label: str, screenshot_dir: str) -> Optional[Path]` | Full-screen screenshot via Pillow `ImageGrab`. Saves `HHMMSS_label.png` to `screenshot_dir` (auto-created). Returns `Path` on success, `None` if Pillow unavailable or error. |
+| `log_dut_info` | `(logger=None) -> None` | Collects OS / CPU / RAM / disk topology via `WmiDutInfoCollector` and logs it. Pass the module `logger`; falls back to `print` when omitted. |
+
+**Usage example in a test step:**
+```python
+from framework.test_utils import take_screenshot, log_dut_info
+
+# In test step body:
+log_dut_info(logger)                                    # logs DUT topology
+take_screenshot("before_launch", "./testlog/foo/screenshots")  # saves PNG
+```
+
+**Typical testcase pattern — delegate from thin static helpers:**
+```python
+_SCREENSHOT_DIR = './testlog/<tool>/screenshots'
+
+@staticmethod
+def _take_screenshot(label: str) -> None:
+    path = take_screenshot(label, _SCREENSHOT_DIR)
+    if path:
+        logger.info(f"[SCREENSHOT] Saved: {path.name}")
+
+@staticmethod
+def _log_dut_info() -> None:
+    log_dut_info(logger)
+```
+
+### Directory / File Utilities
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `cleanup_directory` | `(path: str, description: str = "directory", logger=None) -> None` | Deletes and recreates a directory. Logs via `logger.info` or `print`. Use in `_cleanup_test_logs()` for tool log dirs. |
+| `ensure_file_exists` | `(file_path: str, timeout: int = 30) -> bool` | Polls until a file appears on disk. Returns `True` if found within timeout. |
+| `setup_test_environment` | `(log_path: str) -> None` | Removes and recreates `log_path`. |
+
+### Execution Utilities
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `run_tool_with_retry` | `(tool_func, max_retry: int = 3, retry_delay: int = 5)` | Calls `tool_func()` up to `max_retry` times with a delay on failure. Re-raises on final failure. |
+| `reboot_system` | `(delay: int = 10, reason: str, test_file: str = None) -> None` | Convenience wrapper around `RebootManager.setup_reboot()`. Prefer direct `self.reboot_mgr.setup_reboot()` in testcases (required for `pre_mark_completed` pattern). |
+
+---
+
 ## CDI Before/After SMART Comparison Pattern
 
 Standard pattern for capturing SMART baseline before test and comparing after:
