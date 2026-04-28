@@ -2,18 +2,28 @@
     "DUT_info": {
         "DiskType": 0
     },
-    "diskercise": {
-        "thread_count": 4,
-        "file_size_mb": 1024,
-        "access_size_kb": 4,
-        "read_ratio": 50,
-        "write_ratio": 50,
-        "data_type": 0,
-        "buffered_io": true,
-        "adv_verify_immediate": false,
+    "diskercise_defaults": {
         "adv_write_signatures": true,
         "adv_pause_all_asap": true,
         "adv_pulse_com1": false,
         "test_duration_minutes": 1
-    }
+    },
+    "diskercise_configs": [
+        { "thread_count":   1, "file_size_mb":    1, "access_size_kb":   84, "read_ratio": 4, "write_ratio": 1, "data_type": 1, "adv_verify_immediate": false, "buffered_io": false },
+        { "thread_count": 256, "file_size_mb": 1000, "access_size_kb": 1024, "read_ratio": 4, "write_ratio": 1, "data_type": 4, "adv_verify_immediate": false, "buffered_io": false },
+        { "thread_count":   1, "file_size_mb":    1, "access_size_kb":   24, "read_ratio": 4, "write_ratio": 1, "data_type": 4, "adv_verify_immediate": false, "buffered_io": true  },
+        { "thread_count":  16, "file_size_mb":  100, "access_size_kb": 1024, "read_ratio": 4, "write_ratio": 1, "data_type": 4, "adv_verify_immediate": false, "buffered_io": true  },
+        { "thread_count":   1, "file_size_mb":  100, "access_size_kb":  256, "read_ratio": 4, "write_ratio": 1, "data_type": 3, "adv_verify_immediate": true,  "buffered_io": true  },
+        { "thread_count":  11, "file_size_mb":  100, "access_size_kb":  256, "read_ratio": 4, "write_ratio": 1, "data_type": 4, "adv_verify_immediate": false, "buffered_io": true  },
+        { "thread_count":   9, "file_size_mb":    1, "access_size_kb":   96, "read_ratio": 1, "write_ratio": 4, "data_type": 2, "adv_verify_immediate": false, "buffered_io": true  },
+        { "thread_count":   1, "file_size_mb":    1, "access_size_kb":  512, "read_ratio": 1, "write_ratio": 4, "data_type": 1, "adv_verify_immediate": true,  "buffered_io": true  },
+        { "thread_count":   2, "file_size_mb":    1, "access_size_kb":  256, "read_ratio": 1, "write_ratio": 4, "data_type": 4, "adv_verify_immediate": true,  "buffered_io": false },
+        { "thread_count":   5, "file_size_mb":    1, "access_size_kb":   72, "read_ratio": 1, "write_ratio": 4, "data_type": 2, "adv_verify_immediate": false, "buffered_io": true  },
+        { "thread_count":   1, "file_size_mb":    1, "access_size_kb":   84, "read_ratio": 1, "write_ratio": 4, "data_type": 4, "adv_verify_immediate": false, "buffered_io": false },
+        { "thread_count": 256, "file_size_mb": 1000, "access_size_kb": 1024, "read_ratio": 1, "write_ratio": 4, "data_type": 2, "adv_verify_immediate": true,  "buffered_io": false },
+        { "thread_count":   1, "file_size_mb":    1, "access_size_kb":   24, "read_ratio": 1, "write_ratio": 4, "data_type": 1, "adv_verify_immediate": false, "buffered_io": false },
+        { "thread_count":  16, "file_size_mb":  100, "access_size_kb": 1024, "read_ratio": 1, "write_ratio": 4, "data_type": 4, "adv_verify_immediate": false, "buffered_io": false },
+        { "thread_count":   1, "file_size_mb":  100, "access_size_kb":  256, "read_ratio": 1, "write_ratio": 4, "data_type": 3, "adv_verify_immediate": true,  "buffered_io": false },
+        { "thread_count":  11, "file_size_mb":  100, "access_size_kb":  256, "read_ratio": 1, "write_ratio": 4, "data_type": 1, "adv_verify_immediate": false, "buffered_io": true  }
+    ]
 }

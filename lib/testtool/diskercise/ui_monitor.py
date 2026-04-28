@@ -318,14 +318,11 @@ class DiskerciseUIMonitor:
             time.sleep(0.3)
 
     def _dismiss_app_dialogs(self, app: Any) -> None:
-        """Dismiss all non-main OK-only dialogs belonging to *app*.
+        """Dismiss all non-main modal dialogs belonging to *app*.
 
-        Strategy: for every non-main top-level window owned by the process,
-        log that it was found, then try three methods in order:
-          1. win['OK'].click_input()           — pywinauto win32 shorthand
-          2. win.child_window(best_match='OK') — fuzzy match
-          3. win.type_keys('{ENTER}')          — keyboard fallback
-        Errors in each method are swallowed; we move to the next.
+        Only considers windows with class_name '#32770' (standard Windows
+        MessageBox / dialog) to avoid false-positive matches on IME windows
+        ('M', 'Default IME', etc.) that appear in every process's window list.
         """
         try:
             main_handle = app.window(title_re=self.WINDOW_TITLE_RE, found_index=0).handle
@@ -334,18 +331,18 @@ class DiskerciseUIMonitor:
         try:
             for win in app.windows():
                 try:
+                    # Only handle standard Windows dialog boxes (#32770)
+                    if win.element_info.class_name != '#32770':
+                        continue
                     if main_handle is not None and win.handle == main_handle:
                         continue
                     dlg_title = win.window_text()
-                    if not dlg_title:
-                        continue
-                    # Log immediately so we can see it was found even if click fails
                     logger.warning(
                         f"[UI] Dialog detected: '{dlg_title}' — attempting to dismiss"
                     )
                     self.take_screenshot(f"dialog_{dlg_title.replace(' ', '_')}")
                     dismissed = False
-                    # Method 1: pywinauto win32 shorthand (no exists() check)
+                    # Method 1: pywinauto win32 shorthand
                     if not dismissed:
                         try:
                             win['OK'].click_input()
@@ -359,7 +356,7 @@ class DiskerciseUIMonitor:
                             dismissed = True
                         except Exception:
                             pass
-                    # Method 3: press Enter (works for any focused OK/default button)
+                    # Method 3: press Enter
                     if not dismissed:
                         try:
                             win.set_focus()

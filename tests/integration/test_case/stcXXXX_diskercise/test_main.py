@@ -66,8 +66,9 @@ class TestSTC_XXXX_Diskercise(BaseTestCase):
 
     _osconfig_controller: "OsConfigController | None" = None
 
-    # Shared controller between test_05 (run) and test_06 (verify)
+    # Shared between test_05 (run) and test_06 (verify)
     _ctrl: "DiskerciseController | None" = None
+    _results: list = []  # [{set, config, status, error_count, failure_message}, ...]
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -185,75 +186,99 @@ class TestSTC_XXXX_Diskercise(BaseTestCase):
     @pytest.mark.order(5)
     @step(5, "Run Diskercise I/O stress test")
     def test_05_run_diskercise(self):
-        """Launch Diskercise.exe, apply GUI config, run stress test, wait for completion.
+        """Execute every config set in Config.json → 'diskercise_configs' sequentially.
 
-        Configuration is loaded from Config/Config.json → 'diskercise' key.
-        The controller scans for an "Operation Failure" popup every
-        check_interval_seconds throughout the test duration and sets
-        ctrl.status to False if any failure is detected.
+        For each set, launches Diskercise.exe, applies GUI config, waits for
+        the configured duration, stops, and records the result.  All sets are
+        run regardless of individual pass/fail; test_06 performs the final
+        assertion.
         """
-        logger.info("[TEST_05] Diskercise run started")
-
-        # ── DUT topology ──────────────────────────────────────────────
+        logger.info("[TEST_05] Diskercise multi-config run started")
         self._log_dut_info()
-
-        # ── Config summary ────────────────────────────────────────────
-        diskercise_cfg = self.config['diskercise']
-        duration = diskercise_cfg.get('test_duration_minutes', 30)
-        logger.info(
-            "[TEST_05] Diskercise config:\n"
-            f"  thread_count          = {diskercise_cfg.get('thread_count', 4)}\n"
-            f"  file_size_mb          = {diskercise_cfg.get('file_size_mb', 1024)}\n"
-            f"  access_size_kb        = {diskercise_cfg.get('access_size_kb', 4)}\n"
-            f"  read_ratio            = {diskercise_cfg.get('read_ratio', 50)}%\n"
-            f"  write_ratio           = {diskercise_cfg.get('write_ratio', 50)}%\n"
-            f"  data_type             = {diskercise_cfg.get('data_type', 0)}\n"
-            f"  buffered_io           = {diskercise_cfg.get('buffered_io', True)}\n"
-            f"  test_duration_minutes = {duration}"
-        )
-
-        # ── Screenshot: desktop state before launch ────────────────────
         self._take_screenshot("before_diskercise_launch")
 
-        ctrl = DiskerciseController(
-            thread_count=diskercise_cfg.get('thread_count', 4),
-            file_size_mb=diskercise_cfg.get('file_size_mb', 1024),
-            access_size_kb=diskercise_cfg.get('access_size_kb', 4),
-            read_ratio=diskercise_cfg.get('read_ratio', 50),
-            write_ratio=diskercise_cfg.get('write_ratio', 50),
-            data_type=diskercise_cfg.get('data_type', 0),
-            buffered_io=diskercise_cfg.get('buffered_io', True),
-            test_duration_minutes=duration,
-            log_path='./testlog/diskercise',
-        )
+        defaults = self.config.get('diskercise_defaults', {})
+        cfg_sets = self.config.get('diskercise_configs', [])
+        if not cfg_sets:
+            pytest.fail("[TEST_05] No 'diskercise_configs' found in Config.json")
 
-        logger.info("[TEST_05] Starting DiskerciseController thread...")
-        ctrl.start()
+        total = len(cfg_sets)
+        results = []
 
-        # Wait up to (duration + 5 min) for the thread to finish
-        timeout_seconds = duration * 60 + 300
-        logger.info(f"[TEST_05] Waiting for completion (timeout={timeout_seconds}s)...")
-        ctrl.join(timeout=timeout_seconds)
+        for idx, cfg_set in enumerate(cfg_sets):
+            set_num = idx + 1
+            merged = {**defaults, **cfg_set}
+            duration = merged.get('test_duration_minutes', 1)
+            log_path = f'./testlog/diskercise/set_{set_num:02d}'
 
-        if ctrl.is_alive():
-            logger.error("[TEST_05] Diskercise thread still alive after timeout — forcing stop")
-            self._take_screenshot("diskercise_timeout")
-            ctrl.stop()
-            ctrl.join(timeout=30)
-            pytest.fail(
-                f"[TEST_05] Diskercise did not complete within {timeout_seconds}s"
+            logger.info(
+                f"[TEST_05] ── Config set {set_num}/{total} ──────────────────────────"
+            )
+            logger.info(
+                f"[TEST_05]   thread={merged.get('thread_count')}  "
+                f"file={merged.get('file_size_mb')}MB  "
+                f"access={merged.get('access_size_kb')}kB  "
+                f"R/W={merged.get('read_ratio')}/{merged.get('write_ratio')}  "
+                f"data_type={merged.get('data_type')}  "
+                f"buffered={merged.get('buffered_io')}  "
+                f"verify_immd={merged.get('adv_verify_immediate')}  "
+                f"duration={duration}min"
             )
 
-        TestSTC_XXXX_Diskercise._ctrl = ctrl
-        logger.info(
-            f"[TEST_05] Diskercise run finished — status={ctrl.status}, "
-            f"error_count={ctrl.error_count}"
-        )
-        if ctrl.failure_message:
-            logger.warning(f"[TEST_05] failure_message: {ctrl.failure_message}")
+            ctrl = DiskerciseController(
+                thread_count=merged.get('thread_count', 1),
+                file_size_mb=merged.get('file_size_mb', 1),
+                access_size_kb=merged.get('access_size_kb', 4),
+                read_ratio=merged.get('read_ratio', 4),
+                write_ratio=merged.get('write_ratio', 1),
+                data_type=merged.get('data_type', 0),
+                buffered_io=merged.get('buffered_io', True),
+                adv_write_signatures=merged.get('adv_write_signatures', True),
+                adv_verify_immediate=merged.get('adv_verify_immediate', False),
+                adv_pause_all_asap=merged.get('adv_pause_all_asap', True),
+                adv_pulse_com1=merged.get('adv_pulse_com1', False),
+                test_duration_minutes=duration,
+                log_path=log_path,
+            )
 
-        # ── Screenshot: final state after run ─────────────────────────
-        self._take_screenshot("after_diskercise_run")
+            ctrl.start()
+            timeout_seconds = duration * 60 + 300
+            ctrl.join(timeout=timeout_seconds)
+
+            if ctrl.is_alive():
+                logger.error(
+                    f"[TEST_05] Set {set_num}: thread still alive after {timeout_seconds}s — forcing stop"
+                )
+                self._take_screenshot(f"set_{set_num:02d}_timeout")
+                ctrl.stop()
+                ctrl.join(timeout=30)
+                results.append({
+                    'set': set_num,
+                    'config': cfg_set,
+                    'status': False,
+                    'error_count': ctrl.error_count,
+                    'failure_message': f'Timeout after {timeout_seconds}s',
+                })
+            else:
+                results.append({
+                    'set': set_num,
+                    'config': cfg_set,
+                    'status': ctrl.status,
+                    'error_count': ctrl.error_count,
+                    'failure_message': ctrl.failure_message,
+                })
+
+            tag = 'PASS' if ctrl.status is True else 'FAIL'
+            logger.info(f"[TEST_05] Set {set_num}/{total} → {tag}")
+            self._take_screenshot(f"set_{set_num:02d}_after_run")
+            TestSTC_XXXX_Diskercise._ctrl = ctrl
+
+        TestSTC_XXXX_Diskercise._results = results
+        passed = sum(1 for r in results if r['status'] is True)
+        logger.info(
+            f"[TEST_05] All {total} config set(s) done — {passed} passed, "
+            f"{total - passed} failed"
+        )
 
     # ------------------------------------------------------------------
     # Step 6 — Verify Result
@@ -262,30 +287,38 @@ class TestSTC_XXXX_Diskercise(BaseTestCase):
     @pytest.mark.order(6)
     @step(6, "Verify Diskercise result")
     def test_06_verify_result(self):
-        """Assert that no Diskercise failure was detected during the run.
+        """Summarise all config-set results and fail if any set did not pass."""
+        results = TestSTC_XXXX_Diskercise._results
+        if not results:
+            pytest.fail("[TEST_06] No results recorded — test_05 may have failed to run")
 
-        Passes if ctrl.status is True (no 'Operation Failure' popup appeared
-        and the test ran for the full configured duration without error).
-        """
-        ctrl = TestSTC_XXXX_Diskercise._ctrl
-        if ctrl is None:
-            pytest.fail("[TEST_06] DiskerciseController not initialised — test_05 may have failed")
+        logger.info(f"[TEST_06] Results summary ({len(results)} config set(s)):")
+        for r in results:
+            tag = 'PASS' if r['status'] is True else 'FAIL'
+            cfg = r['config']
+            logger.info(
+                f"  Set {r['set']:2d}: {tag}  "
+                f"thread={cfg.get('thread_count')}  "
+                f"file={cfg.get('file_size_mb')}MB  "
+                f"access={cfg.get('access_size_kb')}kB  "
+                f"R/W={cfg.get('read_ratio')}/{cfg.get('write_ratio')}  "
+                f"data_type={cfg.get('data_type')}  "
+                f"buffered={cfg.get('buffered_io')}  "
+                f"verify_immd={cfg.get('adv_verify_immediate')}"
+                + (f"  → {r['failure_message']}" if r['failure_message'] else "")
+            )
 
-        logger.info(
-            f"[TEST_06] Verifying result — "
-            f"status={ctrl.status}, error_count={ctrl.error_count}"
-        )
+        failed = [r for r in results if r['status'] is not True]
+        if failed:
+            msgs = [
+                f"Set {r['set']}: {r['failure_message'] or 'status=False'}"
+                for r in failed
+            ]
+            pytest.fail(
+                f"[TEST_06] {len(failed)} config set(s) FAILED:\n" + "\n".join(msgs)
+            )
 
-        failure_message = getattr(ctrl, 'failure_message', None)
-        if failure_message:
-            logger.error(f"[TEST_06] failure_message: {failure_message}")
-
-        assert ctrl.status is True, (
-            f"[TEST_06] Diskercise test FAILED"
-            + (f": {failure_message}" if failure_message else "")
-        )
-
-        logger.info("[TEST_06] Diskercise test PASSED — no I/O failure detected")
+        logger.info(f"[TEST_06] All {len(results)} config set(s) PASSED")
 
 
 if __name__ == "__main__":
