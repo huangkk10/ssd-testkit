@@ -131,7 +131,8 @@ class ToolInstaller:
             if not exe_name:
                 return
             inject_value = str(Path(install_dir) / exe_name)
-        if env_var not in os.environ:
+        current = os.environ.get(env_var, '')
+        if not current or not os.path.isfile(current):
             os.environ[env_var] = inject_value
             logger.debug(f"[ToolInstaller] env auto-set from meta: {env_var}={inject_value}")
 

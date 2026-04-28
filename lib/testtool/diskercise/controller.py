@@ -79,6 +79,9 @@ class DiskerciseController(threading.Thread):
             or os.environ.get('DISKERCISE_PATH', '')
             or DiskerciseConfig.DEFAULT_CONFIG['exe_path']
         )
+        # Defensive: if resolved is a directory (e.g. stale env var), append the exe name
+        if resolved and os.path.isdir(resolved):
+            resolved = os.path.join(resolved, 'Diskercise.exe')
 
         self._config: Dict[str, Any] = DiskerciseConfig.get_default_config()
         self._config['exe_path'] = resolved
