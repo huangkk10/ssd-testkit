@@ -1,0 +1,12 @@
+tool_name: Diskercise
+choco_package_id: diskercise
+tool_type: portable
+
+versions:
+  - version: "1.0.0.1"
+    tool_version: "1.0.0.1"
+    source_dir: "bin/installers/Diskercise/1.0.0.1"
+    install_path: "C:\\tools\\Diskercise"
+    env_var: DISKERCISE_PATH
+    default: true
+    notes: "Portable exe — copy to install dir, no installer required."

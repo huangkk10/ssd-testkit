@@ -69,3 +69,12 @@ tools:
     nexus_path: windows-tools/WindowsADK/26100.0.0/WindowsADK-26100.0.0.zip
     install_dir: C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit
     binaries: [wpr.exe, wpa.exe, xbootmgr.exe]
+
+  diskercise:
+    version: 1.0.0.1
+    bin_dir: Diskercise
+    source_dir: bin/installers/Diskercise/1.0.0.1
+    nexus_path: windows-tools/Diskercise/1.0.0.1/Diskercise-1.0.0.1.zip
+    install_dir: C:\\tools\\Diskercise
+    env_var: DISKERCISE_PATH
+    binaries: [Diskercise.exe, PCIE_Diskercise_CLI.exe]
