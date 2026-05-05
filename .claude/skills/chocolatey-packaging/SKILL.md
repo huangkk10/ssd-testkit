@@ -270,6 +270,26 @@ binaries:
 .\bin\chocolatey\scripts\install_packages.ps1
 ```
 
+### Step 11 — 更新 /readme 頁面
+
+上傳完成後，執行以下指令把新工具加入 `https://10.252.170.171/readme`：
+
+```powershell
+python tools\update_nexus_readme.py `
+    --name "My Tool Display Name" `
+    --id   mytool `
+    --version 1.2.3
+```
+
+腳本會自動完成三件事：
+1. 在 GitLab `packages/windows/bootstrap/README.html` 插入新的工具列和更新「一次安裝全部」指令
+2. Commit 到 GitLab (`chunwei/packages-win-linux`)
+3. SSH 到 Nexus server (`owner@10.252.170.171`) 執行 `git pull`（bind-mount 即時生效，不需 reload nginx）
+
+> 移除工具時：`python tools\update_nexus_readme.py --remove --id mytool --version 1.2.3`
+>
+> 乾跑預覽（不 commit）：加上 `--dry-run`
+
 ---
 
 ## Testing the Package
@@ -329,6 +349,7 @@ Tests go in `tests/integration/lib/testtool/test_<toolname>/`.
 | `smiwintools` | portable | **2026.2.13.1** | `lib/testtool/smartcheck/` | `bin/chocolatey/packages/smiwintools/2026.2.13.1/` |
 | `phm` | installer | **4.22.0** | `lib/testtool/phm/` | `bin/chocolatey/packages/phm/4.22.0/` |
 | `burnin` | installer | **10.2.1004** | `lib/testtool/burnin/` | `bin/chocolatey/packages/burnin/10.2.1004/` |
+| `chrome` | installer | **147.0.7727.138** | `lib/testtool/chrome/` | `bin/chocolatey/packages/chrome/147.0.7727.138/` |
 | `pwrtest` | portable | 1.9.0 | 尚未建立 | 尚未建立 |
 
 **已完成工具的完整範例**：see `references/packaging_templates.md`
@@ -371,7 +392,9 @@ mgr.get_installed_version("windows-adk")  # -> str | None
 6. 更新 lib/testtool/<tool>/package_meta.yaml：新增 version 條目，調整 default: true
 7. 更新 bin/chocolatey/config/packages.config 中的 version
 8. 跑 Test 2–4 驗證
-9. git commit，tag 格式：choco/<id>@<version>
+9. .\tool-manager\upload_tools_to_nexus.bat  （上傳 nupkg + installer zip）
+10. python tools\update_nexus_readme.py --name "<Display Name>" --id <id> --version <ver>  （更新 /readme 頁面）
+11. git commit，tag 格式：choco/<id>@<version>
 ```
 
 ---

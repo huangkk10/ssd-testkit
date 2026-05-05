@@ -78,3 +78,12 @@ tools:
     install_dir: C:\\tools\\Diskercise
     env_var: DISKERCISE_PATH
     binaries: [Diskercise.exe, PCIE_Diskercise_CLI.exe]
+
+  chrome:
+    version: 147.0.7727.138
+    bin_dir: chrome
+    source_dir: bin/installers/chrome/147.0.7727.138
+    nexus_path: windows-tools/chrome/147.0.7727.138/chrome-147.0.7727.138.zip
+    install_dir: C:\\Program Files\\Google\\Chrome\\Application
+    env_var: CHROME_PATH
+    binaries: [chrome.exe]

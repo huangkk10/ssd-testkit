@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+  <metadata>
+    <id>chrome</id>
+    <version>147.0.7727.138</version>
+    <title>Google Chrome (147.0.7727.138)</title>
+    <authors>Google / SSD TestKit</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>
+      Google Chrome browser - offline Enterprise MSI installer.
+      Installs to C:\Program Files\Google\Chrome\Application\.
+      Requires SSD_TESTKIT_ROOT env var pointing to the ssd-testkit repo root.
+    </description>
+    <tags>chrome google browser offline</tags>
+  </metadata>
+</package>

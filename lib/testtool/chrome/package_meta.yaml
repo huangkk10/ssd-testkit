@@ -1,0 +1,17 @@
+# lib/testtool/chrome/package_meta.yaml
+# Google Chrome browser — Installer-based tool（執行 Enterprise MSI）
+# 安裝後設定 CHROME_PATH 機器層級環境變數。
+
+tool_name: chrome
+choco_package_id: chrome
+tool_type: installer             # installer: 執行 MSI 安裝程式
+
+versions:
+  - version: "147.0.7727.138"   # Google Chrome 版本
+    source_dir: "bin/installers/chrome/147.0.7727.138"
+    default: true
+
+install_dir: "C:\\Program Files\\Google\\Chrome\\Application"
+env_var: "CHROME_PATH"           # 設定為 chrome.exe 完整路徑
+binaries:
+  - "chrome.exe"

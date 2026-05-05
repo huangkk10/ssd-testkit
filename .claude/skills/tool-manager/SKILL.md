@@ -207,6 +207,12 @@ smicli:
 # → [COPY]   smicli  → NAS\zip\SmiCli-v20260401A.zip
 ```
 
+### Step D.5：更新 /readme 頁面
+```powershell
+python tools\update_nexus_readme.py --name "SmiCli" --id smicli --version 2026.4.1
+```
+自動完成：GitLab commit → SSH `git pull` → `https://10.252.170.171/readme` 立即更新。
+
 ### Step E：驗證其他機器可下載
 ```powershell
 # 刪除本地快取模擬新機器
